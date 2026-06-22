@@ -1,0 +1,19 @@
+{
+  "name": "Amruni — Women's Health",
+  "short_name": "Amruni",
+  "description": "Women's health platform — telemedicine, cycle tracking, mental health support.",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#ffe3ee",
+  "theme_color": "#ffe3ee",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "medical", "lifestyle"]
+}

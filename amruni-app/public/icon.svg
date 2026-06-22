@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <rect width="48" height="48" rx="12" fill="#f5ecf1"/>
+  <!-- Camellia petals -->
+  <ellipse cx="24" cy="11" rx="5.5" ry="9.5" fill="#b03070" opacity="0.92" transform="rotate(0 24 24)"/>
+  <ellipse cx="24" cy="11" rx="5.5" ry="9.5" fill="#b03070" opacity="0.92" transform="rotate(72 24 24)"/>
+  <ellipse cx="24" cy="11" rx="5.5" ry="9.5" fill="#b03070" opacity="0.92" transform="rotate(144 24 24)"/>
+  <ellipse cx="24" cy="11" rx="5.5" ry="9.5" fill="#b03070" opacity="0.92" transform="rotate(216 24 24)"/>
+  <ellipse cx="24" cy="11" rx="5.5" ry="9.5" fill="#b03070" opacity="0.92" transform="rotate(288 24 24)"/>
+  <!-- Gold centre -->
+  <circle cx="24" cy="24" r="6.5" fill="#c4a030"/>
+  <circle cx="24" cy="24" r="3" fill="white"/>
+</svg>
