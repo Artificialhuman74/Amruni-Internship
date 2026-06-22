@@ -45,7 +45,7 @@ src/
 ├── components/
 │   ├── AppShell.jsx      # tab layout + bottom nav
 │   ├── BottomNav.jsx
-│   ├── BottomSheet.jsx   # accessible modal sheet
+│   ├── BottomSheet.jsx   # modal bottom sheet (ARIA dialog)
 │   ├── CycleCalendar.jsx
 │   ├── OTPInput.jsx
 │   ├── SuccessCheck.jsx  # self-drawing confirmation checkmark
