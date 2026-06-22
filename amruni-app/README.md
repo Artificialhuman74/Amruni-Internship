@@ -74,7 +74,7 @@ All design decisions live as tokens at the top of [`src/index.css`](src/index.cs
 
 - WCAG AA contrast minimums; keyboard-navigable controls and ARIA roles on interactive elements.
 - Larger tap targets and simpler layouts for elderly mode.
-- Every animation honours `prefers-reduced-motion` (crossfade or instant fallbacks).
+- Key animations honour `prefers-reduced-motion` (global CSS reduces CSS animations/transitions; some Framer Motion components use `useReducedMotion`).
 - Layouts are built to tolerate text expansion for future multilingual support (Kannada, Tamil, Hindi).
 
 ## Status
