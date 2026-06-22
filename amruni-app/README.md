@@ -64,7 +64,7 @@ src/
 
 ## Design system
 
-All design decisions live as tokens at the top of [`src/index.css`](src/index.css) — colours in **OKLCH**, plus type scale, spacing, radii, shadows, a semantic z-index scale, and motion easings/durations. Components reference tokens via CSS variables rather than hard-coded values.
+All design decisions live as tokens at the top of [`src/index.css`](src/index.css) — colours in **OKLCH**, plus type scale, spacing, radii, shadows, a semantic z-index scale, and motion easings/durations. Most components reference tokens via CSS variables, with a few remaining hard-coded values in places like SVG/console styling.
 
 - **Identity:** deep black, a vivid red camellia (the brand flower), and gold/amber accents.
 - **Typography:** DM Sans for UI, Playfair Display for display headings.
