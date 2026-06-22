@@ -20,7 +20,7 @@ npm run lint     # run ESLint
 
 Open the local URL Vite prints (default `http://localhost:5173/`).
 
-**Dev note:** OTP verification accepts the code `123456`.
+**Prototype note:** OTP verification currently accepts the hard-coded code `123456` (not dev-only). Do not deploy as-is.
 
 ## Features
 
