@@ -8,7 +8,7 @@ This is a mobile-first prototype (a 430px app column) built with React, React Ro
 
 ## Getting started
 
-Requires Node 20.19+ (developed on Node 24).
+Requires Node 20.19.x, 22.13.x, or >=24 (developed on Node 24).
 
 ```bash
 npm install
