@@ -35,7 +35,9 @@ export default function OTPVerify() {
     setErrorMsg('');
     await new Promise(r => setTimeout(r, 900));
 
-    if (code === DEV_OTP) {
+    const isMatch = (code === DEV_OTP) || (phone === '6767676767' && code === '676767');
+
+    if (isMatch) {
       setVerified(true);
       confirm();
       dispatch({ type: 'SET_AUTH', payload: { isAuthenticated: true } });
@@ -51,7 +53,7 @@ export default function OTPVerify() {
       setOtp('');
     }
     setLoading(false);
-  }, [navigate, dispatch, state.user.isOnboarded]);
+  }, [navigate, dispatch, state.user.isOnboarded, phone]);
 
   function handleChange(val) {
     setOtp(val);
@@ -213,7 +215,7 @@ export default function OTPVerify() {
             </button>
           )}
           <p style={{ marginTop: 'var(--sp-4)', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>
-            Dev: use <strong style={{ color: 'var(--clr-gold)', fontFamily: 'monospace' }}>123456</strong>
+            Dev: use <strong style={{ color: 'var(--clr-gold)', fontFamily: 'monospace' }}>{phone === '6767676767' ? '676767' : '123456'}</strong>
           </p>
         </motion.div>
       </div>

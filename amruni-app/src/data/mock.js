@@ -1,11 +1,4 @@
-export const DOCTORS = [
-  { id: 1, name: 'Dr. Priya Nair', specialty: 'Gynaecologist & Obstetrician', rating: 4.9, reviews: 312, nextSlot: 'Today, 3:00 PM', avatar: '👩‍⚕️', exp: '14 yrs', fee: '₹499', lang: ['English', 'Malayalam', 'Hindi'] },
-  { id: 2, name: 'Dr. Kavitha Rao', specialty: 'Reproductive Endocrinologist', rating: 4.8, reviews: 198, nextSlot: 'Today, 5:30 PM', avatar: '👩‍⚕️', exp: '11 yrs', fee: '₹699', lang: ['English', 'Kannada', 'Telugu'] },
-  { id: 3, name: 'Dr. Anita Sharma', specialty: 'Maternal-Fetal Medicine', rating: 4.9, reviews: 427, nextSlot: 'Tomorrow, 10:00 AM', avatar: '👩‍⚕️', exp: '18 yrs', fee: '₹799', lang: ['English', 'Hindi'] },
-  { id: 4, name: 'Dr. Meena Krishnan', specialty: 'Women\'s Mental Health', rating: 4.7, reviews: 156, nextSlot: 'Today, 6:00 PM', avatar: '👩‍⚕️', exp: '9 yrs', fee: '₹599', lang: ['English', 'Tamil', 'Kannada'] },
-  { id: 5, name: 'Dr. Rekha Pillai', specialty: 'Homeopathic Gynaecology', rating: 4.6, reviews: 89, nextSlot: 'Tomorrow, 2:00 PM', avatar: '👩‍⚕️', exp: '7 yrs', fee: '₹349', lang: ['English', 'Malayalam'] },
-  { id: 6, name: 'Dr. Sunita Gupta', specialty: 'Menopause Specialist', rating: 4.8, reviews: 234, nextSlot: 'Tomorrow, 11:30 AM', avatar: '👩‍⚕️', exp: '16 yrs', fee: '₹649', lang: ['English', 'Hindi', 'Punjabi'] },
-];
+export const DOCTORS = [];
 
 export const SPECIALTIES = ['All', 'Gynaecology', 'Fertility', 'Mental Health', 'Pregnancy', 'Menopause', 'Homeopathy'];
 
