@@ -96,7 +96,7 @@ export default function Home() {
             {lifeStage !== 'elderly' && (
               <button className="quick-action" onClick={() => navigate('/track')} aria-label="Track cycle or health">
                 <div className="quick-action__icon" style={{ background: 'var(--clr-sage-soft)' }}>📅</div>
-                <span className="quick-action__label">Track Health</span>
+                <span className="quick-action__label">Track Cycle</span>
               </button>
             )}
             <button className="quick-action" onClick={() => navigate('/help')} aria-label="Get mental health support">
