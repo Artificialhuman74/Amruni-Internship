@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 export default function BottomNav({ tabs, active, onTab }) {
   return (
     <nav className="bottom-nav" role="tablist">
-      {tabs.map(({ path, label, icon: Icon }) => {
+      {tabs.map(({ path, label, icon: Icon, className: tabClass }) => {
         const isActive = active === path;
         return (
           <button
@@ -11,7 +11,7 @@ export default function BottomNav({ tabs, active, onTab }) {
             role="tab"
             aria-selected={isActive}
             aria-label={label}
-            className={`bottom-nav__tab${isActive ? ' bottom-nav__tab--active' : ''}`}
+            className={`bottom-nav__tab${isActive ? ' bottom-nav__tab--active' : ''}${tabClass ? ` ${tabClass}` : ''}`}
             onClick={() => onTab(path)}
           >
             <motion.div

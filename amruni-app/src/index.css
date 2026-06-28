@@ -95,6 +95,14 @@
   --dur-fast: 150ms;
   --dur-base: 220ms;
   --dur-slow: 320ms;
+
+  /* SOS / Emergency */
+  --clr-emergency: oklch(0.52 0.22 25);
+  --clr-emergency-hover: oklch(0.44 0.22 25);
+  --clr-emergency-soft: oklch(0.94 0.06 25);
+  --clr-emergency-on: oklch(0.99 0 0);
+
+  --nav-height: 72px;
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -602,6 +610,119 @@ img, svg { display: block; }
   100% { opacity: 0; transform: scale(0); }
 }
 
+/* ── SOS Floating Button ──────────────────────────────────────
+   Persistent bottom-right FAB, above the nav. Emergency red with
+   a subtle pulse ring that draws attention without being alarming.
+   Pulse suppressed under prefers-reduced-motion (see global rule). */
+.sos-fab {
+  position: fixed;
+  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--sp-4));
+  right: max(var(--sp-5), calc((100vw - 430px) / 2 + var(--sp-5)));
+  width: 56px; height: 56px;
+  border-radius: var(--radius-full);
+  background: var(--clr-emergency);
+  color: var(--clr-emergency-on);
+  border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  z-index: var(--z-nav);
+  box-shadow: 0 4px 16px oklch(0.52 0.22 25 / 0.35);
+  animation: sos-pulse 2s ease-out infinite;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
+}
+.sos-fab:active { background: var(--clr-emergency-hover); }
+.sos-fab--active {
+  animation: none;
+  background: var(--clr-emergency-hover);
+}
+.sos-fab__label {
+  font-size: var(--text-xs);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+@keyframes sos-pulse {
+  0%   { box-shadow: 0 0 0 0 oklch(0.52 0.22 25 / 0.5); }
+  70%  { box-shadow: 0 0 0 14px oklch(0.52 0.22 25 / 0); }
+  100% { box-shadow: 0 0 0 0 oklch(0.52 0.22 25 / 0); }
+}
+
+/* ── SOS Countdown Overlay ────────────────────────────────────
+   Full-screen overlay with a centered modal for the 5-4-3-2-1
+   countdown. Dark scrim + glassy card. */
+.sos-countdown-overlay {
+  position: fixed; inset: 0;
+  background: oklch(0 0 0 / 0.70);
+  z-index: var(--z-modal);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--sp-6);
+}
+.sos-countdown-modal {
+  background: var(--clr-surface);
+  border-radius: var(--radius-xl);
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+  width: 100%;
+  max-width: 320px;
+  box-shadow: var(--shadow-lg);
+}
+.sos-countdown-digit {
+  font-size: 4rem;
+  font-weight: 800;
+  color: var(--clr-emergency);
+  line-height: 1;
+  margin-bottom: var(--sp-4);
+}
+.sos-countdown-text {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-snug);
+  margin-bottom: var(--sp-6);
+}
+.sos-countdown-cancel {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: var(--sp-3) var(--sp-6);
+  border-radius: var(--radius-full);
+  background: var(--clr-surface-2);
+  color: var(--clr-ink);
+  font-size: var(--text-base); font-weight: 600;
+  min-height: 48px; min-width: 120px;
+  cursor: pointer; border: none;
+  transition: background var(--dur-fast);
+}
+.sos-countdown-cancel:active { background: var(--clr-border); }
+
+/* ── SOS Banner ───────────────────────────────────────────────
+   Top-of-screen persistent bar while an SOS session is active. */
+.sos-banner {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--sp-3) var(--sp-5);
+  background: var(--clr-emergency);
+  color: var(--clr-emergency-on);
+  font-size: var(--text-sm); font-weight: 600;
+  z-index: var(--z-sticky);
+}
+.sos-banner__text { display: flex; align-items: center; gap: var(--sp-2); }
+.sos-banner__cancel {
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-full);
+  background: transparent;
+  color: var(--clr-emergency-on);
+  border: 1.5px solid oklch(0.99 0 0 / 0.5);
+  font-size: var(--text-xs); font-weight: 600;
+  cursor: pointer; min-height: 32px;
+  transition: background var(--dur-fast);
+}
+.sos-banner__cancel:active { background: oklch(0.99 0 0 / 0.15); }
+
+/* ── SOS nav tab color override ───────────────────────────── */
+.bottom-nav__tab--sos.bottom-nav__tab--active {
+  color: var(--clr-emergency);
+}
+
 /* ── Reduced motion ────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -609,4 +730,7 @@ img, svg { display: block; }
      its visible default immediately — no blank-then-snap during long delays. */
   .sp-glow, .sp-spark, .sp-petal, .sp-core, .sp-stamen,
   .sp-title, .sp-tagline { animation: none !important; }
+  /* SOS pulse: remove under reduced motion */
+  .sos-fab { animation: none !important; }
 }
+

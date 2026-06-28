@@ -18,6 +18,11 @@ export default function Settings() {
   const [caretakerSheet, setCaretakerSheet] = useState(false);
   const [logoutSheet, setLogoutSheet] = useState(false);
   const [selectedStage, setSelectedStage] = useState(lifeStage);
+  const [contactSheet, setContactSheet] = useState(false);
+  const [contactName, setContactName] = useState('');
+  const [contactPhone, setContactPhone] = useState('');
+
+  const sosContacts = state.sos?.contacts ?? [];
 
   const stageInfo = LIFE_STAGES.find(s => s.id === lifeStage);
   const age = dob ? Math.floor((Date.now() - new Date(dob)) / (365.25 * 86400000)) : null;
@@ -176,6 +181,63 @@ export default function Settings() {
           </div>
         </motion.div>
 
+        {/* Emergency Contacts */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.16, ease: [0.16, 1, 0.3, 1] }}>
+          <div className="settings-group">
+            <div className="settings-group__title">Emergency Contacts</div>
+            {sosContacts.map(c => (
+              <div key={c.id} className="settings-item" style={{ cursor: 'default' }}>
+                <div className="settings-item__icon" style={{ background: 'var(--clr-emergency-soft)', color: 'var(--clr-emergency)', fontWeight: 700 }}>
+                  {c.name?.charAt(0)?.toUpperCase() || '?'}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div className="settings-item__label">{c.name}</div>
+                  <div className="settings-item__desc">{c.phone}</div>
+                </div>
+                <button
+                  onClick={() => {
+                    const updated = sosContacts.filter(x => x.id !== c.id);
+                    dispatch({ type: 'SET_SOS_CONTACTS', payload: updated });
+                    toast('Contact removed', { icon: '🗑️' });
+                  }}
+                  aria-label={`Remove ${c.name}`}
+                  style={{
+                    width: 36, height: 36,
+                    borderRadius: 'var(--radius-full)',
+                    background: 'var(--clr-surface-2)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: 14, color: 'var(--clr-ink-muted)', flexShrink: 0,
+                    border: 'none', cursor: 'pointer',
+                  }}
+                >
+                  ✕
+                </button>
+              </div>
+            ))}
+            <div
+              className="settings-item"
+              onClick={() => {
+                if (sosContacts.length >= 5) {
+                  toast('Maximum 5 emergency contacts allowed', { icon: '⚠️' });
+                  return;
+                }
+                setContactName('');
+                setContactPhone('');
+                setContactSheet(true);
+              }}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="settings-item__icon" style={{ background: 'var(--clr-emergency-soft)' }}>➕</div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label" style={{ color: 'var(--clr-emergency)' }}>Add contact</div>
+                <div className="settings-item__desc">{sosContacts.length}/5 contacts added</div>
+              </div>
+              <ChevronRight />
+            </div>
+          </div>
+        </motion.div>
+
         {/* App */}
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}>
           <div className="settings-group">
@@ -282,6 +344,52 @@ export default function Settings() {
           </button>
           <button className="btn btn--secondary" onClick={() => setLogoutSheet(false)}>
             Cancel
+          </button>
+        </div>
+      </BottomSheet>
+
+      {/* Add emergency contact */}
+      <BottomSheet open={contactSheet} onClose={() => setContactSheet(false)} title="Add emergency contact">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+          <div className="input-group">
+            <label className="input-label">Name</label>
+            <input
+              className="input-field"
+              type="text"
+              placeholder="Contact name"
+              value={contactName}
+              onChange={e => setContactName(e.target.value)}
+              maxLength={40}
+            />
+          </div>
+          <div className="input-group">
+            <label className="input-label">Phone number</label>
+            <input
+              className="input-field"
+              type="tel"
+              placeholder="+91 9876543210"
+              value={contactPhone}
+              onChange={e => setContactPhone(e.target.value)}
+              maxLength={15}
+            />
+          </div>
+          <button
+            className="btn btn--primary"
+            disabled={!contactName.trim() || !contactPhone.trim()}
+            onClick={() => {
+              const newContact = {
+                id: Date.now().toString(36),
+                name: contactName.trim(),
+                phone: contactPhone.trim(),
+              };
+              dispatch({ type: 'SET_SOS_CONTACTS', payload: [...sosContacts, newContact] });
+              setContactSheet(false);
+              confirm();
+              toast('Contact added', { icon: '✓' });
+            }}
+            style={{ marginTop: 'var(--sp-2)' }}
+          >
+            Save contact
           </button>
         </div>
       </BottomSheet>

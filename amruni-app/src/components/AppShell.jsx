@@ -1,5 +1,7 @@
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import BottomNav from './BottomNav';
+import SOSButton from './SOSButton';
+import SOSBanner from './SOSBanner';
 import { useApp } from '../context/AppContext';
 
 export default function AppShell() {
@@ -11,6 +13,7 @@ export default function AppShell() {
   const tabs = [
     { path: '/home', label: 'Home', icon: HomeIcon },
     { path: '/consult', label: 'Consult', icon: ConsultIcon },
+    { path: '/sos', label: 'SOS', icon: SOSIcon, className: 'bottom-nav__tab--sos' },
     { path: '/track', label: 'Track', icon: TrackIcon },
     { path: '/help', label: 'Help', icon: HelpIcon },
     { path: '/settings', label: 'Profile', icon: ProfileIcon },
@@ -20,9 +23,11 @@ export default function AppShell() {
 
   return (
     <div className="app-shell">
+      <SOSBanner />
       <div className="app-shell__content">
         <Outlet />
       </div>
+      <SOSButton />
       <BottomNav tabs={tabs} active={activeTab} onTab={navigate} lifeStage={lifeStage} />
     </div>
   );
@@ -43,6 +48,15 @@ function ConsultIcon({ active }) {
       <rect x="3" y="4" width="18" height="14" rx="2" fill={active ? 'currentColor' : 'none'} fillOpacity={0.15} />
       <circle cx="9" cy="10" r="2.5" fill={active ? 'currentColor' : 'none'} />
       <path d="M15 8h2M15 11h2M6 15.5c0-1.1 1.3-2 3-2s3 .9 3 2" />
+    </svg>
+  );
+}
+
+function SOSIcon({ active }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L12 2z" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
+      <path d="M12 8v4M12 16h.01" />
     </svg>
   );
 }

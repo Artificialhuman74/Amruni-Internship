@@ -14,6 +14,7 @@ import MentalHealth from './screens/MentalHealth';
 import CycleTracker from './screens/CycleTracker';
 import Pregnancy from './screens/Pregnancy';
 import Settings from './screens/Settings';
+import SOSCenter from './screens/SOSCenter';
 
 export default function App() {
   const location = useLocation();
@@ -52,6 +53,7 @@ export default function App() {
           <Route path="/consult" element={<Telemedicine />} />
           <Route path="/help" element={<MentalHealth />} />
           <Route path="/track" element={<TrackScreen />} />
+          <Route path="/sos" element={<SOSCenter />} />
           <Route path="/settings" element={<Settings />} />
         </Route>
         <Route path="*" element={<Navigate to="/" replace />} />
