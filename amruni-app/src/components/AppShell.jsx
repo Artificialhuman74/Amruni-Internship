@@ -50,9 +50,12 @@ function ConsultIcon({ active }) {
 function TrackIcon({ active }) {
   return (
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="12" r="9" fill={active ? 'currentColor' : 'none'} fillOpacity={0.12} />
-      <path d="M12 3v4M12 17v4M3 12h4M17 12h4" />
-      <circle cx="12" cy="12" r="3" fill={active ? 'currentColor' : 'none'} />
+      {/* ~300° clockwise arc — reads as "cycle" */}
+      <path d="M20 12A8 8 0 1 1 16 5" />
+      {/* Arrowhead continuing clockwise at arc end */}
+      <polyline points="14 8 16 5 19.5 6.5" />
+      {/* Centre dot — fills when active */}
+      <circle cx="12" cy="12" r="2.5" fill={active ? 'currentColor' : 'none'} />
     </svg>
   );
 }

@@ -152,21 +152,15 @@ img, svg { display: block; }
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding-bottom: calc(72px + env(safe-area-inset-bottom));
 }
 
 /* ── Bottom Nav ────────────────────────────────────────────── */
 .bottom-nav {
-  position: fixed;
-  bottom: 0;
-  left: 50%;
-  transform: translateX(-50%);
   width: 100%;
-  max-width: 430px;
   background: var(--clr-surface);
   border-top: 1px solid var(--clr-border);
   display: flex;
-  z-index: var(--z-nav);
+  flex-shrink: 0;
   padding-bottom: env(safe-area-inset-bottom);
 }
 .bottom-nav__tab {
@@ -250,7 +244,7 @@ img, svg { display: block; }
 }
 .sheet {
   position: fixed; bottom: 0;
-  left: 50%; transform: translateX(-50%);
+  left: 0; right: 0; margin: 0 auto;
   width: 100%; max-width: 430px;
   background: var(--clr-surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
@@ -496,8 +490,7 @@ img, svg { display: block; }
    with light text — reads as the app's own voice, not a system alert. */
 .toast-viewport {
   position: fixed;
-  left: 50%;
-  transform: translateX(-50%);
+  left: 0; right: 0; margin: 0 auto;
   bottom: calc(72px + env(safe-area-inset-bottom) + var(--sp-4));
   width: 100%;
   max-width: 430px;
