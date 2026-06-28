@@ -1,7 +1,10 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
+import { useState, useEffect } from 'react';
 import { useApp, useCycleData } from '../context/AppContext';
 import { PHASE_INFO } from '../data/mock';
+import { appointmentApi } from '../services/appointmentApi';
+import DoctorAvatar from '../components/DoctorAvatar';
 
 const stagger = {
   hidden: {},
@@ -17,6 +20,108 @@ export default function Home() {
   const { state } = useApp();
   const { name, lifeStage } = state.user;
   const cycleData = useCycleData(state);
+
+  const [appointments, setAppointments] = useState([]);
+  const [recommendedDoctors, setRecommendedDoctors] = useState([]);
+
+  // Map lifeStage to Specialty recommendations
+  const getTargetSpecialty = (stage) => {
+    const mapping = {
+      adolescent: 'Gynaecology',
+      reproductive: 'Fertility',
+      postpartum: 'Pregnancy',
+      menopause: 'Menopause',
+      elderly: 'Homeopathy'
+    };
+    return mapping[stage] || 'Gynaecology';
+  };
+
+  useEffect(() => {
+    async function loadData() {
+      try {
+        const doctorsList = await appointmentApi.getDoctors();
+
+        // Load and map appointments
+        const existing = JSON.parse(localStorage.getItem('amruni_appointments') || '[]');
+        
+        // Helper to check if appointment is in the past
+        const isPastAppointment = (appt) => {
+          if (appt.status === 'completed') return true;
+          if (!appt.date || !appt.time) return true;
+          
+          if (appt.time === 'Instant') {
+            // Instant chat consultation: completed if created more than 1 hour ago
+            if (appt.createdAt) {
+              const created = new Date(appt.createdAt);
+              const diffMs = new Date().getTime() - created.getTime();
+              return diffMs > 3600000; // 1 hour
+            }
+            return true;
+          }
+          
+          // Video consultation: parse date and time
+          const [year, month, day] = appt.date.split('-').map(Number);
+          const timeParts = appt.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+          if (!timeParts) return true;
+
+          let hours = parseInt(timeParts[1], 10);
+          const minutes = parseInt(timeParts[2], 10);
+          const meridiem = timeParts[3].toUpperCase();
+
+          if (meridiem === 'PM' && hours !== 12) hours += 12;
+          if (meridiem === 'AM' && hours === 12) hours = 0;
+
+          const appointmentDate = new Date(year, month - 1, day, hours, minutes, 0);
+          const now = new Date();
+          
+          // Mark past if it is older than 2 hours
+          return now.getTime() - appointmentDate.getTime() > 2 * 3600000;
+        };
+
+        // Auto-archive past appointments
+        let hasChanges = false;
+        const updated = existing.map(appt => {
+          if (appt.status !== 'completed' && isPastAppointment(appt)) {
+            hasChanges = true;
+            return { ...appt, status: 'completed' };
+          }
+          return appt;
+        });
+
+        if (hasChanges) {
+          localStorage.setItem('amruni_appointments', JSON.stringify(updated));
+        }
+
+        const activeAppointments = updated
+          .map(appt => {
+            const doctor = doctorsList.find(d => d.id === parseInt(appt.doctorId));
+            return { ...appt, doctor };
+          })
+          // Filter out appointments where the doctor was deleted or status is completed
+          .filter(appt => !!appt.doctor && appt.status === 'confirmed');
+        
+        setAppointments(activeAppointments);
+
+        // Get recommendations based on selected lifeStage
+        const targetSpecialty = getTargetSpecialty(lifeStage);
+        const matching = doctorsList.filter(
+          d => d.specialty.toLowerCase() === targetSpecialty.toLowerCase()
+        );
+
+        if (matching.length > 0) {
+          setRecommendedDoctors(matching.slice(0, 2));
+        } else if (doctorsList.length > 0) {
+          // Fallback to first two if no matches found
+          setRecommendedDoctors(doctorsList.slice(0, 2));
+        } else {
+          setRecommendedDoctors([]);
+        }
+      } catch (e) {
+        console.error('Failed to load home page data', e);
+      }
+    }
+    loadData();
+  }, [lifeStage]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -42,7 +147,7 @@ export default function Home() {
             </div>
             <button
               onClick={() => navigate('/settings')}
-              style={{ width: 40, height: 40, borderRadius: 'var(--radius-full)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}
+              style={{ width: 40, height: 40, borderRadius: 'var(--radius-full)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, overflow: 'hidden' }}
               aria-label="Profile settings"
             >
               {avatarFor(lifeStage)}
@@ -90,52 +195,110 @@ export default function Home() {
           <p className="section-title">Quick actions</p>
           <div className="quick-actions">
             <button className="quick-action" onClick={() => navigate('/consult')} aria-label="Book a consultation">
-              <div className="quick-action__icon" style={{ background: 'var(--clr-sky-soft)' }}>🩺</div>
+              <div className="quick-action__icon" style={{ background: 'var(--clr-sky-soft)', fontSize: 20 }}>🩺</div>
               <span className="quick-action__label">Book Consult</span>
             </button>
             {lifeStage !== 'elderly' && (
               <button className="quick-action" onClick={() => navigate('/track')} aria-label="Track cycle or health">
-                <div className="quick-action__icon" style={{ background: 'var(--clr-sage-soft)' }}>📅</div>
+                <div className="quick-action__icon" style={{ background: 'var(--clr-sage-soft)', fontSize: 20 }}>📅</div>
                 <span className="quick-action__label">Track Health</span>
               </button>
             )}
             <button className="quick-action" onClick={() => navigate('/help')} aria-label="Get mental health support">
-              <div className="quick-action__icon" style={{ background: 'var(--clr-mauve-soft)' }}>💬</div>
+              <div className="quick-action__icon" style={{ background: 'var(--clr-mauve-soft)', fontSize: 20 }}>💬</div>
               <span className="quick-action__label">I Need Help</span>
             </button>
           </div>
         </motion.div>
 
+        {/* Recommended Doctors Section */}
+        {recommendedDoctors.length > 0 && (
+          <motion.div variants={fadeUp}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-3)' }}>
+              <p className="section-title" style={{ margin: 0 }}>Recommended Doctors</p>
+              <button 
+                onClick={() => navigate('/consult')}
+                style={{ background: 'none', border: 'none', color: 'var(--clr-brand)', fontSize: 'var(--text-xs)', fontWeight: 700, cursor: 'pointer' }}
+              >
+                See All
+              </button>
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+              {recommendedDoctors.map((doc) => {
+                const videoFeeNum = parseInt(doc.fee.replace(/\D/g, '')) || 0;
+                const chatFeeNum = Math.round(videoFeeNum / 3);
+                return (
+                  <div 
+                    key={doc.id}
+                    className="doctor-card"
+                    onClick={() => navigate(`/doctor/${doc.id}`)}
+                    style={{ background: 'var(--clr-surface-2)', padding: 'var(--sp-3) var(--sp-4)' }}
+                  >
+                    <DoctorAvatar doctor={doc} size={48} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div className="doctor-name" style={{ fontSize: 'var(--text-sm)' }}>{doc.name}</div>
+                      <div className="doctor-specialty" style={{ fontSize: 'var(--text-xs)' }}>{doc.specialty} · {doc.exp}</div>
+                      <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 4, alignItems: 'center' }}>
+                        <span className="doctor-rating" style={{ fontSize: 10 }}>★ {doc.rating}</span>
+                        <span style={{ fontSize: 10, color: 'var(--clr-ink-subtle)' }}>({doc.reviews} reviews)</span>
+                      </div>
+                    </div>
+                    <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                      <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)' }}>{doc.fee}</div>
+                      {doc.phone && <div style={{ fontSize: 10, color: 'var(--clr-success)', fontWeight: 600, marginTop: 2 }}>Chat: ₹{chatFeeNum}</div>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+
         {/* Upcoming appointments */}
-        <motion.div variants={fadeUp}>
-          <p className="section-title">Upcoming</p>
-          <div className="gap-stack">
-            <div className="appt-card">
-              <div className="appt-time-block">
-                <div className="appt-time">3:00</div>
-                <div className="appt-ampm">PM</div>
-              </div>
-              <div className="appt-divider" />
-              <div style={{ flex: 1 }}>
-                <div className="appt-doctor">Dr. Priya Nair</div>
-                <div className="appt-type">Gynaecology · Today</div>
-              </div>
-              <span className="appt-badge appt-badge--video">Video</span>
+        {appointments.length > 0 && (
+          <motion.div variants={fadeUp}>
+            <p className="section-title">Upcoming</p>
+            <div className="gap-stack">
+              {appointments.map((appt) => {
+                const parts = (appt.time || '').split(' ');
+                const timeStr = parts[0] || '12:00';
+                const ampmStr = parts[1] || 'PM';
+                const isChat = appt.consultMode === 'chat';
+                return (
+                  <div
+                    key={appt.appointmentId}
+                    className="appt-card"
+                    onClick={() => navigate(`/waiting/${appt.appointmentId}`)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => e.key === 'Enter' && navigate(`/waiting/${appt.appointmentId}`)}
+                    style={{ cursor: 'pointer' }}
+                  >
+                    <div className="appt-time-block">
+                      <div className="appt-time">{timeStr}</div>
+                      <div className="appt-ampm">{ampmStr}</div>
+                    </div>
+                    <div className="appt-divider" />
+                    <div style={{ flex: 1, minWidth: 0, display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
+                      <DoctorAvatar doctor={appt.doctor} size={40} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div className="appt-doctor" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {appt.doctor?.name || 'Doctor'}
+                        </div>
+                        <div className="appt-type" style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                          {appt.doctor?.specialty || 'Consultation'} · {appt.date}
+                        </div>
+                      </div>
+                    </div>
+                    <span className={`appt-badge appt-badge--${isChat ? 'chat' : 'video'}`}>
+                      {isChat ? 'Chat' : 'Video'}
+                    </span>
+                  </div>
+                );
+              })}
             </div>
-            <div className="appt-card">
-              <div className="appt-time-block">
-                <div className="appt-time">10:30</div>
-                <div className="appt-ampm">AM</div>
-              </div>
-              <div className="appt-divider" />
-              <div style={{ flex: 1 }}>
-                <div className="appt-doctor">Dr. Meena Krishnan</div>
-                <div className="appt-type">Mental Health · Tomorrow</div>
-              </div>
-              <span className="appt-badge appt-badge--chat">Chat</span>
-            </div>
-          </div>
-        </motion.div>
+          </motion.div>
+        )}
 
         {/* Health tip */}
         <motion.div variants={fadeUp}>

@@ -180,6 +180,14 @@ export default function Settings() {
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.18, ease: [0.16, 1, 0.3, 1] }}>
           <div className="settings-group">
             <div className="settings-group__title">App</div>
+            <div className="settings-item" onClick={() => navigate('/admin')} role="button" tabIndex={0} style={{ cursor: 'pointer' }}>
+              <div className="settings-item__icon">⚙️</div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label">Admin Portal</div>
+                <div className="settings-item__desc">Manage doctors and services</div>
+              </div>
+              <ChevronRight />
+            </div>
             <div className="settings-item" role="button" tabIndex={0}>
               <div className="settings-item__icon">⭐</div>
               <div style={{ flex: 1 }}>
