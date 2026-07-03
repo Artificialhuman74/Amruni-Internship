@@ -1,7 +1,6 @@
 /* eslint-disable react-refresh/only-export-components */
 import { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { appointmentApi } from '../services/appointmentApi';
 import { videoApi } from '../services/videoApi';
 
 const VideoContext = createContext(null);
@@ -42,27 +41,6 @@ export function VideoProvider({ children }) {
 
   const initiateBooking = (doctor) => {
     setCurrentDoctor(doctor);
-  };
-
-  const confirmBooking = async (date, time, reason, consultMode = 'video', fee = '') => {
-    if (!currentDoctor) return null;
-    try {
-      const res = await appointmentApi.bookAppointment({
-        doctorId: currentDoctor.id,
-        date,
-        time,
-        reason,
-        consultMode,
-        fee,
-      });
-      
-      const details = await appointmentApi.getAppointment(res.appointmentId);
-      setActiveAppointment(details);
-      return res.appointmentId;
-    } catch (err) {
-      console.error('Booking failed', err);
-      throw err;
-    }
   };
 
   const startCall = async (appointmentId) => {
@@ -214,7 +192,6 @@ export function VideoProvider({ children }) {
         isCallActive,
         localStream,
         initiateBooking,
-        confirmBooking,
         startCall,
         endCall,
         toggleMic,

@@ -1,23 +1,23 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { appointmentApi } from '../services/appointmentApi';
+import { authApi, getAdminToken, setAdminToken, apiError } from '../services/api';
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
 
 export default function AdminDashboard() {
   const navigate = useNavigate();
-  
-  // Auth state
-  const [username, setUsername] = useState('');
+
+  // Auth state — the password is verified server-side (POST /api/admin/login)
+  // which issues a short-lived admin token sent as X-Admin-Key on API calls.
   const [password, setPassword] = useState('');
-  const [isAuthenticated, setIsAuthenticated] = useState(
-    () => sessionStorage.getItem('amruni_admin_auth') === 'true'
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState(() => !!getAdminToken());
   const [loginError, setLoginError] = useState('');
 
   // Doctor state
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [slotDoctorId, setSlotDoctorId] = useState(null); // doctor whose slot manager is open
 
   // Form state
   const [docName, setDocName] = useState('');
@@ -57,21 +57,22 @@ export default function AdminDashboard() {
     fetchDoctors();
   }, [isAuthenticated]);
 
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
-    if (username.trim() === 'admin' && password === 'amruni') {
+    setLoginError('');
+    try {
+      await authApi.adminLogin(password);
       setIsAuthenticated(true);
-      sessionStorage.setItem('amruni_admin_auth', 'true');
-      setLoginError('');
+      setPassword('');
       confirm();
-    } else {
-      setLoginError('Invalid admin username or password');
+    } catch (err) {
+      setLoginError(apiError(err, 'Invalid admin password'));
     }
   };
 
   const handleLogout = () => {
     setIsAuthenticated(false);
-    sessionStorage.removeItem('amruni_admin_auth');
+    setAdminToken(null);
     confirm();
   };
 
@@ -194,28 +195,7 @@ export default function AdminDashboard() {
 
           <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
             <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 6, textTransform: 'uppercase' }}>Username</label>
-              <input
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="Enter username"
-                style={{
-                  width: '100%',
-                  padding: 'var(--sp-3) var(--sp-4)',
-                  borderRadius: 'var(--radius-md)',
-                  border: '1.5px solid var(--clr-border)',
-                  background: 'var(--clr-surface-2)',
-                  color: 'var(--clr-ink)',
-                  fontSize: 'var(--text-sm)',
-                  outline: 'none'
-                }}
-                required
-              />
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 6, textTransform: 'uppercase' }}>Password</label>
+              <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 6, textTransform: 'uppercase' }}>Admin password</label>
               <input
                 type="password"
                 value={password}
@@ -501,8 +481,8 @@ export default function AdminDashboard() {
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               {doctors.map((doc) => (
+                <div key={doc.id}>
                 <div
-                  key={doc.id}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -518,15 +498,30 @@ export default function AdminDashboard() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>{doc.name}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>{doc.specialty} · {doc.exp}</div>
-                    <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4, textOverflow: 'ellipsis', overflow: 'hidden', whiteSpace: 'nowrap' }}>
-                      🔗 Meet: {doc.meetLink || 'In-app Video'}
+                    <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
+                      ⏰ Next open slot: {doc.nextSlot || 'None published'}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 2 }}>
-                      📱 Phone: {doc.phone || 'Not set'} · 💬 Chat fee: ₹{Math.round(parseInt(doc.fee.replace(/\D/g, '')) / 3) || '—'}
+                      📱 Phone: {doc.phone || 'Not set'} · 💬 Chat fee: ₹{doc.chatFee ?? '—'}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
                     <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)' }}>{doc.fee}</span>
+                    <button
+                      onClick={() => setSlotDoctorId(slotDoctorId === doc.id ? null : doc.id)}
+                      style={{
+                        padding: '4px 8px',
+                        borderRadius: 'var(--radius-md)',
+                        border: 'none',
+                        background: slotDoctorId === doc.id ? 'var(--clr-brand)' : 'oklch(0.55 0.12 260 / 0.1)',
+                        color: slotDoctorId === doc.id ? 'var(--clr-ink-on-dark)' : 'oklch(0.45 0.12 260)',
+                        fontWeight: 600,
+                        fontSize: 10,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      Slots
+                    </button>
                     <button
                       onClick={() => handleDeleteDoctor(doc.id, doc.name)}
                       style={{
@@ -544,6 +539,8 @@ export default function AdminDashboard() {
                     </button>
                   </div>
                 </div>
+                {slotDoctorId === doc.id && <SlotManager doctor={doc} />}
+                </div>
               ))}
 
               {doctors.length === 0 && (
@@ -555,6 +552,153 @@ export default function AdminDashboard() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * Availability manager: the doctor (via admin) publishes priced, bookable
+ * slots by expanding a time range. Consumers only ever see 'open' slots.
+ */
+function SlotManager({ doctor }) {
+  const [slots, setSlots] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState('');
+  const today = new Date().toISOString().split('T')[0];
+
+  const [date, setDate] = useState(today);
+  const [start, setStart] = useState('10:00');
+  const [end, setEnd] = useState('17:00');
+  const [duration, setDuration] = useState(30);
+  const [price, setPrice] = useState(doctor.videoFee || '');
+
+  const [refreshKey, setRefreshKey] = useState(0);
+  const refresh = () => setRefreshKey((k) => k + 1);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadSlots() {
+      try {
+        const data = await appointmentApi.getAllSlots(doctor.id);
+        if (!cancelled) setSlots(data);
+      } catch (err) {
+        console.error('Failed to load slots', err);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+    loadSlots();
+    return () => { cancelled = true; };
+  }, [doctor.id, refreshKey]);
+
+  const handlePublish = async (e) => {
+    e.preventDefault();
+    setMessage('');
+    try {
+      const res = await appointmentApi.publishSlots(doctor.id, {
+        date, start, end,
+        durationMinutes: Number(duration) || 30,
+        price: price ? Number(price) : undefined,
+      });
+      setMessage(res.created > 0 ? `Published ${res.created} slots.` : 'No new slots (times already published).');
+      refresh();
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Failed to publish slots.');
+    }
+  };
+
+  const handleDeleteSlot = async (slotId) => {
+    try {
+      await appointmentApi.deleteSlot(slotId);
+      setSlots((prev) => prev.filter((s) => s.id !== slotId));
+    } catch (err) {
+      setMessage(err.response?.data?.error || 'Could not remove that slot.');
+    }
+  };
+
+  const byDate = slots.reduce((acc, s) => {
+    (acc[s.date] = acc[s.date] || []).push(s);
+    return acc;
+  }, {});
+
+  const statusColor = { open: 'var(--clr-success)', locked: 'oklch(0.65 0.15 80)', booked: 'var(--clr-brand)' };
+
+  const fieldStyle = {
+    padding: 'var(--sp-2) var(--sp-3)', borderRadius: 'var(--radius-md)',
+    border: '1.5px solid var(--clr-border)', background: 'var(--clr-surface)',
+    fontSize: 'var(--text-xs)', color: 'var(--clr-ink)', width: '100%',
+  };
+
+  return (
+    <div style={{
+      marginTop: 'var(--sp-2)', padding: 'var(--sp-4)',
+      background: 'var(--clr-surface-2)', border: '1px solid var(--clr-border)',
+      borderRadius: 'var(--radius-lg)',
+    }}>
+      <h3 style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 'var(--sp-3)' }}>
+        ⏰ Availability — {doctor.name}
+      </h3>
+
+      {/* Publish form */}
+      <form onSubmit={handlePublish} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-2)', marginBottom: 'var(--sp-4)' }}>
+        <label style={{ fontSize: 10, color: 'var(--clr-ink-muted)' }}>Date
+          <input type="date" value={date} min={today} onChange={(e) => setDate(e.target.value)} style={fieldStyle} required />
+        </label>
+        <label style={{ fontSize: 10, color: 'var(--clr-ink-muted)' }}>Price per slot (₹)
+          <input type="number" min="1" value={price} onChange={(e) => setPrice(e.target.value)} style={fieldStyle} placeholder={`Default ₹${doctor.videoFee}`} />
+        </label>
+        <label style={{ fontSize: 10, color: 'var(--clr-ink-muted)' }}>From
+          <input type="time" value={start} onChange={(e) => setStart(e.target.value)} style={fieldStyle} required />
+        </label>
+        <label style={{ fontSize: 10, color: 'var(--clr-ink-muted)' }}>To
+          <input type="time" value={end} onChange={(e) => setEnd(e.target.value)} style={fieldStyle} required />
+        </label>
+        <label style={{ fontSize: 10, color: 'var(--clr-ink-muted)' }}>Slot length (min)
+          <select value={duration} onChange={(e) => setDuration(e.target.value)} style={fieldStyle}>
+            {[15, 20, 30, 45, 60].map((n) => <option key={n} value={n}>{n} min</option>)}
+          </select>
+        </label>
+        <button type="submit" className="btn btn--primary btn--sm" style={{ alignSelf: 'end' }}>
+          Publish Slots
+        </button>
+      </form>
+
+      {message && <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginBottom: 'var(--sp-3)' }}>{message}</p>}
+
+      {/* Upcoming slots grouped by day */}
+      {loading ? (
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>Loading slots…</p>
+      ) : slots.length === 0 ? (
+        <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>No upcoming slots published.</p>
+      ) : (
+        Object.entries(byDate).map(([day, daySlots]) => (
+          <div key={day} style={{ marginBottom: 'var(--sp-3)' }}>
+            <p style={{ fontSize: 10, fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 'var(--sp-2)' }}>{day}</p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+              {daySlots.map((s) => (
+                <span key={s.id} style={{
+                  display: 'inline-flex', alignItems: 'center', gap: 6,
+                  padding: '4px 8px', borderRadius: 'var(--radius-pill)',
+                  background: 'var(--clr-surface)', border: '1px solid var(--clr-border)',
+                  fontSize: 10, color: 'var(--clr-ink)',
+                }}>
+                  <span style={{ width: 6, height: 6, borderRadius: '50%', background: statusColor[s.status] || 'var(--clr-border)' }} />
+                  {s.time} · ₹{s.price}
+                  {s.status !== 'booked' && (
+                    <button
+                      onClick={() => handleDeleteSlot(s.id)}
+                      aria-label={`Remove ${s.time} slot`}
+                      style={{ border: 'none', background: 'none', color: 'var(--clr-ink-subtle)', cursor: 'pointer', padding: 0, fontSize: 11, lineHeight: 1 }}
+                    >
+                      ✕
+                    </button>
+                  )}
+                </span>
+              ))}
+            </div>
+          </div>
+        ))
+      )}
     </div>
   );
 }
