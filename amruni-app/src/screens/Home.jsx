@@ -39,67 +39,15 @@ export default function Home() {
   useEffect(() => {
     async function loadData() {
       try {
-        const doctorsList = await appointmentApi.getDoctors();
+        const [doctorsList, myAppointments] = await Promise.all([
+          appointmentApi.getDoctors(),
+          appointmentApi.getMyAppointments(),
+        ]);
 
-        // Load and map appointments
-        const existing = JSON.parse(localStorage.getItem('amruni_appointments') || '[]');
-        
-        // Helper to check if appointment is in the past
-        const isPastAppointment = (appt) => {
-          if (appt.status === 'completed') return true;
-          if (!appt.date || !appt.time) return true;
-          
-          if (appt.time === 'Instant') {
-            // Instant chat consultation: completed if created more than 1 hour ago
-            if (appt.createdAt) {
-              const created = new Date(appt.createdAt);
-              const diffMs = new Date().getTime() - created.getTime();
-              return diffMs > 3600000; // 1 hour
-            }
-            return true;
-          }
-          
-          // Video consultation: parse date and time
-          const [year, month, day] = appt.date.split('-').map(Number);
-          const timeParts = appt.time.match(/(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-          if (!timeParts) return true;
-
-          let hours = parseInt(timeParts[1], 10);
-          const minutes = parseInt(timeParts[2], 10);
-          const meridiem = timeParts[3].toUpperCase();
-
-          if (meridiem === 'PM' && hours !== 12) hours += 12;
-          if (meridiem === 'AM' && hours === 12) hours = 0;
-
-          const appointmentDate = new Date(year, month - 1, day, hours, minutes, 0);
-          const now = new Date();
-          
-          // Mark past if it is older than 2 hours
-          return now.getTime() - appointmentDate.getTime() > 2 * 3600000;
-        };
-
-        // Auto-archive past appointments
-        let hasChanges = false;
-        const updated = existing.map(appt => {
-          if (appt.status !== 'completed' && isPastAppointment(appt)) {
-            hasChanges = true;
-            return { ...appt, status: 'completed' };
-          }
-          return appt;
-        });
-
-        if (hasChanges) {
-          localStorage.setItem('amruni_appointments', JSON.stringify(updated));
-        }
-
-        const activeAppointments = updated
-          .map(appt => {
-            const doctor = doctorsList.find(d => d.id === parseInt(appt.doctorId));
-            return { ...appt, doctor };
-          })
-          // Filter out appointments where the doctor was deleted or status is completed
-          .filter(appt => !!appt.doctor && appt.status === 'confirmed');
-        
+        // The server archives past appointments and joins doctor details.
+        const activeAppointments = myAppointments.filter(
+          appt => !!appt.doctor && appt.status === 'confirmed'
+        );
         setAppointments(activeAppointments);
 
         // Get recommendations based on selected lifeStage

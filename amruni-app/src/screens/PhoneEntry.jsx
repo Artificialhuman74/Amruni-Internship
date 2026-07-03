@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
+import { authApi, apiError } from '../services/api';
 import Logo from '../components/Logo';
 
 export default function PhoneEntry() {
@@ -23,10 +24,15 @@ export default function PhoneEntry() {
     e.preventDefault();
     if (!isValid) { setError('Enter a valid 10-digit Indian mobile number.'); return; }
     setLoading(true);
-    await new Promise(r => setTimeout(r, 1000));
-    dispatch({ type: 'SET_AUTH', payload: { phone } });
-    setLoading(false);
-    navigate('/otp');
+    try {
+      const res = await authApi.requestOtp(phone);
+      dispatch({ type: 'SET_AUTH', payload: { phone, devOtp: res.devCode || null } });
+      navigate('/otp');
+    } catch (err) {
+      setError(apiError(err, 'Could not send the code. Please try again.'));
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

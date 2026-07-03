@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
+import { meApi } from '../services/api';
 import BottomSheet from '../components/BottomSheet';
 import { PHQ9_QUESTIONS, PHQ9_OPTIONS, GAD7_QUESTIONS } from '../data/mock';
 
@@ -36,6 +37,12 @@ export default function MentalHealth() {
       const total = Object.values(next).reduce((a, b) => a + b, 0);
       setScore(total);
       setView('result');
+      // Anonymous mode keeps screening results off the account entirely.
+      if (!anonymous) {
+        const orderedAnswers = questions.map((_, i) => next[i] ?? 0);
+        meApi.saveScreening({ tool, score: total, answers: orderedAnswers })
+          .catch(() => { /* result still shows locally; saving is best-effort */ });
+      }
     }
   }
 

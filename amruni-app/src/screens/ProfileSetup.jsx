@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
+import { meApi } from '../services/api';
 
 export default function ProfileSetup() {
   const navigate = useNavigate();
@@ -21,7 +22,13 @@ export default function ProfileSetup() {
     e.preventDefault();
     if (!isValid) return;
     setLoading(true);
-    await new Promise(r => setTimeout(r, 700));
+    try {
+      // Onboarding completion gates every route — write it through to the
+      // server before navigating rather than relying on the debounced sync.
+      await meApi.patch({ name: name.trim(), dob, lifeStage, isOnboarded: true });
+    } catch (err) {
+      console.warn('Profile save will retry via background sync.', err);
+    }
     dispatch({ type: 'SET_USER', payload: { name: name.trim(), dob, isOnboarded: true } });
     if (lastPeriod) {
       dispatch({ type: 'SET_CYCLE', payload: { lastPeriodStart: lastPeriod } });

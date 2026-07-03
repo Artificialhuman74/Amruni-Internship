@@ -45,9 +45,9 @@ export default function DoctorProfile() {
     );
   }
 
-  // Calculate chat fee as ⅓ of video fee
-  const videoFeeNum = parseInt(doctor.fee.replace(/\D/g, '')) || 0;
-  const chatFeeNum = Math.round(videoFeeNum / 3);
+  // Pricing published by the doctor; older records fall back to ⅓ of video fee
+  const videoFeeNum = doctor.videoFee ?? (parseInt(doctor.fee.replace(/\D/g, '')) || 0);
+  const chatFeeNum = doctor.chatFee ?? Math.round(videoFeeNum / 3);
   const hasChatEnabled = !!doctor.phone;
 
   const handleBookClick = (mode) => {

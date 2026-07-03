@@ -1,82 +1,112 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useVideoCall } from '../hooks/useVideoCall';
+import { appointmentApi } from '../services/appointmentApi';
+import { apiError } from '../services/api';
 import DoctorAvatar from '../components/DoctorAvatar';
+import BottomSheet from '../components/BottomSheet';
+import SuccessCheck from '../components/SuccessCheck';
+import { confirm as confirmHaptic } from '../lib/haptics';
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+function dateLabel(iso) {
+  const d = new Date(`${iso}T00:00`);
+  return { dayName: DAY_NAMES[d.getDay()], dayNum: d.getDate(), month: MONTH_NAMES[d.getMonth()] };
+}
 
 export default function BookAppointment() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { currentDoctor, confirmBooking } = useVideoCall();
-  const [selectedDate, setSelectedDate] = useState(0); // Index of dates array
-  const [selectedTime, setSelectedTime] = useState('');
-  const [reason, setReason] = useState('');
-  const [submitting, setSubmitting] = useState(false);
+  const { currentDoctor, setActiveAppointment } = useVideoCall();
 
-  // Read consultation mode and fee from URL params
   const consultMode = searchParams.get('mode') || 'video';
-  const fee = searchParams.get('fee') || '';
 
-  // Generate 6 days starting from today
-  const getDates = () => {
-    const dates = [];
-    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    
-    for (let i = 0; i < 6; i++) {
-      const d = new Date();
-      d.setDate(d.getDate() + i);
-      const localYear = d.getFullYear();
-      const localMonth = String(d.getMonth() + 1).padStart(2, '0');
-      const localDay = String(d.getDate()).padStart(2, '0');
-      const fullString = `${localYear}-${localMonth}-${localDay}`;
-      
-      dates.push({
-        dayName: days[d.getDay()],
-        dayNum: d.getDate(),
-        month: months[d.getMonth()],
-        fullString
-      });
-    }
-    return dates;
-  };
+  // Doctor-published availability (video only)
+  const [slots, setSlots] = useState([]);
+  const [slotsLoading, setSlotsLoading] = useState(consultMode === 'video');
+  const [selectedDate, setSelectedDate] = useState(null);   // ISO date string
+  const [selectedSlotId, setSelectedSlotId] = useState(null);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
 
-  const dates = getDates();
-  const timeSlots = ['10:30 AM', '11:00 AM', '11:30 AM', '12:00 PM', '02:30 PM', '03:00 PM', '03:30 PM', '04:00 PM'];
+  // Payment flow: idle → ordering → pay (sheet open) → processing → done
+  const [payStep, setPayStep] = useState('idle');
+  const [booking, setBooking] = useState(null);             // { appointmentId, payment }
 
-  const handleBook = async () => {
-    if (consultMode === 'video' && !selectedTime) return;
-    setSubmitting(true);
+  useEffect(() => {
+    if (consultMode !== 'video') return;
+    let cancelled = false;
+    appointmentApi.getSlots(id)
+      .then((data) => { if (!cancelled) { setSlots(data); setSelectedDate(data[0]?.date ?? null); } })
+      .catch((err) => { if (!cancelled) setError(apiError(err, 'Could not load available slots.')); })
+      .finally(() => { if (!cancelled) setSlotsLoading(false); });
+    return () => { cancelled = true; };
+  }, [id, consultMode]);
+
+  const dates = useMemo(() => [...new Set(slots.map((s) => s.date))], [slots]);
+  const daySlots = useMemo(() => slots.filter((s) => s.date === selectedDate), [slots, selectedDate]);
+  const selectedSlot = slots.find((s) => s.id === selectedSlotId) || null;
+
+  const chatFee = currentDoctor?.chatFee ?? 0;
+  const amountDue = consultMode === 'chat' ? chatFee : selectedSlot?.price ?? null;
+  const feeLabel = amountDue != null ? `₹${amountDue}` : '';
+
+  const canProceed = consultMode === 'chat' || !!selectedSlot;
+
+  async function handleProceedToPay() {
+    if (!canProceed || payStep !== 'idle') return;
+    setError('');
+    setPayStep('ordering');
     try {
-      const apptDate = consultMode === 'chat'
-        ? (() => {
-            const d = new Date();
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-          })()
-        : dates[selectedDate].fullString;
-      const apptTime = consultMode === 'chat' ? 'Instant' : selectedTime;
-      const feeStr = fee ? `₹${fee}` : '';
-      const apptId = await confirmBooking(apptDate, apptTime, reason, consultMode, feeStr);
-      
-      if (apptId) {
-        // Go to waiting room
-        navigate(`/waiting/${apptId}`);
-      }
+      const res = await appointmentApi.createBooking({
+        slotId: consultMode === 'video' ? selectedSlotId : undefined,
+        doctorId: consultMode === 'chat' ? Number(id) : undefined,
+        mode: consultMode,
+        reason,
+      });
+      setBooking(res);
+      setPayStep('pay');
     } catch (err) {
-      console.error(err);
-    } finally {
-      setSubmitting(false);
+      setError(apiError(err, 'Could not start the booking. Please try again.'));
+      setPayStep('idle');
+      if (err.response?.status === 409 && consultMode === 'video') {
+        // Slot taken while the user was deciding — refresh availability.
+        setSelectedSlotId(null);
+        appointmentApi.getSlots(id).then(setSlots).catch(() => {});
+      }
     }
-  };
+  }
+
+  async function handlePay() {
+    if (!booking || payStep !== 'pay') return;
+    setPayStep('processing');
+    try {
+      // Mock provider: confirmation succeeds immediately. With Razorpay
+      // configured, open Checkout with booking.payment.keyId/orderId first and
+      // pass its paymentId + signature here.
+      const appt = await appointmentApi.confirmPayment(booking.payment.paymentId);
+      setActiveAppointment(appt);
+      setPayStep('done');
+      confirmHaptic();
+      setTimeout(() => navigate(`/waiting/${appt.appointmentId}`), 1400);
+    } catch (err) {
+      setError(apiError(err, 'Payment failed. You have not been charged.'));
+      setPayStep('pay');
+    }
+  }
+
+  function handleSheetClose() {
+    if (payStep === 'processing' || payStep === 'done') return; // don't interrupt
+    setPayStep('idle');
+    setBooking(null); // abandoning checkout — the slot lock expires server-side
+  }
 
   const doctorName = currentDoctor?.name || 'Doctor';
-  const doctorAvatar = currentDoctor?.avatar || '🩺';
   const doctorSpecialty = currentDoctor?.specialty || 'Specialist';
   const modeLabel = consultMode === 'chat' ? '💬 Chat / DM' : '🎥 Video Call';
-  const feeLabel = fee ? `₹${fee}` : '';
 
   return (
     <div className="screen screen--light">
@@ -113,57 +143,78 @@ export default function BookAppointment() {
           {feeLabel && <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)' }}>{feeLabel}</span>}
         </div>
 
-        {/* Date & Time Selectors - Only shown for Video consultations */}
+        {/* Doctor-published availability — video consultations */}
         {consultMode === 'video' && (
-          <>
-            {/* Date Selector */}
-            <div style={{ marginBottom: 'var(--sp-6)' }}>
-              <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>Choose Date</h3>
-              <div style={{ display: 'flex', gap: 'var(--sp-2)', overflowX: 'auto', paddingBottom: 'var(--sp-2)', scrollbarWidth: 'none' }}>
-                {dates.map((d, index) => (
-                  <button
-                    key={index}
-                    onClick={() => setSelectedDate(index)}
-                    style={{
-                      flexShrink: 0, width: 62, height: 74, borderRadius: 'var(--radius-md)',
-                      background: selectedDate === index ? 'var(--clr-brand)' : 'var(--clr-surface-2)',
-                      border: `1.5px solid ${selectedDate === index ? 'var(--clr-brand)' : 'var(--clr-border)'}`,
-                      color: selectedDate === index ? 'var(--clr-ink-on-dark)' : 'var(--clr-ink)',
-                      display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                      cursor: 'pointer', transition: 'all var(--dur-fast) ease',
-                    }}
-                  >
-                    <span style={{ fontSize: 'var(--text-xs)', opacity: selectedDate === index ? 0.9 : 0.6, textTransform: 'uppercase' }}>{d.dayName}</span>
-                    <span style={{ fontSize: 'var(--text-base)', fontWeight: 700, marginTop: 4 }}>{d.dayNum}</span>
-                    <span style={{ fontSize: 'var(--text-xs)', opacity: selectedDate === index ? 0.9 : 0.6, marginTop: 2 }}>{d.month}</span>
-                  </button>
-                ))}
-              </div>
+          slotsLoading ? (
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginBottom: 'var(--sp-6)' }}>
+              Loading available slots…
+            </p>
+          ) : slots.length === 0 ? (
+            <div style={{ background: 'var(--clr-surface-2)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-md)', padding: 'var(--sp-5)', marginBottom: 'var(--sp-6)', textAlign: 'center' }}>
+              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)' }}>No open slots right now</p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 'var(--sp-2)' }}>
+                {doctorName} hasn't published availability for the coming days. Try a chat consultation instead.
+              </p>
             </div>
+          ) : (
+            <>
+              {/* Date Selector — only dates the doctor actually opened */}
+              <div style={{ marginBottom: 'var(--sp-6)' }}>
+                <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>Choose Date</h3>
+                <div style={{ display: 'flex', gap: 'var(--sp-2)', overflowX: 'auto', paddingBottom: 'var(--sp-2)', scrollbarWidth: 'none' }}>
+                  {dates.map((iso) => {
+                    const d = dateLabel(iso);
+                    const active = selectedDate === iso;
+                    return (
+                      <button
+                        key={iso}
+                        onClick={() => { setSelectedDate(iso); setSelectedSlotId(null); }}
+                        style={{
+                          flexShrink: 0, width: 62, height: 74, borderRadius: 'var(--radius-md)',
+                          background: active ? 'var(--clr-brand)' : 'var(--clr-surface-2)',
+                          border: `1.5px solid ${active ? 'var(--clr-brand)' : 'var(--clr-border)'}`,
+                          color: active ? 'var(--clr-ink-on-dark)' : 'var(--clr-ink)',
+                          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                          cursor: 'pointer', transition: 'all var(--dur-fast) ease',
+                        }}
+                      >
+                        <span style={{ fontSize: 'var(--text-xs)', opacity: active ? 0.9 : 0.6, textTransform: 'uppercase' }}>{d.dayName}</span>
+                        <span style={{ fontSize: 'var(--text-base)', fontWeight: 700, marginTop: 4 }}>{d.dayNum}</span>
+                        <span style={{ fontSize: 'var(--text-xs)', opacity: active ? 0.9 : 0.6, marginTop: 2 }}>{d.month}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-            {/* Time Selector */}
-            <div style={{ marginBottom: 'var(--sp-6)' }}>
-              <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>Choose Time</h3>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-2)' }}>
-                {timeSlots.map((time) => (
-                  <button
-                    key={time}
-                    onClick={() => setSelectedTime(time)}
-                    style={{
-                      padding: 'var(--sp-3) var(--sp-2)', borderRadius: 'var(--radius-md)',
-                      background: selectedTime === time ? 'var(--clr-brand)' : 'var(--clr-surface-2)',
-                      border: `1.5px solid ${selectedTime === time ? 'var(--clr-brand)' : 'var(--clr-border)'}`,
-                      color: selectedTime === time ? 'var(--clr-ink-on-dark)' : 'var(--clr-ink)',
-                      fontSize: 'var(--text-xs)', fontWeight: 600, textAlign: 'center',
-                      cursor: 'pointer', transition: 'all var(--dur-fast) ease',
-                    }}
-                  >
-                    {time}
-                  </button>
-                ))}
+              {/* Time Selector — real slots with the doctor's price */}
+              <div style={{ marginBottom: 'var(--sp-6)' }}>
+                <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>Choose Time</h3>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-2)' }}>
+                  {daySlots.map((slot) => {
+                    const active = selectedSlotId === slot.id;
+                    return (
+                      <button
+                        key={slot.id}
+                        onClick={() => setSelectedSlotId(slot.id)}
+                        style={{
+                          padding: 'var(--sp-3) var(--sp-2)', borderRadius: 'var(--radius-md)',
+                          background: active ? 'var(--clr-brand)' : 'var(--clr-surface-2)',
+                          border: `1.5px solid ${active ? 'var(--clr-brand)' : 'var(--clr-border)'}`,
+                          color: active ? 'var(--clr-ink-on-dark)' : 'var(--clr-ink)',
+                          fontSize: 'var(--text-xs)', fontWeight: 600, textAlign: 'center',
+                          cursor: 'pointer', transition: 'all var(--dur-fast) ease',
+                        }}
+                      >
+                        <div>{slot.time}</div>
+                        <div style={{ marginTop: 2, opacity: active ? 0.9 : 0.55, fontWeight: 500 }}>₹{slot.price}</div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-            </div>
-          </>
+            </>
+          )
         )}
 
         {/* Reason / Symptoms input */}
@@ -183,6 +234,12 @@ export default function BookAppointment() {
             }}
           />
         </div>
+
+        {error && (
+          <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'oklch(0.55 0.18 24)', marginBottom: 'var(--sp-4)' }}>
+            {error}
+          </p>
+        )}
       </div>
 
       {/* Booking CTA Footer */}
@@ -190,17 +247,72 @@ export default function BookAppointment() {
         position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
         width: '100%', maxWidth: 430, background: 'var(--clr-surface)',
         borderTop: '1px solid var(--clr-border)', padding: 'var(--sp-4) var(--sp-6) calc(env(safe-area-inset-top) + var(--sp-4))',
-        zIndex: 50
+        zIndex: 'var(--z-sticky)'
       }}>
         <button
           className="btn btn--primary"
-          onClick={handleBook}
-          disabled={(consultMode === 'video' && !selectedTime) || submitting}
-          style={{ opacity: ((consultMode === 'video' && !selectedTime) || submitting) ? 0.6 : 1 }}
+          onClick={handleProceedToPay}
+          disabled={!canProceed || payStep !== 'idle'}
+          style={{ opacity: (!canProceed || payStep !== 'idle') ? 0.6 : 1 }}
         >
-          {submitting ? 'Scheduling...' : `Confirm ${consultMode === 'chat' ? 'Chat' : 'Video'} Appointment${feeLabel ? ` · ${feeLabel}` : ''}`}
+          {payStep === 'ordering' ? 'Reserving slot…' : `Continue to Pay${feeLabel ? ` · ${feeLabel}` : ''}`}
         </button>
       </div>
+
+      {/* Payment sheet */}
+      <BottomSheet
+        open={payStep === 'pay' || payStep === 'processing' || payStep === 'done'}
+        onClose={handleSheetClose}
+        title={payStep === 'done' ? 'Payment successful' : 'Confirm & pay'}
+      >
+        <div style={{ padding: '0 var(--sp-2) var(--sp-4)' }}>
+          {payStep === 'done' ? (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-6) 0' }}>
+              <SuccessCheck size={48} />
+              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)' }}>
+                Appointment confirmed
+              </p>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', textAlign: 'center' }}>
+                {consultMode === 'video'
+                  ? 'Your meeting link is ready — taking you to the waiting room…'
+                  : 'Taking you to the waiting room…'}
+              </p>
+            </div>
+          ) : (
+            <>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)', padding: 'var(--sp-4) 0', borderBottom: '1px solid var(--clr-border)', marginBottom: 'var(--sp-4)' }}>
+                <SummaryRow label="Doctor" value={doctorName} />
+                <SummaryRow label="Consultation" value={consultMode === 'chat' ? 'Chat / DM (instant)' : 'Video call'} />
+                {consultMode === 'video' && selectedSlot && (
+                  <SummaryRow label="Slot" value={`${dateLabel(selectedSlot.date).dayName} ${dateLabel(selectedSlot.date).dayNum} ${dateLabel(selectedSlot.date).month}, ${selectedSlot.time}`} />
+                )}
+                <SummaryRow label="Amount" value={feeLabel} strong />
+              </div>
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginBottom: 'var(--sp-4)' }}>
+                Your slot is reserved for 10 minutes while you pay. Your video meeting link is generated
+                automatically the moment payment succeeds.
+              </p>
+              <button
+                className="btn btn--primary"
+                onClick={handlePay}
+                disabled={payStep === 'processing'}
+                style={{ width: '100%', opacity: payStep === 'processing' ? 0.7 : 1 }}
+              >
+                {payStep === 'processing' ? 'Processing payment…' : `Pay ${feeLabel}`}
+              </button>
+            </>
+          )}
+        </div>
+      </BottomSheet>
+    </div>
+  );
+}
+
+function SummaryRow({ label, value, strong }) {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
+      <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>{label}</span>
+      <span style={{ fontSize: strong ? 'var(--text-base)' : 'var(--text-sm)', fontWeight: strong ? 700 : 600, color: 'var(--clr-ink)' }}>{value}</span>
     </div>
   );
 }

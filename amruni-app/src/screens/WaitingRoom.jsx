@@ -103,8 +103,9 @@ export default function WaitingRoom() {
       );
       window.open(`https://wa.me/91${phone}?text=${message}`, '_blank');
       navigate(`/consultation/${appointmentId}`);
-    } else if (appointment?.doctor?.meetLink) {
-      window.open(appointment.doctor.meetLink, '_blank');
+    } else if (appointment?.meetLink) {
+      // Google Meet link generated automatically when the payment succeeded.
+      window.open(appointment.meetLink, '_blank');
       navigate(`/consultation/${appointmentId}`);
     } else {
       navigate(`/video/${appointmentId}`);
@@ -233,6 +234,13 @@ export default function WaitingRoom() {
             {appointment.date && appointment.time && (
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginTop: 'var(--sp-3)' }}>
                 Scheduled: {appointment.date} at {appointment.time}
+              </p>
+            )}
+
+            {/* Generated Google Meet link */}
+            {appointment.meetLink && (
+              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 'var(--sp-2)' }}>
+                Meeting link: <a href={appointment.meetLink} target="_blank" rel="noreferrer" style={{ color: 'var(--clr-brand)', fontWeight: 600, wordBreak: 'break-all' }}>{appointment.meetLink.replace('https://', '')}</a>
               </p>
             )}
           </>

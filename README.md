@@ -4,27 +4,36 @@ An Indian women's health platform that brings telemedicine, mental health suppor
 
 Amruni adapts to a woman's life stage — adolescent, reproductive age, post-partum, menopause, or elderly care set up by a family member — and is designed to feel like a safe container in private, emotionally loaded moments. The brand voice is **dignified, calm, and expert**: quiet authority over loud wellness-app energy.
 
-This is a mobile-first prototype (a 430px app column) built with React, React Router, and Framer Motion. Data is mocked and persisted to `localStorage`; there is no backend yet.
+The product is two packages:
+
+- **`amruni-app/`** — a mobile-first React frontend (a 430px app column) built with React Router and Framer Motion.
+- **`server/`** — a Python backend (FastAPI + SQLite): phone-OTP authentication issuing JWTs, per-user health state (profile, cycle, pregnancy, settings, screenings), and an automatic consultation marketplace — doctors publish priced availability slots, the consumer picks one and pays, and the Google Meet link is generated the moment payment succeeds. See [server/README.md](server/README.md) for the flow, API reference, and deployment guide.
 
 ## Getting started
 
-Requires Node 20.19.x, 22.13.x, or >=24 (developed on Node 24).
+Requires Node 20.19.x, 22.13.x, or >=24 for the frontend and Python 3.11+ for the backend.
 
 ```bash
-npm install
-npm run dev      # start the dev server (Vite, HMR)
-npm run build    # production build to dist/
-npm run preview  # preview the production build
-npm run lint     # run ESLint
+# terminal 1 — backend on :4000 (SQLite DB auto-created, doctors + demo slots seeded)
+cd server
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+.venv/bin/uvicorn app.main:app --port 4000 --reload
+
+# terminal 2 — frontend on :5173 (Vite proxies /api to the backend)
+cd amruni-app && npm install && npm run dev
 ```
 
-Open the local URL Vite prints (default `http://localhost:5173/`).
+Open the local URL Vite prints (default `http://localhost:5173/`). Other frontend scripts: `npm run build` (production build to `dist/`), `npm run preview`, `npm run lint`.
 
-**Prototype note:** OTP verification currently accepts the hard-coded code `123456` (not dev-only). Do not deploy as-is.
+**OTP in development:** codes are randomly generated per request and expire in 5 minutes. Without an SMS gateway configured, the code is returned in the API response and shown on the OTP screen (and logged by the server). In production (`ENV=production`) codes are never exposed — wire an SMS provider into `send_sms()` in [server/app/auth.py](server/app/auth.py).
+
+**Payments & Google Meet:** the payment provider defaults to a mock (instant success) so the full book → pay → meet-link flow runs out of the box; set Razorpay keys for real payments. Meet links come from the Google Calendar API when a service account is configured, with a dev fallback otherwise — see [server/README.md](server/README.md).
+
+**Single-process deployment:** build the frontend, then start the server with `ENV=production` and a `JWT_SECRET` — it serves the built app and the API from one port.
 
 ## Features
 
-- **Telemedicine** — browse verified women's-health specialists, filter by specialty, book video / audio / chat consultations.
+- **Telemedicine** — browse verified women's-health specialists, filter by specialty. Doctors publish priced availability slots; booking locks the slot, payment confirms it, and a Google Meet link is generated automatically. Chat consultations connect instantly over WhatsApp.
 - **NIMHANS mental health** — "I need help" gateway to 24/7 support, PHQ-9 and GAD-7 screening tools, and an anonymous mode that hides identity from counsellors.
 - **Cycle & fertility tracking** — a Flo-style calendar with phase prediction, daily flow and symptom logging.
 - **Pregnancy mode** — week-by-week progress, milestones, sharing with trusted contacts, and an emergency alert.
@@ -34,14 +43,28 @@ Open the local URL Vite prints (default `http://localhost:5173/`).
 ## Project structure
 
 ```
-src/
+server/app/
+├── main.py               # FastAPI assembly; serves dist/ in prod (SPA fallback)
+├── db.py                 # SQLite schema, doctor + demo-slot seed, serializers
+├── auth.py               # OTP issue/verify (hashed, expiring, rate-limited) + JWT deps
+├── meet.py               # Google Meet via Calendar API (service account) + dev fallback
+├── payments.py           # payment providers: mock (default) and Razorpay
+├── routes_auth.py · routes_me.py
+├── routes_doctors.py     # directory + availability slots (publish/list/delete)
+└── routes_bookings.py    # book slot → pay → confirm → meet link; appointments
+
+amruni-app/src/
 ├── main.jsx              # entry: Router + AppProvider + ToastProvider
 ├── App.jsx               # routes and auth/onboarding guards
 ├── index.css             # design tokens + component styles (single source of truth)
 ├── context/
-│   └── AppContext.jsx    # global state (reducer + localStorage), cycle math
+│   └── AppContext.jsx    # global state (reducer), server hydration + debounced sync, cycle math
+├── services/
+│   ├── api.js            # axios client, JWT storage, auth + me endpoints
+│   ├── appointmentApi.js # doctors + appointments endpoints
+│   └── videoApi.js       # video room endpoints
 ├── data/
-│   └── mock.js           # doctors, screening questions, life stages, symptoms
+│   └── mock.js           # screening questions, life stages, symptoms (static content)
 ├── components/
 │   ├── AppShell.jsx      # tab layout + bottom nav
 │   ├── BottomNav.jsx
@@ -79,4 +102,4 @@ All design decisions live as tokens at the top of [`src/index.css`](src/index.cs
 
 ## Status
 
-Prototype / internship project. Mocked data, no server, no authentication beyond the dev OTP. Not for clinical use — the screening tools are educational and not a diagnosis.
+Internship project. Real backend (FastAPI + SQLite) with OTP/JWT authentication, per-user server-side persistence, doctor-managed slot inventory with atomic booking, a payment → meeting-link pipeline, and server-side admin auth (`ADMIN_PASSWORD`). Meeting links use the Google Meet API when a service account is configured, and fall back to joinable Jitsi rooms until then. Before public launch: an SMS gateway, Razorpay keys, a Google service account, and a strong `ADMIN_PASSWORD`. Not for clinical use — the screening tools are educational and not a diagnosis.
