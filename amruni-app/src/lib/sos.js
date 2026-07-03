@@ -3,6 +3,8 @@ import { useApp } from '../context/AppContext';
 import { useToast } from '../components/Toast';
 import { warn } from './haptics';
 
+const API_BASE = 'http://localhost:8000/api/v1/sos';
+
 // ── Link builders ─────────────────────────────────────────────
 
 /** Google Maps link for given coordinates */
@@ -69,56 +71,85 @@ export function useSOSActivation() {
   const { state, dispatch } = useApp();
   const toast = useToast();
   const watchCleanup = useRef(null);
+  const sessionIdRef = useRef(null);
 
   const activateSOS = useCallback(() => {
-    const contacts = state.sos?.contacts ?? [];
+    const contacts = [...(state.sos?.contacts ?? [])];
+    if (!contacts.some(c => c.phone === '112')) {
+      contacts.push({ id: '112', name: 'Emergency Services', phone: '112' });
+    }
     const userName = state.user?.name ?? '';
 
-    // Get initial position, then activate
     if (!navigator.geolocation) {
       toast('Geolocation is not supported by your browser', { icon: '⚠️' });
       return;
     }
 
+    const triggerFallback = (body, link) => {
+      if (contacts.length > 0) {
+        fireSmsBurst(contacts, body);
+      }
+      window.open(link ? waLink(userName, link) : `https://wa.me/?text=${encodeURIComponent(body)}`, '_blank');
+    };
+
     navigator.geolocation.getCurrentPosition(
-      (pos) => {
+      async (pos) => {
         const coords = { lat: pos.coords.latitude, lng: pos.coords.longitude };
-
-        // Dispatch activation
-        dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt: Date.now(), coords } });
-
-        // Start watching for updates
-        watchCleanup.current = watchLocation(
-          (newCoords) => dispatch({ type: 'SOS_UPDATE_COORDS', payload: newCoords }),
-          () => { /* silently ignore watch errors after activation */ },
-        );
-
-        // Build message with current coords
         const link = mapsLink(coords);
         const body = smsBod(userName, link);
 
-        // Fire SMS burst
-        if (contacts.length > 0) {
-          fireSmsBurst(contacts, body);
+        try {
+          // Try backend first
+          const res = await fetch(`${API_BASE}/activate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userName, contacts, location: coords })
+          });
+          if (!res.ok) throw new Error('Backend failed');
+          const data = await res.json();
+          sessionIdRef.current = data.sessionId;
+          
+          dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt: Date.now(), coords, sessionId: data.sessionId } });
+        } catch (err) {
+          console.error("SOS API failed, using fallback:", err);
+          dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt: Date.now(), coords } });
+          triggerFallback(body, link);
         }
 
-        // Open WhatsApp
-        window.open(waLink(userName, link), '_blank');
-
-        // Haptic feedback
+        watchCleanup.current = watchLocation(
+          (newCoords) => {
+            dispatch({ type: 'SOS_UPDATE_COORDS', payload: newCoords });
+            if (sessionIdRef.current) {
+              fetch(`${API_BASE}/location`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sessionId: sessionIdRef.current, location: newCoords })
+              }).catch(e => console.error("Location sync failed:", e));
+            }
+          },
+          () => {}
+        );
         warn();
       },
-      (err) => {
-        // Fallback: activate without coords
-        dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt: Date.now(), coords: null } });
-        toast('Location unavailable — alerts sent without coordinates', { icon: '⚠️' });
-
-        // Still fire SMS/WA without location
+      async (err) => {
         const body = smsBod(userName, 'Location unavailable');
-        if (contacts.length > 0) {
-          fireSmsBurst(contacts, body);
+        try {
+          const res = await fetch(`${API_BASE}/activate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userName, contacts, location: null })
+          });
+          if (!res.ok) throw new Error('Backend failed');
+          const data = await res.json();
+          sessionIdRef.current = data.sessionId;
+          
+          dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt: Date.now(), coords: null, sessionId: data.sessionId } });
+        } catch (backendErr) {
+          console.error("SOS API failed, using fallback:", backendErr);
+          dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt: Date.now(), coords: null } });
+          triggerFallback(body, null);
         }
-        window.open(`https://wa.me/?text=${encodeURIComponent(body)}`, '_blank');
+        toast('Location unavailable — alerts sent without coordinates', { icon: '⚠️' });
         warn();
       },
       { enableHighAccuracy: true, timeout: 8000 },
@@ -130,9 +161,21 @@ export function useSOSActivation() {
       watchCleanup.current();
       watchCleanup.current = null;
     }
+    if (sessionIdRef.current) {
+      fetch(`${API_BASE}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          sessionId: sessionIdRef.current, 
+          userName: state.user?.name ?? '', 
+          contacts: state.sos?.contacts ?? [] 
+        })
+      }).catch(e => console.error("Failed to sync cancellation:", e));
+      sessionIdRef.current = null;
+    }
     dispatch({ type: 'SOS_CANCEL' });
     toast('SOS cancelled', { icon: '✓' });
-  }, [dispatch, toast]);
+  }, [dispatch, toast, state.user?.name, state.sos?.contacts]);
 
   return { activateSOS, cancelSOS };
 }

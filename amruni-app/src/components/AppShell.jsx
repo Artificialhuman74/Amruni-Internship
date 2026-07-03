@@ -13,7 +13,6 @@ export default function AppShell() {
   const tabs = [
     { path: '/home', label: 'Home', icon: HomeIcon },
     { path: '/consult', label: 'Consult', icon: ConsultIcon },
-    { path: '/sos', label: 'SOS', icon: SOSIcon, className: 'bottom-nav__tab--sos' },
     { path: '/track', label: 'Track', icon: TrackIcon },
     { path: '/help', label: 'Help', icon: HelpIcon },
     { path: '/settings', label: 'Profile', icon: ProfileIcon },
@@ -52,14 +51,6 @@ function ConsultIcon({ active }) {
   );
 }
 
-function SOSIcon({ active }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 2L3 7v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V7L12 2z" fill={active ? 'currentColor' : 'none'} fillOpacity={active ? 0.15 : 0} />
-      <path d="M12 8v4M12 16h.01" />
-    </svg>
-  );
-}
 
 function TrackIcon({ active }) {
   return (
