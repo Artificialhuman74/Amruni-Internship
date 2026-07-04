@@ -76,26 +76,30 @@ def request_otp(phone: str) -> dict:
     return {} if IS_PROD else {"devCode": code}
 
 
-def verify_otp(phone: str, code: str) -> dict:
-    """Returns {token, user_row_id}. Creates the account on first sign-in."""
+def _consume_otp(db, phone: str, code: str):
+    """Validates and consumes the pending OTP for this phone, or raises."""
     now = time.time()
-    with get_db() as db:
-        row = db.execute("SELECT * FROM otp_codes WHERE phone = ?", (phone,)).fetchone()
-        if not row:
-            raise HTTPException(401, "No code was sent to this number. Request a new one.")
-        if now > row["expires_at"]:
-            db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
-            raise HTTPException(401, "That code has expired. Request a new one.")
-        if row["attempts"] >= OTP_MAX_ATTEMPTS:
-            db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
-            raise HTTPException(429, "Too many incorrect attempts. Request a new code.")
-
-        if not hmac.compare_digest(row["code_hash"], _hash_code(phone, code)):
-            db.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?", (phone,))
-            raise HTTPException(401, "That code didn't match. Try again or request a new one.")
-
+    row = db.execute("SELECT * FROM otp_codes WHERE phone = ?", (phone,)).fetchone()
+    if not row:
+        raise HTTPException(401, "No code was sent to this number. Request a new one.")
+    if now > row["expires_at"]:
         db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
+        raise HTTPException(401, "That code has expired. Request a new one.")
+    if row["attempts"] >= OTP_MAX_ATTEMPTS:
+        db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
+        raise HTTPException(429, "Too many incorrect attempts. Request a new code.")
 
+    if not hmac.compare_digest(row["code_hash"], _hash_code(phone, code)):
+        db.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?", (phone,))
+        raise HTTPException(401, "That code didn't match. Try again or request a new one.")
+
+    db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
+
+
+def verify_otp(phone: str, code: str) -> dict:
+    """Returns {token, user_id}. Creates the account on first sign-in."""
+    with get_db() as db:
+        _consume_otp(db, phone, code)
         user = db.execute("SELECT * FROM users WHERE phone = ?", (phone,)).fetchone()
         if not user:
             cur = db.execute("INSERT INTO users (phone) VALUES (?)", (phone,))
@@ -107,11 +111,47 @@ def verify_otp(phone: str, code: str) -> dict:
             uid = user["id"]
 
     token = jwt.encode(
-        {"sub": str(uid), "phone": phone, "exp": int(now) + TOKEN_TTL},
+        {"sub": str(uid), "phone": phone, "exp": int(time.time()) + TOKEN_TTL},
         JWT_SECRET,
         algorithm="HS256",
     )
     return {"token": token, "user_id": uid}
+
+
+def verify_doctor_otp(phone: str, code: str) -> dict:
+    """Doctor sign-in: the phone must belong to a registered practitioner.
+    Never creates an account."""
+    with get_db() as db:
+        doctor = db.execute("SELECT * FROM doctors WHERE phone = ?", (phone,)).fetchone()
+        if not doctor:
+            raise HTTPException(403, "This number isn't registered as a practitioner on Amruni.")
+        _consume_otp(db, phone, code)
+
+    token = jwt.encode(
+        {"role": "doctor", "did": doctor["id"], "phone": phone, "exp": int(time.time()) + TOKEN_TTL},
+        JWT_SECRET,
+        algorithm="HS256",
+    )
+    return {"token": token, "doctor_id": doctor["id"]}
+
+
+def current_doctor(request: Request) -> dict:
+    """FastAPI dependency: resolves a doctor-role Bearer token to a doctor row."""
+    header = request.headers.get("authorization", "")
+    token = header[7:] if header.startswith("Bearer ") else None
+    if not token:
+        raise HTTPException(401, "Practitioner sign-in required.")
+    try:
+        payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
+    except jwt.PyJWTError:
+        raise HTTPException(401, "Session expired. Sign in again.")
+    if payload.get("role") != "doctor":
+        raise HTTPException(403, "Practitioner access only.")
+    with get_db() as db:
+        doctor = db.execute("SELECT * FROM doctors WHERE id = ?", (payload["did"],)).fetchone()
+    if not doctor:
+        raise HTTPException(401, "Practitioner account not found.")
+    return dict(doctor)
 
 
 def current_user(request: Request) -> dict:

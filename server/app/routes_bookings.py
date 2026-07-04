@@ -23,7 +23,7 @@ from pydantic import BaseModel
 
 from . import meet, payments
 from .auth import current_user
-from .db import get_db, appointment_json, doctor_json, new_id, payment_json, to_12h, utcnow_iso
+from .db import get_db, appointment_json, doctor_json, new_id, payment_json, record_json, to_12h, utcnow_iso
 from .routes_doctors import release_expired_locks
 
 router = APIRouter()
@@ -43,7 +43,14 @@ class ConfirmBody(BaseModel):
 
 def _appointment_with_doctor(db, row) -> dict:
     doctor = db.execute("SELECT * FROM doctors WHERE id = ?", (row["doctor_id"],)).fetchone()
-    return {**appointment_json(row), "doctor": doctor_json(doctor) if doctor else None}
+    record = db.execute(
+        "SELECT * FROM consultation_records WHERE appointment_id = ?", (row["id"],)
+    ).fetchone()
+    return {
+        **appointment_json(row),
+        "doctor": doctor_json(doctor) if doctor else None,
+        "record": record_json(record) if record else None,
+    }
 
 
 def _own_appointment(db, appointment_id: str, user_id: int):

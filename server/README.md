@@ -87,7 +87,17 @@ POST   /api/bookings                     POST   /api/payments/{id}/confirm
 GET    /api/appointments                 GET    /api/appointments/{id}
 DELETE /api/appointments/{id}            POST   /api/appointments/{id}/complete
 POST   /api/video/rooms                  GET    /api/health
+
+# Doctor console (doctor-role JWT from /api/doctor/verify-otp; the phone must
+# match a registered practitioner — accounts are never auto-created)
+POST   /api/doctor/verify-otp            GET    /api/doctor/me
+GET    /api/doctor/appointments          GET/POST/DELETE /api/doctor/slots[/{id}]
+GET/PUT /api/doctor/appointments/{id}/record        # saving completes the consult
+GET    /api/doctor/patients              GET/PUT /api/doctor/patients/{uid}/chart
+POST/GET/DELETE /api/doctor/patients/{uid}/documents[/{id}]
 ```
+
+Doctor access to a patient's chart requires an appointment relationship with that patient; other doctors get 404. Consultation records flow back onto the patient's appointment payload, so her e-prescription is the real one.
 
 All user data is scoped to the authenticated user; cross-user access returns 404.
 

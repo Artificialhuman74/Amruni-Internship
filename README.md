@@ -34,6 +34,7 @@ Open the local URL Vite prints (default `http://localhost:5173/`). Other fronten
 ## Features
 
 - **Telemedicine** — browse verified women's-health specialists, filter by specialty. Doctors publish priced availability slots; booking locks the slot, payment confirms it, and a Google Meet link is generated automatically. Chat consultations connect instantly over WhatsApp.
+- **Doctor console** (`/doctor`) — a practitioner-side app in the same column: OTP sign-in with the registered practice number, today's consultation queue with one-tap join, availability publishing, and a full E-medical-records system — per-consultation records (diagnosis, vitals, structured prescriptions, follow-ups), per-patient charts (allergies, conditions, vitals history), and lab/report document storage. Saving a record puts the real prescription on the patient's consultation summary.
 - **NIMHANS mental health** — "I need help" gateway to 24/7 support, PHQ-9 and GAD-7 screening tools, and an anonymous mode that hides identity from counsellors.
 - **Cycle & fertility tracking** — a Flo-style calendar with phase prediction, daily flow and symptom logging.
 - **Pregnancy mode** — week-by-week progress, milestones, sharing with trusted contacts, and an emergency alert.
@@ -51,7 +52,8 @@ server/app/
 ├── payments.py           # payment providers: mock (default) and Razorpay
 ├── routes_auth.py · routes_me.py
 ├── routes_doctors.py     # directory + availability slots (publish/list/delete)
-└── routes_bookings.py    # book slot → pay → confirm → meet link; appointments
+├── routes_bookings.py    # book slot → pay → confirm → meet link; appointments
+└── routes_doctor.py      # doctor console: queue, slots, EMR (records, charts, documents)
 
 amruni-app/src/
 ├── main.jsx              # entry: Router + AppProvider + ToastProvider
@@ -82,7 +84,13 @@ amruni-app/src/
     ├── Home.jsx
     ├── Telemedicine.jsx · MentalHealth.jsx
     ├── CycleTracker.jsx · Pregnancy.jsx
-    └── Settings.jsx
+    ├── Settings.jsx
+    └── doctor/           # practitioner console (own OTP session, /doctor/*)
+        ├── DoctorLogin.jsx · DoctorShell.jsx   # auth + tab shell (Today/Schedule/Patients/Profile)
+        ├── DoctorToday.jsx                     # queue, next-up card, join, stats
+        ├── DoctorSchedule.jsx                  # publish priced availability
+        ├── DoctorPatients.jsx · DoctorPatientChart.jsx  # EMR: flags, vitals, records, documents
+        └── DoctorRecordEditor.jsx · DoctorAccount.jsx
 ```
 
 ## Design system

@@ -123,10 +123,35 @@ export default function ConsultationSummary() {
               </div>
             </div>
 
-            <div style={{ textAlign: 'center', padding: 'var(--sp-6) 0', color: 'var(--clr-ink-muted)' }}>
-              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Prescription will be shared by your doctor</p>
-              <p style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--sp-2)' }}>Once {doctorName} uploads it, you can download it here.</p>
-            </div>
+            {appointment?.record ? (
+              <div style={{ padding: 'var(--sp-2) 0' }}>
+                {appointment.record.diagnosis && (
+                  <p style={{ fontSize: 'var(--text-sm)', fontWeight: 700, marginBottom: 'var(--sp-3)' }}>
+                    Dx: {appointment.record.diagnosis}
+                  </p>
+                )}
+                {appointment.record.prescription.length > 0 ? (
+                  appointment.record.prescription.map((line, i) => (
+                    <div key={i} className="rx-line">
+                      <span className="rx-line__name">{line.name}</span>
+                      <span className="rx-line__detail">{[line.dose, line.frequency, line.duration].filter(Boolean).join(' · ')}</span>
+                    </div>
+                  ))
+                ) : (
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>No medicines prescribed for this visit.</p>
+                )}
+                {appointment.record.followUp && (
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-gold)', fontWeight: 600, marginTop: 'var(--sp-3)' }}>
+                    Follow-up advised: {appointment.record.followUp}
+                  </p>
+                )}
+              </div>
+            ) : (
+              <div style={{ textAlign: 'center', padding: 'var(--sp-6) 0', color: 'var(--clr-ink-muted)' }}>
+                <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Prescription will be shared by your doctor</p>
+                <p style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--sp-2)' }}>Once {doctorName} writes your consultation record, it appears here.</p>
+              </div>
+            )}
 
             <div style={{ borderTop: '1px dashed var(--clr-border)', paddingTop: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <span style={{ fontSize: 10, color: 'var(--clr-ink-subtle)' }}>Electronically signed by {doctorName}</span>
