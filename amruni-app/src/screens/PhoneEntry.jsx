@@ -151,6 +151,13 @@ export default function PhoneEntry() {
             Privacy Policy
           </span>
           . Your data is never sold.
+          <br />
+          <button
+            onClick={() => navigate('/doctor')}
+            style={{ color: 'var(--clr-ink-muted)', textDecoration: 'underline', fontSize: 'inherit', marginTop: 'var(--sp-2)' }}
+          >
+            Practitioner? Sign in here
+          </button>
         </motion.p>
       </div>
     </div>

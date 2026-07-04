@@ -127,6 +127,41 @@ CREATE TABLE IF NOT EXISTS user_settings (
   anonymous_mode INTEGER NOT NULL DEFAULT 0
 );
 
+CREATE TABLE IF NOT EXISTS consultation_records (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  appointment_id TEXT NOT NULL UNIQUE REFERENCES appointments(id) ON DELETE CASCADE,
+  doctor_id      INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  diagnosis      TEXT,
+  notes          TEXT,
+  vitals         TEXT NOT NULL DEFAULT '{}',   -- {bp, pulse, temp, weight}
+  prescription   TEXT NOT NULL DEFAULT '[]',   -- [{name, dose, frequency, duration}]
+  follow_up      TEXT,                          -- YYYY-MM-DD
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_records_user ON consultation_records(user_id);
+CREATE INDEX IF NOT EXISTS idx_records_doctor ON consultation_records(doctor_id);
+
+CREATE TABLE IF NOT EXISTS patient_charts (
+  user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  allergies   TEXT NOT NULL DEFAULT '[]',
+  conditions  TEXT NOT NULL DEFAULT '[]',
+  blood_group TEXT,
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS documents (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  doctor_id  INTEGER REFERENCES doctors(id) ON DELETE SET NULL,
+  title      TEXT NOT NULL,
+  kind       TEXT NOT NULL DEFAULT 'report',   -- lab | report | scan | other
+  data       TEXT NOT NULL,                     -- data URL
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_documents_user ON documents(user_id);
+
 CREATE TABLE IF NOT EXISTS screenings (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -298,6 +333,33 @@ def payment_json(row) -> dict:
         "currency": row["currency"],
         "status": row["status"],
     }
+
+
+def record_json(row) -> dict:
+    return {
+        "id": row["id"],
+        "appointmentId": row["appointment_id"],
+        "doctorId": row["doctor_id"],
+        "diagnosis": row["diagnosis"],
+        "notes": row["notes"],
+        "vitals": json.loads(row["vitals"] or "{}"),
+        "prescription": json.loads(row["prescription"] or "[]"),
+        "followUp": row["follow_up"],
+        "createdAt": row["created_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
+def document_json(row, include_data=False) -> dict:
+    out = {
+        "id": row["id"],
+        "title": row["title"],
+        "kind": row["kind"],
+        "createdAt": row["created_at"],
+    }
+    if include_data:
+        out["data"] = row["data"]
+    return out
 
 
 def new_id(prefix: str) -> str:

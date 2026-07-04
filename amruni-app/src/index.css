@@ -1163,3 +1163,194 @@ img, svg { display: block; }
   cursor: not-allowed;
 }
 
+
+/* ── Doctor Console ────────────────────────────────────────── */
+.doc-greeting {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--clr-ink);
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+}
+.doc-daymeta { font-size: var(--text-sm); color: var(--clr-ink-muted); margin-top: var(--sp-1); }
+
+.doc-section-title {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clr-ink-subtle);
+  margin-bottom: var(--sp-3);
+}
+
+/* Next-up: the one dominant card on Today */
+.doc-next {
+  background: var(--clr-dark);
+  color: var(--clr-ink-on-dark);
+  border-radius: var(--radius-xl);
+  padding: var(--sp-5);
+  box-shadow: var(--shadow-md);
+}
+.doc-next__time { font-size: var(--text-xl); font-weight: 700; font-variant-numeric: tabular-nums; }
+.doc-next__patient { font-size: var(--text-md); font-weight: 600; margin-top: var(--sp-1); }
+.doc-next__meta { font-size: var(--text-sm); color: var(--clr-ink-muted-on-dark); margin-top: 2px; }
+.doc-next__reason {
+  margin-top: var(--sp-3);
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted-on-dark);
+  border-top: 1px solid var(--clr-dark-border);
+  padding-top: var(--sp-3);
+  line-height: var(--leading-snug);
+}
+
+/* Queue rows: the rest of the day */
+.doc-queue-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.doc-queue-row__time {
+  font-size: var(--text-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--clr-ink);
+  min-width: 64px;
+}
+.doc-queue-row__done { color: var(--clr-ink-subtle); }
+
+/* Quiet stat line (not a hero grid) */
+.doc-statline {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+}
+.doc-statline strong { color: var(--clr-ink); font-weight: 700; font-variant-numeric: tabular-nums; }
+.doc-statline .sep { color: var(--clr-border); }
+
+/* Patient list */
+.doc-patient-row {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.doc-patient-row:hover { border-color: var(--clr-brand-muted); background: var(--clr-brand-soft); }
+.doc-avatar {
+  width: 40px; height: 40px;
+  border-radius: var(--radius-full);
+  background: var(--clr-brand-soft);
+  color: var(--clr-brand);
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 700; font-size: var(--text-sm);
+  flex-shrink: 0;
+}
+
+/* Chart flags */
+.flag-chip {
+  display: inline-flex; align-items: center; gap: var(--sp-1);
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-full);
+  font-size: var(--text-xs); font-weight: 600;
+}
+.flag-chip--allergy { background: var(--clr-warning-soft); color: oklch(0.45 0.12 60); }
+.flag-chip--condition { background: var(--clr-sky-soft); color: var(--clr-sky); }
+.flag-chip button { color: inherit; opacity: 0.6; font-size: 11px; line-height: 1; padding: 0 0 0 2px; }
+.flag-chip button:hover { opacity: 1; }
+
+/* Vitals */
+.vitals-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--sp-2); }
+.vital-cell {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  padding: var(--sp-2) var(--sp-3);
+  text-align: center;
+}
+.vital-cell dt { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--clr-ink-subtle); }
+.vital-cell dd { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
+
+/* Records timeline */
+.doc-record {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  padding: var(--sp-4);
+}
+.doc-record + .doc-record { margin-top: var(--sp-3); }
+.doc-record__date { font-size: var(--text-xs); color: var(--clr-ink-subtle); }
+.doc-record__dx { font-size: var(--text-base); font-weight: 700; color: var(--clr-ink); margin-top: 2px; }
+
+/* Prescription rows (editor + display) */
+.rx-line {
+  display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px dashed var(--clr-border);
+  font-size: var(--text-sm);
+}
+.rx-line:last-child { border-bottom: none; }
+.rx-line__name { font-weight: 600; color: var(--clr-ink); }
+.rx-line__detail { color: var(--clr-ink-muted); text-align: right; font-size: var(--text-xs); }
+
+.rx-edit-row {
+  display: grid;
+  grid-template-columns: 1fr 76px;
+  gap: var(--sp-2);
+  align-items: start;
+}
+.rx-edit-row + .rx-edit-row { margin-top: var(--sp-3); padding-top: var(--sp-3); border-top: 1px dashed var(--clr-border); }
+.rx-edit-row__fields { display: grid; grid-template-columns: 1fr 1fr; gap: var(--sp-2); }
+.rx-edit-row__fields .input-field--sm:first-child { grid-column: 1 / -1; }
+
+.input-field--sm {
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--clr-border);
+  background: var(--clr-surface);
+  color: var(--clr-ink);
+  font-size: var(--text-sm);
+  width: 100%;
+  transition: border-color var(--dur-fast);
+}
+.input-field--sm:focus { border-color: var(--clr-brand); outline: none; }
+.input-field--sm::placeholder { color: var(--clr-ink-subtle); }
+
+/* Skeletons */
+.skel {
+  border-radius: var(--radius-md);
+  background: linear-gradient(100deg, var(--clr-surface-2) 40%, oklch(0.97 0.004 355) 50%, var(--clr-surface-2) 60%);
+  background-size: 200% 100%;
+  animation: skel-shimmer 1.4s ease-in-out infinite;
+}
+@keyframes skel-shimmer { to { background-position: -200% 0; } }
+
+/* Record-saved overlay: the one celebration moment */
+.doc-saved-overlay {
+  position: fixed; inset: 0;
+  margin: 0 auto; max-width: 430px;
+  background: oklch(1 0 0 / 0.92);
+  backdrop-filter: blur(6px);
+  z-index: var(--z-modal);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  gap: var(--sp-4);
+  text-align: center; padding: var(--sp-8);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skel { animation: none; }
+}

@@ -24,6 +24,16 @@ import VideoCall from './screens/VideoCall';
 import ConsultationSummary from './screens/ConsultationSummary';
 import AdminDashboard from './screens/AdminDashboard';
 
+// Doctor console
+import DoctorLogin from './screens/doctor/DoctorLogin';
+import DoctorShell from './screens/doctor/DoctorShell';
+import DoctorToday from './screens/doctor/DoctorToday';
+import DoctorSchedule from './screens/doctor/DoctorSchedule';
+import DoctorPatients from './screens/doctor/DoctorPatients';
+import DoctorPatientChart from './screens/doctor/DoctorPatientChart';
+import DoctorRecordEditor from './screens/doctor/DoctorRecordEditor';
+import DoctorAccount from './screens/doctor/DoctorAccount';
+
 export default function App() {
   const location = useLocation();
   const { state } = useApp();
@@ -74,6 +84,17 @@ export default function App() {
           
           {/* Admin Dashboard */}
           <Route path="/admin" element={<AdminDashboard />} />
+
+          {/* Doctor console — its own session, separate from the patient app */}
+          <Route path="/doctor" element={<DoctorLogin />} />
+          <Route element={<DoctorShell />}>
+            <Route path="/doctor/today" element={<DoctorToday />} />
+            <Route path="/doctor/schedule" element={<DoctorSchedule />} />
+            <Route path="/doctor/patients" element={<DoctorPatients />} />
+            <Route path="/doctor/patients/:userId" element={<DoctorPatientChart />} />
+            <Route path="/doctor/record/:appointmentId" element={<DoctorRecordEditor />} />
+            <Route path="/doctor/account" element={<DoctorAccount />} />
+          </Route>
           
           {/* Immersive Full Screen Video Consultation outside AppShell */}
           <Route
