@@ -26,6 +26,10 @@ export default function ProfileSetup() {
       // Onboarding completion gates every route — write it through to the
       // server before navigating rather than relying on the debounced sync.
       await meApi.patch({ name: name.trim(), dob, lifeStage, isOnboarded: true });
+      if (lastPeriod) {
+        // Same reasoning: cycle predictions read this server-side immediately.
+        await meApi.putCycle({ lastPeriodStart: lastPeriod, cycleLength: 28, periodLength: 5 });
+      }
     } catch (err) {
       console.warn('Profile save will retry via background sync.', err);
     }

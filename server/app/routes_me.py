@@ -165,6 +165,45 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
     return {"success": True}
 
 
+class CycleBody(BaseModel):
+    lastPeriodStart: str | None = None
+    cycleLength: int = 28
+    periodLength: int = 5
+
+
+class DayLogBody(BaseModel):
+    flow: str | None = None
+    symptoms: list[str] = []
+
+
+@router.put("/me/cycle")
+def put_cycle(body: CycleBody, user: dict = Depends(current_user)):
+    with get_db() as db:
+        db.execute(
+            """INSERT INTO cycle_state (user_id, last_period_start, cycle_length, period_length)
+               VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 last_period_start = excluded.last_period_start,
+                 cycle_length = excluded.cycle_length,
+                 period_length = excluded.period_length""",
+            (user["id"], body.lastPeriodStart, body.cycleLength, body.periodLength),
+        )
+    return {"success": True}
+
+
+@router.put("/me/cycle/logs/{day}")
+def put_cycle_log(day: str, body: DayLogBody, user: dict = Depends(current_user)):
+    if not (len(day) == 10 and day[4] == "-" and day[7] == "-"):
+        raise HTTPException(400, "Date must be YYYY-MM-DD.")
+    with get_db() as db:
+        db.execute(
+            """INSERT INTO cycle_logs (user_id, date, flow, symptoms) VALUES (?, ?, ?, ?)
+               ON CONFLICT(user_id, date) DO UPDATE SET flow = excluded.flow, symptoms = excluded.symptoms""",
+            (user["id"], day, body.flow, json.dumps(body.symptoms)),
+        )
+    return {"success": True}
+
+
 @router.post("/me/screenings", status_code=201)
 def post_screening(body: ScreeningBody, user: dict = Depends(current_user)):
     if body.tool not in ("phq9", "gad7"):

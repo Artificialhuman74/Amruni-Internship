@@ -14,11 +14,13 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db
-from . import routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor
+from . import ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos
 
 IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
 
 init_db()
+ml.train()    # cycle length model (FedCycle + synthetic tails)
+pcos.train()  # PCOS risk models (clinical dataset)
 
 app = FastAPI(title="Amruni API", docs_url=None if IS_PROD else "/api/docs",
               openapi_url=None if IS_PROD else "/api/openapi.json")
@@ -52,7 +54,7 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor):
+for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos):
     app.include_router(module.router, prefix="/api")
 
 
