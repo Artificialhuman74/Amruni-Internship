@@ -4,3 +4,9 @@ PyJWT
 httpx
 google-auth
 requests
+scikit-learn
+joblib
+numpy
+pyreadstat
+pandas
+openpyxl

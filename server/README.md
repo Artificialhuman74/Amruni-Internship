@@ -86,6 +86,12 @@ DELETE /api/slots/{id}         (admin)
 POST   /api/bookings                     POST   /api/payments/{id}/confirm
 GET    /api/appointments                 GET    /api/appointments/{id}
 DELETE /api/appointments/{id}            POST   /api/appointments/{id}/complete
+PUT    /api/me/cycle                     PUT    /api/me/cycle/logs/{date}
+GET    /api/me/cycle/predictions         (ML: period window, fertile days,
+                                          history, symptom forecast, insights,
+                                          PCOS signal + PCOS-widened window)
+POST   /api/me/pcos-screening            (ML: risk band + top factors)
+GET/POST/DELETE /api/me/conditions[/{name}]   (patient-managed, e.g. PCOS)
 POST   /api/video/rooms                  GET    /api/health
 
 # Doctor console (doctor-role JWT from /api/doctor/verify-otp; the phone must
@@ -100,6 +106,27 @@ POST/GET/DELETE /api/doctor/patients/{uid}/documents[/{id}]
 Doctor access to a patient's chart requires an appointment relationship with that patient; other doctors get 404. Consultation records flow back onto the patient's appointment payload, so her e-prescription is the real one.
 
 All user data is scoped to the authenticated user; cross-user access returns 404.
+
+## Cycle intelligence (ML)
+
+`app/ml.py` trains three quantile gradient-boosting models (p15/p50/p85) that predict the next cycle length from a user's logged history (last lengths, rolling mean/spread, cycle count, age).
+
+**Training data — real:** the model trains on the **FedCycle dataset** (Fehring et al.: 1,665 charted cycles from 159 women, `cycle tracking datasets/FedCycleData071012__2_.sav`), turned into ~1,360 autoregressive rows (each cycle predicted from the woman's preceding cycles, grouped by `ClientID` so there's no leakage). FedCycle's ages only span 21–43, so those real rows (upweighted 3×) are augmented with a synthetic cohort covering the adolescent and perimenopausal tails, where cycles run longer and more variable. Trains once at first boot (~5 s, cached at `data/cycle_model.joblib`); if the .sav is absent it falls back to synthetic-only so deployments without it still work. Point `FEDCYCLE_PATH` elsewhere to override.
+
+**Held-out validation** (20% of women unseen in training): p50 median error **1.48 days**, mean 2.26 days (beats the naive "same as last cycle" baseline at 2.77), and the p15–p85 window covers **76%** of real next-cycles — well-calibrated against its 70% target.
+
+At inference it personalizes with the user's real logged periods (derived from flow days; spotting alone never starts a cycle) and reports an honest confidence window. Symptom forecasting blends the user's own logged frequencies with population phase priors (Beta smoothing). Delete the joblib to retrain.
+
+### PCOS risk screening
+
+`app/pcos.py` trains two logistic-regression models on the **Kottarathil clinical PCOS dataset** (`PCOS_data_without_infertility.xlsx`, 541 patients):
+
+- **full** — 9 self-reportable features (irregular cycles, weight gain, excess hair growth, skin darkening, acne, BMI, age, exercise, fast food). 5-fold CV **AUC 0.88**. Powers the in-app self-check questionnaire (`POST /api/me/pcos-screening`), returning a risk **band** (low/moderate/high), calibrated probability, and the user's top contributing factors — a screening aid that routes to a specialist, never a diagnosis.
+- **cycle** — menstrual features only (irregularity, age, BMI, weight gain). 5-fold CV **AUC 0.82**. Runs passively on the user's own derived cycle stats to surface a "worth a check" hint on the tracker.
+
+The dataset's coded `Cycle length(days)` column is uncorrelated with PCOS (noise), so cycle length is deliberately excluded — irregularity carries the menstrual signal. Cached at `data/pcos_model.joblib`; falls back to a transparent rule-based scorer if the dataset or sklearn is absent.
+
+When a patient flags **PCOS** via `POST /api/me/conditions`, the cycle predictor reads it and **widens the period window** (and drops confidence), because PCOS cycles are naturally longer and more variable — an honest wide window beats a falsely precise date.
 
 ## Deploying
 

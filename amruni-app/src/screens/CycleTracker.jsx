@@ -1,11 +1,17 @@
-import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { motion, useReducedMotion } from 'framer-motion';
 import { useApp, useCycleData } from '../context/AppContext';
+import { meApi } from '../services/api';
 import CycleCalendar from '../components/CycleCalendar';
 import BottomSheet from '../components/BottomSheet';
 import { useToast } from '../components/Toast';
 import { tap, confirm } from '../lib/haptics';
 import { PHASE_INFO, CYCLE_SYMPTOMS } from '../data/mock';
+
+function fmtShort(iso) {
+  return new Date(`${iso}T00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
 
 const FLOW_LEVELS = [
   { id: 'none', label: 'None' },
@@ -19,6 +25,8 @@ export default function CycleTracker() {
   const { state, dispatch } = useApp();
   const cycleData = useCycleData(state);
   const toast = useToast();
+  const reduced = useReducedMotion();
+  const navigate = useNavigate();
   const { loggedDays, lastPeriodStart, cycleLength } = state.cycle;
 
   const [selectedDate, setSelectedDate] = useState(null);
@@ -30,7 +38,37 @@ export default function CycleTracker() {
   const [periodInput, setPeriodInput] = useState('');
   const [cycleLenInput, setCycleLenInput] = useState(String(cycleLength));
 
+  // ML predictions from the server; null = loading, {ready:false} = cold start
+  const [ml, setMl] = useState(null);
+  const refetchTimer = useRef(null);
+
   const today = new Date().toISOString().split('T')[0];
+
+  function fetchPredictions(retryOnNotReady = false) {
+    meApi.cyclePredictions()
+      .then((data) => {
+        setMl(data);
+        // Local state can be ahead of the server sync (e.g. right after
+        // onboarding); give the flush a moment and look once more.
+        if (retryOnNotReady && !data.ready) {
+          clearTimeout(refetchTimer.current);
+          refetchTimer.current = setTimeout(fetchPredictions, 2000);
+        }
+      })
+      .catch(() => setMl({ ready: false, offline: true }));
+  }
+
+  useEffect(() => {
+    fetchPredictions(true);
+    return () => clearTimeout(refetchTimer.current);
+  }, []);
+
+  // After a log saves, the state provider syncs to the server (debounced
+  // 700ms); refresh predictions once that flush has landed.
+  function schedulePredictionRefresh() {
+    clearTimeout(refetchTimer.current);
+    refetchTimer.current = setTimeout(fetchPredictions, 1600);
+  }
 
   function openLog(date) {
     setSelectedDate(date);
@@ -52,6 +90,7 @@ export default function CycleTracker() {
     setLogSheet(false);
     confirm();
     toast(selectedDate === today ? 'Logged for today' : 'Day saved', { icon: '🌸' });
+    schedulePredictionRefresh();
   }
 
   function toggleSymptom(id) {
@@ -71,14 +110,6 @@ export default function CycleTracker() {
 
   const phase = cycleData.phase;
   const phaseInfo = phase ? PHASE_INFO[phase] : null;
-
-  // Days until next period
-  let daysUntilPeriod = null;
-  if (cycleData.predictedDays?.length) {
-    const next = new Date(cycleData.predictedDays[0]);
-    const now = new Date(); now.setHours(0,0,0,0);
-    daysUntilPeriod = Math.round((next - now) / 86400000);
-  }
 
   return (
     <div className="screen screen--light">
@@ -122,32 +153,58 @@ export default function CycleTracker() {
           </motion.div>
         )}
 
-        {/* Flo-style calendar */}
+        {/* Flo-style calendar — predicted/fertile days come from the ML model
+            once it's ready, falling back to local cycle math */}
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.1 }}>
           <CycleCalendar
             periodDays={cycleData.periodDays}
-            predictedDays={cycleData.predictedDays}
-            fertileDays={cycleData.fertileDays}
-            ovulationDate={cycleData.ovulationDate}
+            predictedDays={ml?.ready ? ml.predictedDays : cycleData.predictedDays}
+            fertileDays={ml?.ready ? ml.fertileDays : cycleData.fertileDays}
+            ovulationDate={ml?.ready ? ml.ovulationDate : cycleData.ovulationDate}
             loggedDays={loggedDays}
             selectedDate={selectedDate}
             onSelectDate={openLog}
           />
         </motion.div>
 
-        {/* Predictions strip */}
+        {/* Prediction card */}
         {lastPeriodStart && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.14 }}>
-            <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
-              <StatPill
-                label="Next period"
-                value={daysUntilPeriod !== null ? (daysUntilPeriod <= 0 ? 'Now' : `${daysUntilPeriod}d`) : '—'}
-                color="var(--clr-brand)"
-                bg="var(--clr-brand-soft)"
-              />
+            {ml === null ? (
+              <div className="skel" style={{ height: 108, borderRadius: 'var(--radius-xl)' }} aria-label="Loading prediction" />
+            ) : ml.ready ? (
+              <div style={{ background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-xl)', padding: 'var(--sp-5)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--sp-3)' }}>
+                  <p style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--clr-brand)' }}>
+                    {ml.nextPeriod.daysUntil <= 0
+                      ? 'Period expected now'
+                      : `Period in ${ml.nextPeriod.daysUntil} day${ml.nextPeriod.daysUntil === 1 ? '' : 's'}`}
+                  </p>
+                  <span className="chip chip--sm" style={{ cursor: 'default', borderColor: 'transparent', background: 'var(--clr-brand-soft)', color: 'var(--clr-brand)', fontWeight: 600 }}>
+                    {ml.nextPeriod.confidence === 'high' ? 'High confidence' : ml.nextPeriod.confidence === 'medium' ? 'Fair confidence' : 'Early estimate'}
+                  </span>
+                </div>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink)', marginTop: 'var(--sp-2)' }}>
+                  {fmtShort(ml.nextPeriod.windowStart)} – {fmtShort(ml.nextPeriod.windowEnd)}, most likely <strong>{fmtShort(ml.nextPeriod.likely)}</strong>
+                </p>
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 'var(--sp-2)', lineHeight: 'var(--leading-base)' }}>
+                  {ml.nextPeriod.personalized
+                    ? `Learned from your last ${ml.cyclesKnown} cycle${ml.cyclesKnown === 1 ? '' : 's'}${ml.regularity.label ? ` — ${ml.regularity.label} (±${ml.regularity.sd}d)` : ''}.`
+                    : 'Based on your settings. Log each period and this becomes your personal pattern.'}
+                </p>
+              </div>
+            ) : (
+              <div style={{ background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-xl)', padding: 'var(--sp-4) var(--sp-5)' }}>
+                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)' }}>
+                  {ml.offline ? 'Predictions will refresh when you are back online.' : ml.reason}
+                </p>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-3)' }}>
               <StatPill
                 label="Cycle length"
-                value={`${cycleLength}d`}
+                value={ml?.ready ? `${Math.round(ml.cycleLength.predicted)}d` : `${cycleLength}d`}
                 color="var(--clr-ink)"
                 bg="var(--clr-surface)"
               />
@@ -157,8 +214,136 @@ export default function CycleTracker() {
                 color="var(--clr-ink)"
                 bg="var(--clr-surface)"
               />
+              <StatPill
+                label="Ovulation"
+                value={ml?.ready ? fmtShort(ml.ovulationDate) : (cycleData.ovulationDate ? fmtShort(cycleData.ovulationDate) : '—')}
+                color="var(--clr-ink)"
+                bg="var(--clr-surface)"
+              />
             </div>
           </motion.div>
+        )}
+
+        {/* Made for you — model insights */}
+        {ml?.ready && ml.insights.length > 0 && (
+          <div>
+            <p className="section-title" style={{ marginBottom: 'var(--sp-3)' }}>Made for you</p>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+              {ml.insights.map((ins, i) => (
+                <motion.div
+                  key={ins.text}
+                  initial={reduced ? false : { opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.25, delay: Math.min(i, 4) * 0.05, ease: [0.16, 1, 0.3, 1] }}
+                  style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-start', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-4)' }}
+                >
+                  <span style={{ fontSize: 'var(--text-md)', lineHeight: 1 }} aria-hidden="true">{ins.icon}</span>
+                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink)', lineHeight: 'var(--leading-base)' }}>{ins.text}</p>
+                </motion.div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Passive PCOS risk hint — from the cycle-only model, only when the
+            pattern warrants it and PCOS isn't already flagged */}
+        {ml?.ready && ml.pcosSignal && !ml.hasPcos && (
+          <motion.button
+            onClick={() => navigate('/pcos-check')}
+            initial={reduced ? false : { opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
+            style={{
+              width: '100%', textAlign: 'left', display: 'flex', gap: 'var(--sp-3)', alignItems: 'center',
+              background: 'var(--clr-brand-soft)', border: '1px solid var(--clr-brand-muted)',
+              borderRadius: 'var(--radius-xl)', padding: 'var(--sp-4) var(--sp-5)', cursor: 'pointer',
+            }}
+          >
+            <span style={{ fontSize: 24, flexShrink: 0 }} aria-hidden="true">🩺</span>
+            <span style={{ flex: 1 }}>
+              <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-brand)' }}>
+                A quick PCOS self-check?
+              </span>
+              <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2, lineHeight: 'var(--leading-base)' }}>
+                Your cycle pattern shows some signs worth a 2-minute check. Not a diagnosis.
+              </span>
+            </span>
+            <span style={{ color: 'var(--clr-brand)', fontSize: 'var(--text-lg)', flexShrink: 0 }} aria-hidden="true">→</span>
+          </motion.button>
+        )}
+
+        {/* PCOS flagged — confirmation the tracker is adapting */}
+        {ml?.ready && ml.hasPcos && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+            <span className="chip chip--sm" style={{ cursor: 'default', background: 'var(--clr-brand-soft)', borderColor: 'transparent', color: 'var(--clr-brand)', fontWeight: 600 }}>
+              🌼 PCOS on record
+            </span>
+            <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>
+              Predictions are widened to match PCOS cycle variability.
+            </span>
+          </div>
+        )}
+
+        {/* What this phase may bring */}
+        {ml?.ready && ml.symptomForecast[ml.phase]?.length > 0 && (
+          <div>
+            <p className="section-title" style={{ marginBottom: 'var(--sp-3)' }}>
+              Likely in your {PHASE_INFO[ml.phase === 'ovulation' ? 'ovulation' : ml.phase]?.name?.toLowerCase() || 'current phase'}
+            </p>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+              {ml.symptomForecast[ml.phase].map((s) => {
+                const meta = CYCLE_SYMPTOMS.find((x) => x.id === s.id);
+                if (!meta) return null;
+                return (
+                  <span key={s.id} className="chip chip--sm" style={{ cursor: 'default' }} title={s.fromYou ? 'From your own logs' : 'Common in this phase'}>
+                    {meta.icon} {meta.label}
+                    <span style={{ color: s.fromYou ? 'var(--clr-brand)' : 'var(--clr-ink-subtle)', fontWeight: 700 }}>
+                      {Math.round(s.p * 100)}%
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Durable entry to the PCOS self-check (the hint above only appears
+            when the pattern warrants it; this is always available) */}
+        {!ml?.hasPcos && !ml?.pcosSignal && (
+          <button
+            onClick={() => navigate('/pcos-check')}
+            style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)', color: 'var(--clr-ink-muted)', fontSize: 'var(--text-sm)', fontWeight: 600, padding: 'var(--sp-1) 0' }}
+          >
+            🩺 Screen for PCOS
+            <span style={{ color: 'var(--clr-ink-subtle)' }} aria-hidden="true">→</span>
+          </button>
+        )}
+
+        {/* Cycle history */}
+        {ml?.ready && ml.history.length > 0 && (
+          <div>
+            <p className="section-title" style={{ marginBottom: 'var(--sp-3)' }}>Your cycles</p>
+            <div style={{ background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-lg)', overflow: 'hidden' }}>
+              {ml.history.map((h, i) => {
+                const delta = Math.round(h.length - ml.cycleLength.predicted);
+                return (
+                  <div key={h.start} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', borderTop: i === 0 ? 'none' : '1px solid var(--clr-border)' }}>
+                    <span style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)' }}>
+                      {fmtShort(h.start)} → {fmtShort(h.end)}
+                    </span>
+                    <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', fontVariantNumeric: 'tabular-nums' }}>
+                      {h.length} days
+                      {delta !== 0 && (
+                        <span style={{ fontWeight: 500, color: 'var(--clr-ink-subtle)', marginLeft: 6 }}>
+                          {delta > 0 ? `+${delta}` : delta}
+                        </span>
+                      )}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         )}
 
         {/* Setup prompt */}

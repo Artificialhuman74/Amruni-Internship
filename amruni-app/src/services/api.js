@@ -71,4 +71,13 @@ export const meApi = {
   patch: async (profile) => (await api.patch('/me', profile)).data,
   syncState: async (state) => (await api.put('/me/state', state)).data,
   saveScreening: async ({ tool, score, answers }) => (await api.post('/me/screenings', { tool, score, answers })).data,
+  putCycle: async (cycle) => (await api.put('/me/cycle', cycle)).data,
+  // ML cycle predictions: period window, fertile days, history, symptom forecast, insights
+  cyclePredictions: async () => (await api.get('/me/cycle/predictions')).data,
+  // PCOS risk self-check (ML): { probability, band, topFactors, message }
+  pcosScreening: async (answers) => (await api.post('/me/pcos-screening', answers)).data,
+  // Patient-managed conditions (PCOS etc.)
+  getConditions: async () => (await api.get('/me/conditions')).data,
+  addCondition: async (condition) => (await api.post('/me/conditions', { condition })).data,
+  removeCondition: async (condition) => (await api.delete(`/me/conditions/${encodeURIComponent(condition)}`)).data,
 };

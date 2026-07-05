@@ -15,6 +15,7 @@ import MentalHealth from './screens/MentalHealth';
 import CycleTracker from './screens/CycleTracker';
 import Pregnancy from './screens/Pregnancy';
 import Settings from './screens/Settings';
+import PcosCheck from './screens/PcosCheck';
 
 // New Screens
 import DoctorProfile from './screens/DoctorProfile';
@@ -72,6 +73,7 @@ export default function App() {
             <Route path="/consult" element={<Telemedicine />} />
             <Route path="/help" element={<MentalHealth />} />
             <Route path="/track" element={<TrackScreen />} />
+            <Route path="/pcos-check" element={<PcosCheck />} />
             <Route path="/settings" element={<Settings />} />
             
             {/* Video Consultation nested routes inside AppShell */}
