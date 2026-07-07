@@ -15,6 +15,7 @@ import MentalHealth from './screens/MentalHealth';
 import CycleTracker from './screens/CycleTracker';
 import Pregnancy from './screens/Pregnancy';
 import Settings from './screens/Settings';
+import SOSCenter from './screens/SOSCenter';
 import PcosCheck from './screens/PcosCheck';
 
 // New Screens
@@ -46,6 +47,38 @@ export default function App() {
     : CycleTracker;
 
   return (
+    <AnimatePresence mode="wait" initial={false}>
+      <Routes location={location} key={location.pathname}>
+        <Route path="/" element={<Splash />} />
+        <Route path="/phone" element={<PhoneEntry />} />
+        <Route path="/otp" element={<OTPVerify />} />
+        <Route
+          path="/onboarding/stage"
+          element={isAuthenticated ? <LifeStage /> : <Navigate to="/phone" replace />}
+        />
+        <Route
+          path="/onboarding/profile"
+          element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/phone" replace />}
+        />
+        <Route
+          element={
+            !isAuthenticated
+              ? <Navigate to="/phone" replace />
+              : !isOnboarded
+              ? <Navigate to="/onboarding/stage" replace />
+              : <AppShell />
+          }
+        >
+          <Route path="/home" element={<Home />} />
+          <Route path="/consult" element={<Telemedicine />} />
+          <Route path="/help" element={<MentalHealth />} />
+          <Route path="/track" element={<TrackScreen />} />
+          <Route path="/sos" element={<SOSCenter />} />
+          <Route path="/settings" element={<Settings />} />
+        </Route>
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </AnimatePresence>
     <VideoProvider>
       <AnimatePresence mode="wait" initial={false}>
         <Routes location={location} key={location.pathname}>

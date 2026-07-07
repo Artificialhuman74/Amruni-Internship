@@ -13,6 +13,11 @@ const initialState = {
   },
   pregnancy: { weeksPregnant: 16, dueDate: null, trustedContacts: [] },
   settings: { notifications: true, anonymousMode: false },
+  sos: {
+    contacts: [],          // [{ id, name, phone, relation, userId, createdAt }]
+    alerts: [],            // [{ id, message, sentTo, userId, timestamp }]
+    activeSession: null,   // null | { startedAt, coords: { lat, lng } }
+  },
 };
 
 // Maps the server's /me payload onto the client state shape.
@@ -51,6 +56,24 @@ function reducer(state, action) {
       return { ...state, pregnancy: { ...state.pregnancy, ...action.payload } };
     case 'SET_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.payload } };
+    case 'SET_SOS_CONTACTS':
+      return { ...state, sos: { ...state.sos, contacts: action.payload } };
+    case 'SET_SOS_ALERTS':
+      return { ...state, sos: { ...state.sos, alerts: action.payload } };
+    case 'SOS_ACTIVATE':
+      return { ...state, sos: { ...state.sos, activeSession: action.payload } };
+    case 'SOS_UPDATE_COORDS':
+      return {
+        ...state,
+        sos: {
+          ...state.sos,
+          activeSession: state.sos.activeSession
+            ? { ...state.sos.activeSession, coords: action.payload }
+            : null,
+        },
+      };
+    case 'SOS_CANCEL':
+      return { ...state, sos: { ...state.sos, activeSession: null } };
     case 'LOGOUT':
       return { ...initialState };
     case 'HYDRATE':
@@ -66,6 +89,15 @@ export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState, (init) => {
     try {
       const saved = localStorage.getItem('amruni_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...init,
+          ...parsed,
+          sos: parsed.sos || init.sos,
+        };
+      }
+      return init;
       const parsed = saved ? JSON.parse(saved) : init;
       // A session is only valid if the API token is still present.
       if (parsed.auth?.isAuthenticated && !getToken()) {
