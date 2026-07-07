@@ -2,17 +2,18 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
+import { authApi, apiError, setToken } from '../services/api';
 import OTPInput from '../components/OTPInput';
 import SuccessCheck from '../components/SuccessCheck';
 import { confirm } from '../lib/haptics';
 
-const DEV_OTP = '123456';
 const RESEND_SEC = 30;
 
 export default function OTPVerify() {
   const navigate = useNavigate();
-  const { state, dispatch } = useApp();
+  const { state, dispatch, hydrateFromServer } = useApp();
   const phone = state.auth.phone;
+  const devOtp = state.auth.devOtp;
 
   const [otp, setOtp] = useState('');
   const [error, setError] = useState(false);
@@ -33,25 +34,27 @@ export default function OTPVerify() {
     setLoading(true);
     setError(false);
     setErrorMsg('');
-    await new Promise(r => setTimeout(r, 900));
 
-    if (code === DEV_OTP) {
+    try {
+      const res = await authApi.verifyOtp(phone, code);
+      setToken(res.token);
       setVerified(true);
       confirm();
-      dispatch({ type: 'SET_AUTH', payload: { isAuthenticated: true } });
+      hydrateFromServer(res, phone);
       await new Promise(r => setTimeout(r, 400));
-      if (state.user.isOnboarded) {
+      if (res.user.isOnboarded) {
         navigate('/home', { replace: true });
       } else {
         navigate('/onboarding/stage', { replace: true });
       }
-    } else {
+    } catch (err) {
       setError(true);
-      setErrorMsg("That code didn't match. Try again or request a new one.");
+      setErrorMsg(apiError(err, "That code didn't match. Try again or request a new one."));
       setOtp('');
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
-  }, [navigate, dispatch, state.user.isOnboarded]);
+  }, [navigate, hydrateFromServer, phone]);
 
   function handleChange(val) {
     setOtp(val);
@@ -65,9 +68,15 @@ export default function OTPVerify() {
     setOtp('');
     setError(false);
     setErrorMsg('');
-    await new Promise(r => setTimeout(r, 800));
-    setCountdown(RESEND_SEC);
-    setResending(false);
+    try {
+      const res = await authApi.requestOtp(phone);
+      dispatch({ type: 'SET_AUTH', payload: { devOtp: res.devCode || null } });
+      setCountdown(RESEND_SEC);
+    } catch (err) {
+      setErrorMsg(apiError(err, 'Could not resend the code. Please try again.'));
+    } finally {
+      setResending(false);
+    }
   }
 
   function handleBack() {
@@ -212,9 +221,11 @@ export default function OTPVerify() {
               {resending ? 'Sending…' : 'Resend code'}
             </button>
           )}
-          <p style={{ marginTop: 'var(--sp-4)', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>
-            Dev: use <strong style={{ color: 'var(--clr-gold)', fontFamily: 'monospace' }}>123456</strong>
-          </p>
+          {devOtp && (
+            <p style={{ marginTop: 'var(--sp-4)', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>
+              Dev: use <strong style={{ color: 'var(--clr-gold)', fontFamily: 'monospace' }}>{devOtp}</strong>
+            </p>
+          )}
         </motion.div>
       </div>
     </div>
