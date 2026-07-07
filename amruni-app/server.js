@@ -60,7 +60,7 @@ app.post("/api/sos/alert", async (req, res) => {
           await client.messages.create({ body: messageBody, from, to: contact.phone });
           sent++;
         } catch (e) {
-          console.error(\`Twilio SMS failed for \${contact.phone}:\`, e);
+          console.error(`Twilio SMS failed for ${contact.phone}:`, e);
           failed++;
           errors.push(e.message);
         }
@@ -74,7 +74,7 @@ app.post("/api/sos/alert", async (req, res) => {
           });
           sent++;
         } catch (e) {
-          console.error(\`Twilio Call failed for \${contact.phone}:\`, e);
+          console.error(`Twilio Call failed for ${contact.phone}:`, e);
           failed++;
           errors.push(e.message);
         }
@@ -92,5 +92,5 @@ app.post("/api/sos/alert", async (req, res) => {
 });
 
 app.listen(PORT, "0.0.0.0", () => {
-  console.log(\`Server running on http://localhost:\${PORT}\`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });

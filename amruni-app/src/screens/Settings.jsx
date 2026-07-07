@@ -24,6 +24,7 @@ export default function Settings() {
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
   const [contactRelation, setContactRelation] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
 
   const sosContacts = state.sos?.contacts ?? [];
   const phoneId = state.auth?.phone;
@@ -215,8 +216,8 @@ export default function Settings() {
                   onClick={async () => {
                     try {
                       await deleteContact(c.id);
-                      const updated = await getContacts(phoneId);
-                      dispatch({ type: 'SET_SOS_CONTACTS', payload: updated || [] });
+                      const updated = sosContacts.filter(contact => contact.id !== c.id);
+                      dispatch({ type: 'SET_SOS_CONTACTS', payload: updated });
                       toast('Contact removed', { icon: '🗑️' });
                     } catch (e) {
                       toast('Failed to remove contact', { icon: '⚠️' });
@@ -408,26 +409,31 @@ export default function Settings() {
           </div>
           <button
             className="btn btn--primary"
-            disabled={!contactName.trim() || !contactPhone.trim()}
+            disabled={!contactName.trim() || !contactPhone.trim() || isSaving}
             onClick={async () => {
+              if (isSaving) return;
+              setIsSaving(true);
               try {
-                await addContact({
+                const newContact = {
                   name: contactName.trim(),
                   phone: contactPhone.trim(),
                   relation: contactRelation.trim(),
-                }, phoneId);
-                const updated = await getContacts(phoneId);
-                dispatch({ type: 'SET_SOS_CONTACTS', payload: updated || [] });
+                };
+                const newId = await addContact(newContact, phoneId);
+                const updated = [...sosContacts, { ...newContact, id: newId, userId: phoneId }];
+                dispatch({ type: 'SET_SOS_CONTACTS', payload: updated });
                 setContactSheet(false);
                 confirm();
                 toast('Contact added', { icon: '✓' });
               } catch (e) {
                 toast('Failed to add contact', { icon: '⚠️' });
+              } finally {
+                setIsSaving(false);
               }
             }}
             style={{ marginTop: 'var(--sp-2)' }}
           >
-            Save contact
+            {isSaving ? 'Saving...' : 'Save contact'}
           </button>
         </div>
       </BottomSheet>

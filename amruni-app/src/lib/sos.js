@@ -1,20 +1,20 @@
 export function mapsLink({ lat, lng }) {
-  return \`https://maps.google.com/?q=\${lat},\${lng}\`;
+  return `https://maps.google.com/?q=${lat},${lng}`;
 }
 
 export function smsBod(userName, link) {
-  return \`🚨 URGENT: \${userName || 'Someone you know'} has sent an SOS alert.\\nLive location: \${link}\\nPlease respond immediately.\`;
+  return `🚨 URGENT: ${userName || 'Someone you know'} has sent an SOS alert.\nLive location: ${link}\nPlease respond immediately.`;
 }
 
 export function waLink(userName, link) {
-  return \`https://wa.me/?text=\${encodeURIComponent(smsBod(userName, link))}\`;
+  return `https://wa.me/?text=${encodeURIComponent(smsBod(userName, link))}`;
 }
 
 // Deep-link SMS to each contact (browser-only fallback, no backend)
 export function fireSmsBurst(contacts, body) {
   contacts.forEach(({ phone }) => {
     const a = document.createElement('a');
-    a.href = \`sms:\${phone}?body=\${encodeURIComponent(body)}\`;
+    a.href = `sms:${phone}?body=${encodeURIComponent(body)}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

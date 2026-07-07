@@ -20,7 +20,7 @@ export default function SOSBanner() {
       const diff = Math.floor((Date.now() - start) / 1000);
       const m = Math.floor(diff / 60).toString().padStart(2, '0');
       const s = (diff % 60).toString().padStart(2, '0');
-      setElapsed(\`\${m}:\${s}\`);
+      setElapsed(`${m}:${s}`);
     }, 1000);
     
     return () => clearInterval(interval);

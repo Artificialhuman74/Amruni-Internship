@@ -71,7 +71,15 @@ export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState, (init) => {
     try {
       const saved = localStorage.getItem('amruni_state');
-      return saved ? JSON.parse(saved) : init;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...init,
+          ...parsed,
+          sos: parsed.sos || init.sos,
+        };
+      }
+      return init;
     } catch {
       return init;
     }

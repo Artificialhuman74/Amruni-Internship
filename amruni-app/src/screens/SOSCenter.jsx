@@ -79,7 +79,7 @@ export default function SOSCenter() {
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
               <div style={{ width: 24, height: 24, borderRadius: 'var(--radius-full)', background: 'var(--clr-brand-soft)', color: 'var(--clr-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 'var(--text-xs)', fontWeight: 700, flexShrink: 0 }}>3</div>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>SMS + call sent to all contacts</p>
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>SMS sent to all contacts</p>
             </div>
           </div>
         </motion.div>
