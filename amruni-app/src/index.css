@@ -650,6 +650,25 @@ img, svg { display: block; }
   100% { box-shadow: 0 0 0 0 oklch(0.52 0.22 25 / 0); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  @keyframes sos-pulse { 0%, 100% { box-shadow: none; } }
+}
+
+.btn--emergency {
+  background: var(--clr-emergency);
+  color: var(--clr-emergency-on);
+  border-radius: var(--radius-full);
+  padding: var(--sp-3) var(--sp-6);
+  font-size: var(--text-sm);
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.btn--emergency:hover { background: var(--clr-emergency-hover); }
+.btn--emergency:active { transform: scale(0.97); }
+
 /* ── SOS Countdown Overlay ────────────────────────────────────
    Full-screen overlay with a centered modal for the 5-4-3-2-1
    countdown. Dark scrim + glassy card. */

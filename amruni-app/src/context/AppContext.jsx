@@ -12,7 +12,8 @@ const initialState = {
   pregnancy: { weeksPregnant: 16, dueDate: null, trustedContacts: [] },
   settings: { notifications: true, anonymousMode: false },
   sos: {
-    contacts: [],          // [{ id, name, phone }]
+    contacts: [],          // [{ id, name, phone, relation, userId, createdAt }]
+    alerts: [],            // [{ id, message, sentTo, userId, timestamp }]
     activeSession: null,   // null | { startedAt, coords: { lat, lng } }
   },
 };
@@ -39,6 +40,8 @@ function reducer(state, action) {
       return { ...state, settings: { ...state.settings, ...action.payload } };
     case 'SET_SOS_CONTACTS':
       return { ...state, sos: { ...state.sos, contacts: action.payload } };
+    case 'SET_SOS_ALERTS':
+      return { ...state, sos: { ...state.sos, alerts: action.payload } };
     case 'SOS_ACTIVATE':
       return { ...state, sos: { ...state.sos, activeSession: action.payload } };
     case 'SOS_UPDATE_COORDS':

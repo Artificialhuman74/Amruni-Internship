@@ -15,6 +15,7 @@ export default function AppShell() {
     { path: '/consult', label: 'Consult', icon: ConsultIcon },
     { path: '/track', label: 'Track', icon: TrackIcon },
     { path: '/help', label: 'Help', icon: HelpIcon },
+    { path: '/sos', label: 'SOS', icon: SOSIcon },
     { path: '/settings', label: 'Profile', icon: ProfileIcon },
   ];
 
@@ -75,6 +76,17 @@ function ProfileIcon({ active }) {
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
       <circle cx="12" cy="8" r="4" fill={active ? 'currentColor' : 'none'} fillOpacity={0.15} />
       <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  );
+}
+
+function SOSIcon({ active }) {
+  return (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
+      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
+        fill={active ? 'currentColor' : 'none'} fillOpacity={0.15} />
+      <path d="M12 8v4M12 16h.01" stroke={active ? 'var(--clr-emergency)' : 'currentColor'} />
     </svg>
   );
 }

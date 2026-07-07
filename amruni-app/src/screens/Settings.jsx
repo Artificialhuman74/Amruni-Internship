@@ -6,6 +6,8 @@ import { LIFE_STAGES } from '../data/mock';
 import BottomSheet from '../components/BottomSheet';
 import { useToast } from '../components/Toast';
 import { confirm } from '../lib/haptics';
+import { getContacts, addContact, deleteContact } from '../lib/sosService';
+import { useEffect } from 'react';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -21,8 +23,23 @@ export default function Settings() {
   const [contactSheet, setContactSheet] = useState(false);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [contactRelation, setContactRelation] = useState('');
 
   const sosContacts = state.sos?.contacts ?? [];
+  const phoneId = state.auth?.phone;
+
+  useEffect(() => {
+    async function loadContacts() {
+      if (!phoneId) return;
+      try {
+        const fetched = await getContacts(phoneId);
+        dispatch({ type: 'SET_SOS_CONTACTS', payload: fetched || [] });
+      } catch (e) {
+        console.error("Failed to load contacts:", e);
+      }
+    }
+    loadContacts();
+  }, [phoneId, dispatch]);
 
   const stageInfo = LIFE_STAGES.find(s => s.id === lifeStage);
   const age = dob ? Math.floor((Date.now() - new Date(dob)) / (365.25 * 86400000)) : null;
@@ -195,10 +212,15 @@ export default function Settings() {
                   <div className="settings-item__desc">{c.phone}</div>
                 </div>
                 <button
-                  onClick={() => {
-                    const updated = sosContacts.filter(x => x.id !== c.id);
-                    dispatch({ type: 'SET_SOS_CONTACTS', payload: updated });
-                    toast('Contact removed', { icon: '🗑️' });
+                  onClick={async () => {
+                    try {
+                      await deleteContact(c.id);
+                      const updated = await getContacts(phoneId);
+                      dispatch({ type: 'SET_SOS_CONTACTS', payload: updated || [] });
+                      toast('Contact removed', { icon: '🗑️' });
+                    } catch (e) {
+                      toast('Failed to remove contact', { icon: '⚠️' });
+                    }
                   }}
                   aria-label={`Remove ${c.name}`}
                   style={{
@@ -373,19 +395,35 @@ export default function Settings() {
               maxLength={15}
             />
           </div>
+          <div className="input-group">
+            <label className="input-label">Relation</label>
+            <input
+              className="input-field"
+              type="text"
+              placeholder="e.g. Husband, Mother, Friend"
+              value={contactRelation}
+              onChange={e => setContactRelation(e.target.value)}
+              maxLength={20}
+            />
+          </div>
           <button
             className="btn btn--primary"
             disabled={!contactName.trim() || !contactPhone.trim()}
-            onClick={() => {
-              const newContact = {
-                id: Date.now().toString(36),
-                name: contactName.trim(),
-                phone: contactPhone.trim(),
-              };
-              dispatch({ type: 'SET_SOS_CONTACTS', payload: [...sosContacts, newContact] });
-              setContactSheet(false);
-              confirm();
-              toast('Contact added', { icon: '✓' });
+            onClick={async () => {
+              try {
+                await addContact({
+                  name: contactName.trim(),
+                  phone: contactPhone.trim(),
+                  relation: contactRelation.trim(),
+                }, phoneId);
+                const updated = await getContacts(phoneId);
+                dispatch({ type: 'SET_SOS_CONTACTS', payload: updated || [] });
+                setContactSheet(false);
+                confirm();
+                toast('Contact added', { icon: '✓' });
+              } catch (e) {
+                toast('Failed to add contact', { icon: '⚠️' });
+              }
             }}
             style={{ marginTop: 'var(--sp-2)' }}
           >

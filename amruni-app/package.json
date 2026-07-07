@@ -5,15 +5,20 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
+    "dev:server": "node --experimental-vm-modules server.js",
+    "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "express": "^5.2.1",
+    "firebase": "^12.15.0",
     "framer-motion": "^12.40.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
-    "react-router-dom": "^7.18.0"
+    "react-router-dom": "^7.18.0",
+    "twilio": "^6.0.2"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
