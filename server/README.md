@@ -128,12 +128,62 @@ The dataset's coded `Cycle length(days)` column is uncorrelated with PCOS (noise
 
 When a patient flags **PCOS** via `POST /api/me/conditions`, the cycle predictor reads it and **widens the period window** (and drops confidence), because PCOS cycles are naturally longer and more variable — an honest wide window beats a falsely precise date.
 
-## Deploying
+## Deploying to Railway
+
+The `server/` directory is self-contained (datasets included), so deploy it as its own service.
+
+**1. Create the service.** New Project → Deploy from GitHub repo → select this repo. Then in **Settings → Root Directory** set `server`. Railway reads [`railway.json`](railway.json) and Nixpacks installs `requirements.txt` using the Python in `runtime.txt`.
+
+**2. Add a Volume** — *this is the step people skip.* Railway's filesystem is wiped on every deploy, so without a volume you lose every account and booking. Service → **Variables → + Volume**, mount path `/data`.
+
+**3. Set variables** (Service → Variables). Full list in [`.env.example`](.env.example):
+
+| Variable | Value |
+|---|---|
+| `ENV` | `production` |
+| `JWT_SECRET` | `python -c "import secrets; print(secrets.token_urlsafe(48))"` |
+| `DB_PATH` | `/data/amruni.db` (inside the volume) |
+| `ADMIN_PASSWORD` | your admin-portal password |
+
+Everything else is optional — payments fall back to a mock provider and video to Jitsi rooms until you add Razorpay/Google credentials.
+
+**4. Generate a domain.** Settings → Networking → Generate Domain. That URL is your API base.
+
+Do **not** set `PORT` — Railway injects it and `python -m app` binds `0.0.0.0:$PORT` automatically.
+
+### What happens on boot
+
+`/api/health` answers immediately; the ML models train in a background thread (~10 s on first boot) and cache next to the database, so restarts load them instantly. `GET /api/health` reports `{"ok": true, "modelsReady": true|false}` — Railway's health check only needs `ok`.
+
+If `JWT_SECRET` is missing in production the process exits immediately with a clear message rather than starting insecurely.
+
+### Deploying the web app too
+
+Optional. Either add a second Railway service with root `amruni-app` (static build), or build the frontend into `amruni-app/dist` and deploy the repo root — the API serves the SPA when `dist/` exists, and returns a small JSON banner at `/` when it doesn't.
+
+## Building an Android client
+
+The API is mobile-ready: stateless **Bearer-token** auth (no cookies, no CSRF), JSON everywhere, and permissive CORS (irrelevant for native HTTP clients, but set for WebView/Capacitor).
+
+**Base URL:** `https://<your-service>.up.railway.app/api`
+
+**Auth flow:**
+1. `POST /auth/request-otp` `{"phone": "9876543210"}` → `{"sent": true}`. In production the code is delivered by SMS (wire a gateway into `send_sms()` in `app/auth.py`); outside production it's returned as `devCode` for testing.
+2. `POST /auth/verify-otp` `{"phone", "code"}` → `{"token", user, cycle, pregnancy, settings}`.
+3. Store the token (Android `EncryptedSharedPreferences`) and send `Authorization: Bearer <token>` on every call. Tokens last 30 days; on `401` clear it and re-run the OTP flow.
+
+**Practitioner sign-in** is the same but `POST /doctor/verify-otp`, and the number must belong to a registered doctor. That token carries a doctor role — patient tokens get `403` on `/doctor/*` and vice-versa.
+
+All errors share one shape — `{"error": "human readable message"}` with a real HTTP status — so a single Retrofit/Ktor error interceptor covers the whole API. Endpoint list is above; run the server locally with `ENV` unset and open `/api/docs` for an interactive OpenAPI reference while you build.
+
+## Deploying anywhere else
 
 Any Python 3.11+ host with a persistent disk:
 
 ```bash
-cd amruni-app && npm ci && npm run build
-cd ../server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-ENV=production JWT_SECRET=<long-random-string> .venv/bin/uvicorn app.main:app --host 0.0.0.0 --port 4000
+cd server && python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+ENV=production JWT_SECRET=<long-random-string> DB_PATH=/var/lib/amruni/amruni.db \
+  PORT=8080 .venv/bin/python -m app
 ```
+
+To serve the web app from the same process, build it first (`cd amruni-app && npm ci && npm run build`) and deploy the repo root instead of `server/`.
