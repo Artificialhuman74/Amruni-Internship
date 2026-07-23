@@ -78,7 +78,7 @@ export default function DoctorPatients() {
             <motion.button
               key={p.id}
               className="doc-patient-row"
-              onClick={() => navigate(`/doctor/patients/${p.id}`)}
+              onClick={() => navigate(`/patients/${p.id}`)}
               initial={reduced ? false : { opacity: 0, y: 8 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.25, delay: Math.min(i, 8) * 0.035, ease: [0.16, 1, 0.3, 1] }}

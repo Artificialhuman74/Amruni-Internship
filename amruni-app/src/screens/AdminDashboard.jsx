@@ -1,13 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { appointmentApi } from '../services/appointmentApi';
 import { authApi, getAdminToken, setAdminToken, apiError } from '../services/api';
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
+import { patientAppHref } from '../lib/siteLinks';
 
 export default function AdminDashboard() {
-  const navigate = useNavigate();
-
   // Auth state — the password is verified server-side (POST /api/admin/login)
   // which issues a short-lived admin token sent as X-Admin-Key on API calls.
   const [password, setPassword] = useState('');
@@ -225,7 +223,7 @@ export default function AdminDashboard() {
           </form>
 
           <button
-            onClick={() => navigate('/settings')}
+            onClick={() => window.location.assign(patientAppHref)}
             style={{
               width: '100%',
               background: 'none',
@@ -281,7 +279,7 @@ export default function AdminDashboard() {
       <div style={{ padding: 'var(--sp-5) var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
         {/* Quick Back Navigation */}
         <button
-          onClick={() => navigate('/settings')}
+          onClick={() => window.location.assign(patientAppHref)}
           style={{
             alignSelf: 'flex-start',
             display: 'flex',

@@ -9,7 +9,13 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:patient": "vite build --outDir dist/patient",
+    "build:doctor": "vite build --mode doctor --outDir dist/doctor",
+    "build:admin": "vite build --mode admin --outDir dist/admin",
+    "build:all": "npm run build:patient && npm run build:doctor && npm run build:admin",
+    "dev:doctor": "vite --mode doctor",
+    "dev:admin": "vite --mode admin"
   },
   "dependencies": {
     "express": "^5.2.1",

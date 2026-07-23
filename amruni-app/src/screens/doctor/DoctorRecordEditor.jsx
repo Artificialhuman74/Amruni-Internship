@@ -70,7 +70,7 @@ export default function DoctorRecordEditor() {
     return (
       <div style={{ padding: 'var(--sp-8) var(--sp-6)', textAlign: 'center' }}>
         <p style={{ fontWeight: 600, color: 'var(--clr-ink)' }}>This consultation isn't available.</p>
-        <button className="btn btn--secondary btn--sm" style={{ width: 'auto', margin: 'var(--sp-4) auto 0' }} onClick={() => navigate('/doctor/today')}>
+        <button className="btn btn--secondary btn--sm" style={{ width: 'auto', margin: 'var(--sp-4) auto 0' }} onClick={() => navigate('/today')}>
           Back to Today
         </button>
       </div>
@@ -116,7 +116,7 @@ export default function DoctorRecordEditor() {
             {appointment.date} · {appointment.time}{appointment.reason ? ` · “${appointment.reason}”` : ''}
           </p>
         </div>
-        <button className="chip chip--sm" onClick={() => navigate(`/doctor/patients/${patient.id}`)}>Chart</button>
+        <button className="chip chip--sm" onClick={() => navigate(`/patients/${patient.id}`)}>Chart</button>
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)', marginTop: 'var(--sp-6)' }}>

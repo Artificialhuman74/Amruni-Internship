@@ -4,10 +4,10 @@ import { getDoctorToken } from '../../services/doctorApi';
 import { tap } from '../../lib/haptics';
 
 const TABS = [
-  { to: '/doctor/today', label: 'Today', icon: TodayIcon },
-  { to: '/doctor/schedule', label: 'Schedule', icon: ScheduleIcon },
-  { to: '/doctor/patients', label: 'Patients', icon: PatientsIcon },
-  { to: '/doctor/account', label: 'Profile', icon: ProfileIcon },
+  { to: '/today', label: 'Today', icon: TodayIcon },
+  { to: '/schedule', label: 'Schedule', icon: ScheduleIcon },
+  { to: '/patients', label: 'Patients', icon: PatientsIcon },
+  { to: '/account', label: 'Profile', icon: ProfileIcon },
 ];
 
 export default function DoctorShell() {
