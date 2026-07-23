@@ -77,7 +77,9 @@ function reducer(state, action) {
     case 'LOGOUT':
       return { ...initialState };
     case 'HYDRATE':
-      return action.payload;
+      // Merge, don't replace: the server payload only covers the synced slices,
+      // so client-only state (SOS session, contacts) must survive hydration.
+      return { ...state, ...action.payload };
     default:
       return state;
   }
@@ -89,21 +91,15 @@ export function AppProvider({ children }) {
   const [state, dispatch] = useReducer(reducer, initialState, (init) => {
     try {
       const saved = localStorage.getItem('amruni_state');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        return {
-          ...init,
-          ...parsed,
-          sos: parsed.sos || init.sos,
-        };
-      }
-      return init;
-      const parsed = saved ? JSON.parse(saved) : init;
+      if (!saved) return init;
+      const parsed = JSON.parse(saved);
+      // Fill in any slice a previous app version didn't persist.
+      const merged = { ...init, ...parsed, sos: parsed.sos || init.sos };
       // A session is only valid if the API token is still present.
-      if (parsed.auth?.isAuthenticated && !getToken()) {
-        return { ...parsed, auth: { ...parsed.auth, isAuthenticated: false } };
+      if (merged.auth?.isAuthenticated && !getToken()) {
+        return { ...merged, auth: { ...merged.auth, isAuthenticated: false } };
       }
-      return parsed;
+      return merged;
     } catch {
       return init;
     }

@@ -21,10 +21,11 @@ import numpy as np
 _DATA_DIR = Path(os.environ.get("DB_PATH", Path(__file__).resolve().parent.parent / "data" / "amruni.db")).parent
 MODEL_PATH = _DATA_DIR / "pcos_model.joblib"
 
-PCOS_XLSX = Path(os.environ.get(
-    "PCOS_XLSX_PATH",
-    Path(__file__).resolve().parent.parent.parent / "cycle tracking datasets" / "PCOS_data_without_infertility.xlsx",
-))
+# Resolved the same way as the cycle dataset: server/datasets/ first (so the
+# deployed service is self-contained), then the repo-root folder locally.
+from .ml import _find_dataset  # noqa: E402
+
+PCOS_XLSX = _find_dataset("PCOS_XLSX_PATH", "PCOS_data_without_infertility.xlsx")
 
 # questionnaire feature order → column in the dataset.
 # NB: the dataset's "Cycle length(days)" is a coded 0-12 scale uncorrelated with

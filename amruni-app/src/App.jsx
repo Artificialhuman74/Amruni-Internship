@@ -47,38 +47,6 @@ export default function App() {
     : CycleTracker;
 
   return (
-    <AnimatePresence mode="wait" initial={false}>
-      <Routes location={location} key={location.pathname}>
-        <Route path="/" element={<Splash />} />
-        <Route path="/phone" element={<PhoneEntry />} />
-        <Route path="/otp" element={<OTPVerify />} />
-        <Route
-          path="/onboarding/stage"
-          element={isAuthenticated ? <LifeStage /> : <Navigate to="/phone" replace />}
-        />
-        <Route
-          path="/onboarding/profile"
-          element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/phone" replace />}
-        />
-        <Route
-          element={
-            !isAuthenticated
-              ? <Navigate to="/phone" replace />
-              : !isOnboarded
-              ? <Navigate to="/onboarding/stage" replace />
-              : <AppShell />
-          }
-        >
-          <Route path="/home" element={<Home />} />
-          <Route path="/consult" element={<Telemedicine />} />
-          <Route path="/help" element={<MentalHealth />} />
-          <Route path="/track" element={<TrackScreen />} />
-          <Route path="/sos" element={<SOSCenter />} />
-          <Route path="/settings" element={<Settings />} />
-        </Route>
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </AnimatePresence>
     <VideoProvider>
       <AnimatePresence mode="wait" initial={false}>
         <Routes location={location} key={location.pathname}>
@@ -106,9 +74,10 @@ export default function App() {
             <Route path="/consult" element={<Telemedicine />} />
             <Route path="/help" element={<MentalHealth />} />
             <Route path="/track" element={<TrackScreen />} />
+            <Route path="/sos" element={<SOSCenter />} />
             <Route path="/pcos-check" element={<PcosCheck />} />
             <Route path="/settings" element={<Settings />} />
-            
+
             {/* Video Consultation nested routes inside AppShell */}
             <Route path="/doctor/:id" element={<DoctorProfile />} />
             <Route path="/appointment/:id" element={<BookAppointment />} />
@@ -116,7 +85,7 @@ export default function App() {
             <Route path="/consultation/:id" element={<ConsultationSummary />} />
             <Route path="/doctors" element={<Navigate to="/consult" replace />} />
           </Route>
-          
+
           {/* Admin Dashboard */}
           <Route path="/admin" element={<AdminDashboard />} />
 
@@ -130,13 +99,13 @@ export default function App() {
             <Route path="/doctor/record/:appointmentId" element={<DoctorRecordEditor />} />
             <Route path="/doctor/account" element={<DoctorAccount />} />
           </Route>
-          
+
           {/* Immersive Full Screen Video Consultation outside AppShell */}
           <Route
             path="/video/:appointmentId"
             element={isAuthenticated ? <VideoCall /> : <Navigate to="/phone" replace />}
           />
-          
+
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </AnimatePresence>

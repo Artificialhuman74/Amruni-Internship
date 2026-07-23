@@ -22,11 +22,27 @@ import numpy as np
 _DATA_DIR = Path(os.environ.get("DB_PATH", Path(__file__).resolve().parent.parent / "data" / "amruni.db")).parent
 MODEL_PATH = _DATA_DIR / "cycle_model.joblib"
 
-# FedCycle .sav: configurable, defaults to the repo's dataset folder.
-FEDCYCLE_PATH = Path(os.environ.get(
-    "FEDCYCLE_PATH",
-    Path(__file__).resolve().parent.parent.parent / "cycle tracking datasets" / "FedCycleData071012__2_.sav",
-))
+# FedCycle .sav. Looks in server/datasets/ first so the server directory is
+# self-contained for deployment (Railway root = server/), then falls back to
+# the repo-root folder for local development. Override with FEDCYCLE_PATH.
+_SERVER_DIR = Path(__file__).resolve().parent.parent
+_FEDCYCLE_NAME = "FedCycleData071012__2_.sav"
+
+
+def _find_dataset(env_var: str, name: str) -> Path:
+    override = os.environ.get(env_var)
+    if override:
+        return Path(override)
+    for candidate in (
+        _SERVER_DIR / "datasets" / name,
+        _SERVER_DIR.parent / "cycle tracking datasets" / name,
+    ):
+        if candidate.exists():
+            return candidate
+    return _SERVER_DIR / "datasets" / name  # nonexistent → graceful fallback
+
+
+FEDCYCLE_PATH = _find_dataset("FEDCYCLE_PATH", _FEDCYCLE_NAME)
 
 FEATURES = ["last_len", "prev_len", "mean_recent", "std_recent", "n_cycles", "age"]
 QUANTILES = {"lo": 0.15, "mid": 0.5, "hi": 0.85}

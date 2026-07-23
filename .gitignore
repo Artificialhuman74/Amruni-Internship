@@ -34,3 +34,4 @@ server/__pycache__/
 # ML model cache (retrained from dataset on boot)
 server/data/cycle_model.joblib
 server/data/pcos_model.joblib
+*.pyc
