@@ -19,6 +19,10 @@ from fastapi import HTTPException, Request
 from .db import get_db
 
 IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
+# Development / demo escape hatch: return the OTP code to the client even in
+# production. Lets the app be tested end-to-end before an SMS gateway is wired.
+# Turn OFF (unset) once real SMS delivery is in place.
+EXPOSE_OTP = os.environ.get("EXPOSE_OTP", "").strip().lower() in ("1", "true", "yes", "on")
 JWT_SECRET = os.environ.get("JWT_SECRET") or (None if IS_PROD else "amruni-dev-secret-do-not-use-in-prod")
 if not JWT_SECRET:
     print("FATAL: JWT_SECRET must be set in production.", file=sys.stderr)
@@ -94,9 +98,10 @@ def request_otp(phone: str) -> dict:
     is_test = phone in _test_numbers()
     if not is_test:
         send_sms(phone, code)
-    # Return the code to the client when it's safe to: outside production, or for
-    # a designated test number (its code is fixed and known anyway).
-    if not IS_PROD or is_test:
+    # Return the code to the client when it's safe to: outside production, for a
+    # designated test number (its code is fixed and known anyway), or when
+    # EXPOSE_OTP is explicitly enabled for a demo build without an SMS gateway.
+    if not IS_PROD or is_test or EXPOSE_OTP:
         return {"devCode": code}
     return {}
 
