@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db
-from . import ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos
+from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos
 
 IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
 
@@ -93,6 +93,10 @@ def health():
         "ok": True,
         "env": "production" if IS_PROD else "development",
         "modelsReady": ml._models is not None and pcos._models is not None,
+        # Deploy diagnostics: which commit is running and whether the OTP demo
+        # escape hatch is active. Lets us confirm a redeploy actually took.
+        "commit": os.environ.get("RAILWAY_GIT_COMMIT_SHA", "local")[:8],
+        "exposeOtp": auth.EXPOSE_OTP,
     }
 
 
