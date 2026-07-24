@@ -4,6 +4,7 @@ import { useVideoCall } from '../hooks/useVideoCall';
 import { appointmentApi } from '../services/appointmentApi';
 import { apiError } from '../services/api';
 import DoctorAvatar from '../components/DoctorAvatar';
+import { useSosLift } from '../lib/useSosLift';
 import BottomSheet from '../components/BottomSheet';
 import SuccessCheck from '../components/SuccessCheck';
 import { confirm as confirmHaptic } from '../lib/haptics';
@@ -21,6 +22,7 @@ export default function BookAppointment() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { currentDoctor, setActiveAppointment } = useVideoCall();
+  useSosLift(); // this screen has a fixed bottom CTA — keep SOS clear of it
 
   const consultMode = searchParams.get('mode') || 'video';
 

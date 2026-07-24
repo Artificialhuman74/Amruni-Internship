@@ -103,10 +103,16 @@ def api_not_found(rest: str):
     return JSONResponse(status_code=404, content={"error": f"No such endpoint: /api/{rest}"})
 
 
-# ---------- static frontend (single-process deployment) ----------
+# ---------- static frontend (optional single-process deployment) ----------
 
+# Serve a built SPA only if one is present as dist/index.html + dist/assets.
+# Since the frontend split into per-app builds (dist/patient, dist/doctor,
+# dist/admin), a bare dist/ has no index.html — so this stays off and the API
+# runs headless, which is the norm now (each app is hosted separately).
 DIST = Path(__file__).resolve().parent.parent.parent / "amruni-app" / "dist"
-if DIST.exists():
+_SERVE_SPA = (DIST / "index.html").is_file() and (DIST / "assets").is_dir()
+
+if _SERVE_SPA:
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
     @app.get("/{path:path}", include_in_schema=False)
@@ -116,7 +122,8 @@ if DIST.exists():
             return FileResponse(candidate)
         return FileResponse(DIST / "index.html")
 else:
-    # API-only deployment (e.g. Railway root = server/, mobile clients only).
+    # API-only deployment (Railway root = server/, or split frontends): the
+    # apps are hosted separately and just call /api/*.
     @app.get("/", include_in_schema=False)
     def root():
         return {

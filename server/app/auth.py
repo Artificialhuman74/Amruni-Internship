@@ -42,6 +42,23 @@ def is_valid_phone(phone: str) -> bool:
     return bool(phone and PHONE_RE.match(phone))
 
 
+def _test_numbers() -> dict[str, str]:
+    """Fixed-OTP test numbers, à la Firebase Auth. TEST_OTP_NUMBERS is a
+    comma-separated list of `phone:code` pairs (6-digit codes). These numbers
+    accept their fixed code without SMS — handy for developing the mobile app
+    and for automated tests — while every other number goes through the normal
+    random-OTP flow and cannot be impersonated."""
+    out = {}
+    for pair in os.environ.get("TEST_OTP_NUMBERS", "").split(","):
+        pair = pair.strip()
+        if ":" in pair:
+            phone, code = pair.split(":", 1)
+            phone, code = phone.strip(), code.strip()
+            if PHONE_RE.match(phone) and code.isdigit() and len(code) == 6:
+                out[phone] = code
+    return out
+
+
 def _hash_code(phone: str, code: str) -> str:
     return hashlib.sha256(f"{phone}:{code}:{JWT_SECRET}".encode()).hexdigest()
 
@@ -62,7 +79,8 @@ def request_otp(phone: str) -> dict:
             if row["sent_count"] >= OTP_MAX_SENDS and now < row["expires_at"]:
                 raise HTTPException(429, "Too many codes requested. Try again later.")
 
-        code = f"{secrets.randbelow(900000) + 100000}"
+        # Test numbers get their fixed code; everyone else a fresh random one.
+        code = _test_numbers().get(phone) or f"{secrets.randbelow(900000) + 100000}"
         sent_count = row["sent_count"] + 1 if row and now < row["expires_at"] else 1
         db.execute(
             """INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, sent_count, last_sent)
@@ -72,8 +90,15 @@ def request_otp(phone: str) -> dict:
                  attempts = 0, sent_count = excluded.sent_count, last_sent = excluded.last_sent""",
             (phone, _hash_code(phone, code), now + OTP_TTL, sent_count, now),
         )
-    send_sms(phone, code)
-    return {} if IS_PROD else {"devCode": code}
+    # Test numbers never hit the SMS path; real numbers do (or the log fallback).
+    is_test = phone in _test_numbers()
+    if not is_test:
+        send_sms(phone, code)
+    # Return the code to the client when it's safe to: outside production, or for
+    # a designated test number (its code is fixed and known anyway).
+    if not IS_PROD or is_test:
+        return {"devCode": code}
+    return {}
 
 
 def _consume_otp(db, phone: str, code: str):

@@ -69,10 +69,13 @@ export default function SOSButton() {
         onClick={handlePress}
         style={{
           position: 'fixed',
-          bottom: 'calc(var(--nav-height, 72px) + var(--sp-4))',
-          right: 'var(--sp-5)',
-          zIndex: 'var(--z-nav)', // The prompt said var(--z-modal) but nav is fine for normal state
+          // Sits above the nav, and lifts further on screens that raise
+          // --sos-lift (those with a fixed bottom CTA) so it never overlaps.
+          bottom: 'calc(var(--nav-height, 72px) + env(safe-area-inset-bottom) + var(--sos-lift, 0px) + var(--sp-3))',
+          right: 'var(--sp-4)',
+          zIndex: 'var(--z-nav)',
           width: 56, height: 56,
+          transition: 'bottom var(--dur-base) var(--ease-expo)',
           borderRadius: 'var(--radius-full)',
           background: 'var(--clr-emergency)',
           color: 'var(--clr-emergency-on)',

@@ -79,7 +79,7 @@ export default function Pregnancy() {
   const trimester = weeks <= 12 ? 1 : weeks <= 27 ? 2 : 3;
 
   return (
-    <div className="screen screen--light">
+    <div className="screen screen--light preg-tint">
       <div style={{ padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-8)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
 
         {/* Header */}

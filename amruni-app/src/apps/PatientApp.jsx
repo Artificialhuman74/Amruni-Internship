@@ -7,8 +7,10 @@ import AppShell from '../components/AppShell';
 import Splash from '../screens/Splash';
 import PhoneEntry from '../screens/PhoneEntry';
 import OTPVerify from '../screens/OTPVerify';
-import LifeStage from '../screens/LifeStage';
-import ProfileSetup from '../screens/ProfileSetup';
+import PrivacyFirst from '../screens/onboarding/PrivacyFirst';
+import NameStep from '../screens/onboarding/NameStep';
+import DobStep from '../screens/onboarding/DobStep';
+import GoalsStep from '../screens/onboarding/GoalsStep';
 import Home from '../screens/Home';
 import Telemedicine from '../screens/Telemedicine';
 import MentalHealth from '../screens/MentalHealth';
@@ -17,6 +19,7 @@ import Pregnancy from '../screens/Pregnancy';
 import Settings from '../screens/Settings';
 import SOSCenter from '../screens/SOSCenter';
 import PcosCheck from '../screens/PcosCheck';
+import ComingSoon from '../screens/ComingSoon';
 
 import DoctorProfile from '../screens/DoctorProfile';
 import BookAppointment from '../screens/BookAppointment';
@@ -30,11 +33,12 @@ export default function PatientApp() {
   const location = useLocation();
   const { state } = useApp();
   const { isAuthenticated } = state.auth;
-  const { isOnboarded, lifeStage } = state.user;
+  const { isOnboarded } = state.user;
 
-  const TrackScreen = (lifeStage === 'postpartum' || lifeStage === 'elderly')
-    ? Pregnancy
-    : CycleTracker;
+  // Track shows the pregnancy journey only when pregnancy mode is on
+  // (set by the onboarding goal or the Profile toggle) — never inferred
+  // from life stage, which is what caused it to default to pregnancy.
+  const TrackScreen = state.settings.pregnancyMode ? Pregnancy : CycleTracker;
 
   return (
     <VideoProvider>
@@ -43,20 +47,21 @@ export default function PatientApp() {
           <Route path="/" element={<Splash />} />
           <Route path="/phone" element={<PhoneEntry />} />
           <Route path="/otp" element={<OTPVerify />} />
-          <Route
-            path="/onboarding/stage"
-            element={isAuthenticated ? <LifeStage /> : <Navigate to="/phone" replace />}
-          />
-          <Route
-            path="/onboarding/profile"
-            element={isAuthenticated ? <ProfileSetup /> : <Navigate to="/phone" replace />}
-          />
+          {['privacy', 'name', 'dob', 'goals'].map((step, i) => (
+            <Route
+              key={step}
+              path={`/onboarding/${step}`}
+              element={isAuthenticated
+                ? [<PrivacyFirst />, <NameStep />, <DobStep />, <GoalsStep />][i]
+                : <Navigate to="/phone" replace />}
+            />
+          ))}
           <Route
             element={
               !isAuthenticated
                 ? <Navigate to="/phone" replace />
                 : !isOnboarded
-                ? <Navigate to="/onboarding/stage" replace />
+                ? <Navigate to="/onboarding/privacy" replace />
                 : <AppShell />
             }
           >
@@ -66,6 +71,7 @@ export default function PatientApp() {
             <Route path="/track" element={<TrackScreen />} />
             <Route path="/sos" element={<SOSCenter />} />
             <Route path="/pcos-check" element={<PcosCheck />} />
+            <Route path="/coming-soon" element={<ComingSoon />} />
             <Route path="/settings" element={<Settings />} />
 
             {/* Booking journey */}

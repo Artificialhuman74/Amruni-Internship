@@ -376,6 +376,7 @@ img, svg { display: block; }
 .phase-banner--follicular { background: var(--clr-gold-soft); }
 .phase-banner--ovulation { background: var(--clr-sage-soft); }
 .phase-banner--luteal { background: var(--clr-mauve-soft); }
+.phase-banner--pregnancy { background: var(--clr-preg-soft); }
 .phase-banner__icon {
   width: 48px; height: 48px; border-radius: var(--radius-full);
   display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0;
@@ -1495,4 +1496,121 @@ img, svg { display: block; }
 
 @media (prefers-reduced-motion: reduce) {
   .skel { animation: none; }
+}
+
+/* ── Onboarding (Flo-style flow) ──────────────────────────────── */
+:root {
+  --hero-gold:    oklch(0.80 0.10 78);
+  --hero-amber:   oklch(0.75 0.12 55);
+  --hero-blush:   oklch(0.86 0.06 20);
+  --hero-blush-2: oklch(0.90 0.04 350);
+}
+
+/* Consent rows on the Privacy screen */
+.consent-row {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  width: 100%; text-align: left;
+  padding: var(--sp-4);
+  background: var(--clr-surface);
+  border: 1.5px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.consent-row--on { border-color: var(--clr-brand-muted); background: var(--clr-brand-soft); }
+.consent-row__box {
+  flex-shrink: 0; width: 24px; height: 24px; margin-top: 1px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--clr-border);
+  background: var(--clr-surface);
+  color: white;
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.consent-row--on .consent-row__box { background: var(--clr-brand); border-color: var(--clr-brand); }
+.consent-row__label { font-size: var(--text-sm); color: var(--clr-ink); line-height: var(--leading-snug); }
+.consent-row__label u { color: var(--clr-brand); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+
+/* Name entry — large, quiet, centred */
+.onboard-name-input {
+  margin-top: var(--sp-8);
+  width: 100%;
+  background: none;
+  border: none;
+  border-bottom: 2px solid var(--clr-border);
+  padding: var(--sp-3) var(--sp-2);
+  font-family: var(--font-display);
+  font-size: var(--text-2xl);
+  font-weight: 600;
+  color: var(--clr-ink);
+  text-align: center;
+  transition: border-color var(--dur-base) var(--ease-expo);
+}
+.onboard-name-input::placeholder { color: var(--clr-ink-subtle); font-weight: 500; }
+.onboard-name-input:focus { outline: none; border-bottom-color: var(--clr-brand); }
+
+/* Goal tiles */
+.goal-tile {
+  display: flex; align-items: center; gap: var(--sp-4);
+  width: 100%;
+  padding: var(--sp-4);
+  background: var(--clr-surface);
+  border: 1.5px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast), box-shadow var(--dur-fast);
+}
+.goal-tile--on { border-color: var(--clr-brand); background: var(--clr-brand-soft); box-shadow: var(--shadow-sm); }
+.goal-tile__icon {
+  flex-shrink: 0; width: 44px; height: 44px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 24px;
+  background: var(--clr-surface-2);
+  border-radius: var(--radius-md);
+}
+.goal-tile--on .goal-tile__icon { background: oklch(1 0 0 / 0.6); }
+.goal-tile__title { display: block; font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); }
+.goal-tile__desc { display: block; font-size: var(--text-xs); color: var(--clr-ink-muted); margin-top: 2px; }
+.goal-tile__check {
+  flex-shrink: 0; width: 22px; height: 22px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--clr-border);
+  display: flex; align-items: center; justify-content: center;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.goal-tile__check--on { background: var(--clr-brand); border-color: var(--clr-brand); }
+
+/* ── Pregnancy mode palette (warm rose-gold, distinct from brand crimson) ── */
+:root {
+  --clr-preg:          oklch(0.55 0.13 12);
+  --clr-preg-hover:    oklch(0.48 0.13 12);
+  --clr-preg-active:   oklch(0.43 0.13 10);
+  --clr-preg-soft:     oklch(0.95 0.035 28);
+  --clr-preg-muted:    oklch(0.86 0.07 20);
+  --clr-preg-gold:     oklch(0.80 0.08 58);
+  --clr-preg-gold-soft: oklch(0.93 0.045 62);
+}
+
+/* Applied to the pregnancy Track screen: retint the brand tokens locally so
+   every crimson accent becomes warm rose-gold with no per-element edits. */
+.preg-tint {
+  --clr-brand:        var(--clr-preg);
+  --clr-brand-hover:  var(--clr-preg-hover);
+  --clr-brand-active: var(--clr-preg-active);
+  --clr-brand-soft:   var(--clr-preg-soft);
+  --clr-brand-muted:  var(--clr-preg-muted);
+  --shadow-brand: 0 4px 16px oklch(0.55 0.13 12 / 0.28);
+}
+
+/* The pregnancy Bloom overlay — full-screen within the app column, isolated
+   so its animation doesn't repaint the rest of the tree. */
+.bloom-overlay {
+  position: fixed;
+  inset: 0;
+  margin: 0 auto;
+  max-width: 430px;
+  z-index: var(--z-modal);
+  overflow: hidden;
+  cursor: default;
+  contain: layout paint style;
 }

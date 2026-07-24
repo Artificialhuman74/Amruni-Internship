@@ -45,7 +45,7 @@ export default function OTPVerify() {
       if (res.user.isOnboarded) {
         navigate('/home', { replace: true });
       } else {
-        navigate('/onboarding/stage', { replace: true });
+        navigate('/onboarding/privacy', { replace: true });
       }
     } catch (err) {
       setError(true);
