@@ -35,3 +35,6 @@ server/__pycache__/
 server/data/cycle_model.joblib
 server/data/pcos_model.joblib
 *.pyc
+
+# build outputs per target
+amruni-app/dist/

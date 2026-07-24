@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { meApi, apiError } from '../services/api';
 import { useToast } from '../components/Toast';
 import { tap, confirm as confirmHaptic } from '../lib/haptics';
+import { useSosLift } from '../lib/useSosLift';
 
 // Self-reportable questions behind the clinical PCOS model (AUC 0.88).
 const QUESTIONS = [
@@ -36,6 +37,7 @@ export default function PcosCheck() {
   const reduced = useReducedMotion();
   const toast = useToast();
   const { state } = useApp();
+  useSosLift(); // fixed bottom CTA — keep SOS clear of it
 
   const [step, setStep] = useState(0); // 0..QUESTIONS.length-1, then 'result'
   const [answers, setAnswers] = useState({});

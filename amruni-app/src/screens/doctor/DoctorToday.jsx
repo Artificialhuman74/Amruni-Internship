@@ -125,7 +125,7 @@ export default function DoctorToday() {
                   <button
                     className="btn btn--dark btn--sm"
                     style={{ flex: 1 }}
-                    onClick={() => navigate(`/doctor/record/${nextUp.appointmentId}`)}
+                    onClick={() => navigate(`/record/${nextUp.appointmentId}`)}
                   >
                     Write record
                   </button>
@@ -143,7 +143,7 @@ export default function DoctorToday() {
                   : 'Patients book the moment you publish availability.'}
               </p>
               {doneToday.length === 0 && (
-                <button className="btn btn--secondary btn--sm" style={{ width: 'auto', margin: 'var(--sp-4) auto 0' }} onClick={() => navigate('/doctor/schedule')}>
+                <button className="btn btn--secondary btn--sm" style={{ width: 'auto', margin: 'var(--sp-4) auto 0' }} onClick={() => navigate('/schedule')}>
                   Publish slots
                 </button>
               )}
@@ -170,7 +170,7 @@ export default function DoctorToday() {
                     </div>
                     <button
                       className="chip chip--sm"
-                      onClick={() => navigate(`/doctor/record/${appt.appointmentId}`)}
+                      onClick={() => navigate(`/record/${appt.appointmentId}`)}
                     >
                       Record
                     </button>
@@ -191,7 +191,7 @@ export default function DoctorToday() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink-muted)' }}>{appt.patient?.name}</p>
                     </div>
-                    <button className="chip chip--sm" onClick={() => navigate(`/doctor/record/${appt.appointmentId}`)}>
+                    <button className="chip chip--sm" onClick={() => navigate(`/record/${appt.appointmentId}`)}>
                       {appt.hasRecord ? 'View record' : 'Add record'}
                     </button>
                   </div>

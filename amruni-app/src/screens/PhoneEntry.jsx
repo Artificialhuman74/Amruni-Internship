@@ -4,6 +4,7 @@ import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { authApi, apiError } from '../services/api';
 import Logo from '../components/Logo';
+import { doctorAppHref } from '../lib/siteLinks';
 
 export default function PhoneEntry() {
   const navigate = useNavigate();
@@ -152,12 +153,12 @@ export default function PhoneEntry() {
           </span>
           . Your data is never sold.
           <br />
-          <button
-            onClick={() => navigate('/doctor')}
-            style={{ color: 'var(--clr-ink-muted)', textDecoration: 'underline', fontSize: 'inherit', marginTop: 'var(--sp-2)' }}
+          <a
+            href={doctorAppHref}
+            style={{ color: 'var(--clr-ink-muted)', textDecoration: 'underline', fontSize: 'inherit', marginTop: 'var(--sp-2)', display: 'inline-block' }}
           >
             Practitioner? Sign in here
-          </button>
+          </a>
         </motion.p>
       </div>
     </div>

@@ -44,7 +44,7 @@ export default function Splash() {
         if (state.auth.isAuthenticated && state.user.isOnboarded) {
           navigate('/home', { replace: true });
         } else if (state.auth.isAuthenticated) {
-          navigate('/onboarding/stage', { replace: true });
+          navigate('/onboarding/privacy', { replace: true });
         } else {
           navigate('/phone', { replace: true });
         }

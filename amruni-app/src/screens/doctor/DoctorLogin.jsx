@@ -5,6 +5,7 @@ import { doctorApi, doctorApiError, getDoctorToken } from '../../services/doctor
 import OTPInput from '../../components/OTPInput';
 import Logo from '../../components/Logo';
 import { confirm as confirmHaptic } from '../../lib/haptics';
+import { patientAppHref } from '../../lib/siteLinks';
 
 export default function DoctorLogin() {
   const navigate = useNavigate();
@@ -18,7 +19,7 @@ export default function DoctorLogin() {
   const isValidPhone = /^[6-9]\d{9}$/.test(phone);
 
   if (getDoctorToken()) {
-    return <Navigate to="/doctor/today" replace />;
+    return <Navigate to="/today" replace />;
   }
 
   async function sendOtp(e) {
@@ -45,7 +46,7 @@ export default function DoctorLogin() {
     try {
       await doctorApi.verifyOtp(phone, code);
       confirmHaptic();
-      navigate('/doctor/today', { replace: true });
+      navigate('/today', { replace: true });
     } catch (err) {
       setError(doctorApiError(err, "That code didn't match. Try again."));
       setOtp('');
@@ -154,9 +155,9 @@ export default function DoctorLogin() {
         <div style={{ flex: 1 }} />
         <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', textAlign: 'center', paddingBottom: 'calc(env(safe-area-inset-bottom) + var(--sp-6))' }}>
           Looking for care instead?{' '}
-          <button onClick={() => navigate('/phone')} style={{ color: 'var(--clr-ink-muted)', textDecoration: 'underline', fontSize: 'inherit' }}>
+          <a href={patientAppHref} style={{ color: 'var(--clr-ink-muted)', textDecoration: 'underline', fontSize: 'inherit' }}>
             Go to the patient app
-          </button>
+          </a>
         </p>
       </div>
     </div>

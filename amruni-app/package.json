@@ -9,12 +9,19 @@
     "dev:full": "concurrently \"npm run dev\" \"npm run dev:server\"",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "build:patient": "vite build --outDir dist/patient",
+    "build:doctor": "vite build --mode doctor --outDir dist/doctor",
+    "build:admin": "vite build --mode admin --outDir dist/admin",
+    "build:all": "npm run build:patient && npm run build:doctor && npm run build:admin",
+    "dev:doctor": "vite --mode doctor",
+    "dev:admin": "vite --mode admin",
+    "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
+    "axios": "^1.18.1",
     "express": "^5.2.1",
     "firebase": "^12.15.0",
-    "axios": "^1.18.1",
     "framer-motion": "^12.40.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
@@ -31,6 +38,7 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "typescript": "^7.0.2",
     "vite": "^8.0.12"
   }
 }

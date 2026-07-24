@@ -4,7 +4,7 @@ import { getToken, setToken, meApi } from '../services/api';
 
 const initialState = {
   auth: { phone: null, isAuthenticated: false },
-  user: { name: null, dob: null, lifeStage: null, isOnboarded: false },
+  user: { name: null, dob: null, lifeStage: null, goal: null, isOnboarded: false },
   cycle: {
     lastPeriodStart: null,
     cycleLength: 28,
@@ -12,7 +12,7 @@ const initialState = {
     loggedDays: {},   // { 'YYYY-MM-DD': { flow, symptoms: [] } }
   },
   pregnancy: { weeksPregnant: 16, dueDate: null, trustedContacts: [] },
-  settings: { notifications: true, anonymousMode: false },
+  settings: { notifications: true, anonymousMode: false, pregnancyMode: false },
   sos: {
     contacts: [],          // [{ id, name, phone, relation, userId, createdAt }]
     alerts: [],            // [{ id, message, sentTo, userId, timestamp }]
@@ -20,11 +20,14 @@ const initialState = {
   },
 };
 
-// Maps the server's /me payload onto the client state shape.
-export function stateFromServer(payload, phone) {
+// Maps the server's /me payload onto the client state shape. `prev` is the
+// current client state; fields the server doesn't yet persist (goal,
+// pregnancyMode) are carried over from it so hydration never wipes them.
+export function stateFromServer(payload, phone, prev = {}) {
   return {
     auth: { phone: payload.user.phone || phone, isAuthenticated: true },
     user: {
+      goal: prev.user?.goal ?? null,
       name: payload.user.name,
       dob: payload.user.dob,
       lifeStage: payload.user.lifeStage,
@@ -32,7 +35,7 @@ export function stateFromServer(payload, phone) {
     },
     cycle: payload.cycle,
     pregnancy: payload.pregnancy,
-    settings: payload.settings,
+    settings: { pregnancyMode: prev.settings?.pregnancyMode ?? false, ...payload.settings },
   };
 }
 
@@ -125,7 +128,7 @@ export function AppProvider({ children }) {
     meApi.get()
       .then((payload) => {
         if (cancelled) return;
-        dispatch({ type: 'HYDRATE', payload: stateFromServer(payload, state.auth.phone) });
+        dispatch({ type: 'HYDRATE', payload: stateFromServer(payload, state.auth.phone, state) });
         hydratedRef.current = true;
       })
       .catch((err) => {
@@ -162,7 +165,7 @@ export function AppProvider({ children }) {
   // Hydration entry point for the OTP screen: it already has the /me payload
   // from verify-otp, so it hydrates directly instead of re-fetching.
   function hydrateFromServer(payload, phone) {
-    dispatch({ type: 'HYDRATE', payload: stateFromServer(payload, phone) });
+    dispatch({ type: 'HYDRATE', payload: stateFromServer(payload, phone, state) });
     hydratedRef.current = true;
   }
 

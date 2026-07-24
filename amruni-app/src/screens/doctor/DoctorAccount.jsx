@@ -18,7 +18,7 @@ export default function DoctorAccount() {
 
   function signOut() {
     setDoctorSession(null);
-    navigate('/doctor', { replace: true });
+    navigate('/', { replace: true });
   }
 
   if (!doctor) return null;

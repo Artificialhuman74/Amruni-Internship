@@ -19,6 +19,8 @@ export default function Home() {
   const navigate = useNavigate();
   const { state } = useApp();
   const { name, lifeStage } = state.user;
+  const { pregnancyMode } = state.settings;
+  const { weeksPregnant } = state.pregnancy;
   const cycleData = useCycleData(state);
 
   const [appointments, setAppointments] = useState([]);
@@ -50,8 +52,8 @@ export default function Home() {
         );
         setAppointments(activeAppointments);
 
-        // Get recommendations based on selected lifeStage
-        const targetSpecialty = getTargetSpecialty(lifeStage);
+        // Pregnancy mode takes over the recommendations; otherwise map by stage.
+        const targetSpecialty = pregnancyMode ? 'Pregnancy' : getTargetSpecialty(lifeStage);
         const matching = doctorsList.filter(
           d => d.specialty.toLowerCase() === targetSpecialty.toLowerCase()
         );
@@ -69,7 +71,7 @@ export default function Home() {
       }
     }
     loadData();
-  }, [lifeStage]);
+  }, [lifeStage, pregnancyMode]);
 
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
@@ -103,8 +105,28 @@ export default function Home() {
           </div>
         </motion.div>
 
+        {/* Pregnancy journey widget — replaces the cycle widget when pregnancy mode is on */}
+        {pregnancyMode && (
+          <motion.div variants={fadeUp}>
+            <button
+              onClick={() => navigate('/track')}
+              className="phase-banner phase-banner--pregnancy"
+              style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }}
+              aria-label="Pregnancy journey"
+            >
+              <div className="phase-banner__icon" style={{ background: 'var(--clr-preg)', color: 'white' }}>🤰</div>
+              <div style={{ flex: 1 }}>
+                <div className="phase-banner__day">Week {weeksPregnant} · {trimesterOf(weeksPregnant)}</div>
+                <div className="phase-banner__name">Your pregnancy journey</div>
+                <div className="phase-banner__desc">{Math.max(0, 40 - weeksPregnant)} weeks to go — tap for this week's update</div>
+              </div>
+              <ChevronRight />
+            </button>
+          </motion.div>
+        )}
+
         {/* Phase / cycle widget */}
-        {(lifeStage === 'reproductive' || lifeStage === 'adolescent') && cycleData.phase && (
+        {!pregnancyMode && (lifeStage === 'reproductive' || lifeStage === 'adolescent') && cycleData.phase && (
           <motion.div variants={fadeUp}>
             <button
               onClick={() => navigate('/track')}
@@ -146,10 +168,10 @@ export default function Home() {
               <div className="quick-action__icon" style={{ background: 'var(--clr-sky-soft)', fontSize: 20 }}>🩺</div>
               <span className="quick-action__label">Book Consult</span>
             </button>
-            {lifeStage !== 'elderly' && (
-              <button className="quick-action" onClick={() => navigate('/track')} aria-label="Track cycle or health">
-                <div className="quick-action__icon" style={{ background: 'var(--clr-sage-soft)', fontSize: 20 }}>📅</div>
-                <span className="quick-action__label">Track Health</span>
+            {(lifeStage !== 'elderly' || pregnancyMode) && (
+              <button className="quick-action" onClick={() => navigate('/track')} aria-label={pregnancyMode ? 'Track your pregnancy' : 'Track cycle or health'}>
+                <div className="quick-action__icon" style={{ background: pregnancyMode ? 'var(--clr-preg-soft)' : 'var(--clr-sage-soft)', fontSize: 20 }}>{pregnancyMode ? '🤰' : '📅'}</div>
+                <span className="quick-action__label">{pregnancyMode ? 'Pregnancy' : 'Track Health'}</span>
               </button>
             )}
             <button className="quick-action" onClick={() => navigate('/help')} aria-label="Get mental health support">
@@ -262,7 +284,7 @@ export default function Home() {
                 Today's insight
               </p>
               <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink-on-dark)', lineHeight: 'var(--leading-snug)', textWrap: 'pretty' }}>
-                {tipFor(lifeStage)}
+                {tipFor(lifeStage, pregnancyMode)}
               </p>
             </div>
             <div style={{ position: 'absolute', right: -20, bottom: -20, fontSize: 80, opacity: 0.08 }} aria-hidden="true">
@@ -283,7 +305,16 @@ function avatarFor(lifeStage) {
   return map[lifeStage] ?? '👤';
 }
 
-function tipFor(lifeStage) {
+function trimesterOf(weeks) {
+  if (weeks <= 13) return 'First trimester';
+  if (weeks <= 27) return 'Second trimester';
+  return 'Third trimester';
+}
+
+function tipFor(lifeStage, pregnancyMode) {
+  if (pregnancyMode) {
+    return 'Staying hydrated and gently active supports both you and your baby. Small walks count.';
+  }
   const tips = {
     adolescent: 'Iron-rich foods like spinach and lentils can help during and after your period.',
     reproductive: 'Tracking your cycle for 3 months gives you a clearer picture of your hormonal patterns.',

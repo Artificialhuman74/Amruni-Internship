@@ -119,7 +119,7 @@ export default function DoctorPatientChart() {
     return (
       <div style={{ padding: 'var(--sp-8) var(--sp-6)', textAlign: 'center' }}>
         <p style={{ fontWeight: 600, color: 'var(--clr-ink)' }}>This chart isn't available.</p>
-        <button className="btn btn--secondary btn--sm" style={{ width: 'auto', margin: 'var(--sp-4) auto 0' }} onClick={() => navigate('/doctor/patients')}>
+        <button className="btn btn--secondary btn--sm" style={{ width: 'auto', margin: 'var(--sp-4) auto 0' }} onClick={() => navigate('/patients')}>
           Back to patients
         </button>
       </div>
@@ -299,7 +299,7 @@ export default function DoctorPatientChart() {
                       <button
                         className="chip chip--sm"
                         style={{ marginTop: 'var(--sp-3)' }}
-                        onClick={() => navigate(`/doctor/record/${r.appointmentId}`)}
+                        onClick={() => navigate(`/record/${r.appointmentId}`)}
                       >
                         Edit record
                       </button>

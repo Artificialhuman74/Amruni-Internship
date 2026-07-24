@@ -4,6 +4,8 @@ import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { LIFE_STAGES } from '../data/mock';
 import BottomSheet from '../components/BottomSheet';
+import PregnancyBloom from '../components/PregnancyBloom';
+import { AnimatePresence } from 'framer-motion';
 import { useToast } from '../components/Toast';
 import { confirm } from '../lib/haptics';
 import { getContacts, addContact, deleteContact } from '../lib/sosService';
@@ -14,7 +16,19 @@ export default function Settings() {
   const toast = useToast();
   const { state, dispatch } = useApp();
   const { name, dob, lifeStage } = state.user;
-  const { notifications, anonymousMode } = state.settings;
+  const { notifications, anonymousMode, pregnancyMode } = state.settings;
+  const [bloom, setBloom] = useState(false);
+
+  function togglePregnancy() {
+    const next = !pregnancyMode;
+    dispatch({ type: 'SET_SETTINGS', payload: { pregnancyMode: next } });
+    confirm();
+    if (next) {
+      setBloom(true); // The Bloom plays, then we land on the reshaped Home
+    } else {
+      toast('Pregnancy mode off', { icon: '🌸' });
+    }
+  }
 
   const [stageSheet, setStageSheet] = useState(false);
   const [caretakerSheet, setCaretakerSheet] = useState(false);
@@ -180,6 +194,28 @@ export default function Settings() {
                 <div className="settings-item__desc">How your data is used and protected</div>
               </div>
               <ChevronRight />
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Your experience */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}>
+          <div className="settings-group">
+            <div className="settings-group__title">Your experience</div>
+            <div className="settings-item">
+              <div className="settings-item__icon" style={{ background: 'var(--clr-preg-soft)' }}>🤰</div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label">Pregnancy mode</div>
+                <div className="settings-item__desc">Turn your Track tab into a week-by-week pregnancy journey</div>
+              </div>
+              <button
+                className={`toggle${pregnancyMode ? ' toggle--on' : ''}`}
+                onClick={togglePregnancy}
+                aria-pressed={pregnancyMode}
+                aria-label="Toggle pregnancy mode"
+              >
+                <div className="toggle__knob" />
+              </button>
             </div>
           </div>
         </motion.div>
@@ -445,6 +481,11 @@ export default function Settings() {
           </button>
         </div>
       </BottomSheet>
+
+      {/* The Bloom — plays when pregnancy mode is switched on, then opens Track */}
+      <AnimatePresence>
+        {bloom && <PregnancyBloom onDone={() => { setBloom(false); navigate('/home'); }} />}
+      </AnimatePresence>
     </div>
   );
 }

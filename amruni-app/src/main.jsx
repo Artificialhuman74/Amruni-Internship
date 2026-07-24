@@ -4,7 +4,21 @@ import { BrowserRouter } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
 import { ToastProvider } from './components/Toast';
 import './index.css';
-import App from './App';
+
+// Which surface this bundle is, fixed at build time (see package.json scripts
+// and .env.production / .env.doctor / .env.admin). Patient, practitioner and
+// admin each deploy to their own domain.
+const TARGET = import.meta.env.VITE_APP_TARGET || 'patient';
+
+// Static conditional imports so each build tree-shakes to just its own app.
+let App;
+if (TARGET === 'doctor') {
+  App = (await import('./apps/DoctorApp')).default;
+} else if (TARGET === 'admin') {
+  App = (await import('./apps/AdminApp')).default;
+} else {
+  App = (await import('./apps/PatientApp')).default;
+}
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
