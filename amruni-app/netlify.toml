@@ -1,0 +1,26 @@
+# Continuous deployment for the Amruni patient (consumer) app.
+#
+# Connect this repo to the `amruni-patient` Netlify site with:
+#   Base directory:    amruni-app
+#   Branch to deploy:  main
+# Netlify then reads THIS file (it lives in the base directory), so the
+# command and publish dir below are applied automatically.
+#
+# The doctor and admin apps build from the same repo with `build:doctor` /
+# `build:admin` and publish `dist/doctor` / `dist/admin`. Only the patient site
+# is git-connected; configure those two per-site in their own build settings.
+#
+# Everything here is relative to the base directory (amruni-app).
+
+[build]
+  command = "npm run build:patient"
+  publish = "dist/patient"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA deep-link fallback also ships via public/_redirects; this is a backstop.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
