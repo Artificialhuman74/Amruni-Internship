@@ -1,5 +1,6 @@
 import { useRef, useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { useSOSActivation } from '../lib/useSOSActivation';
 import { useToast } from './Toast';
@@ -8,12 +9,16 @@ export default function SOSButton() {
   const { state } = useApp();
   const { activateSOS, cancelSOS } = useSOSActivation();
   const toast = useToast();
-  
+  const navigate = useNavigate();
+
   const [counting, setCounting] = useState(false);
   const [countdown, setCountdown] = useState(5);
-  
+
   const holdTimer = useRef(null);
   const countdownTimer = useRef(null);
+  // Distinguishes a quick tap (open the SOS page) from a deliberate 0.5s hold
+  // (arm the emergency countdown) — so neither action can trigger the other.
+  const holdFired = useRef(false);
 
   const isActive = state.sos.activeSession !== null;
 
@@ -32,14 +37,32 @@ export default function SOSButton() {
   }, [counting, countdown, activateSOS]);
 
   function onPointerDown() {
-    if (isActive || counting) return;
+    if (counting) return;
+    holdFired.current = false;
+    if (isActive) return; // an active session cancels on tap, never re-arms
     holdTimer.current = setTimeout(() => {
+      holdFired.current = true;
       setCountdown(5);
       setCounting(true);
     }, 500);
   }
 
+  // A release that lands before the 0.5s hold fires is a tap.
   function onPointerUp() {
+    if (holdTimer.current) {
+      clearTimeout(holdTimer.current);
+      holdTimer.current = null;
+    }
+    if (counting || holdFired.current) return; // hold path already handled it
+    if (isActive) {
+      if (window.confirm('Cancel active SOS session?')) cancelSOS();
+    } else {
+      navigate('/sos'); // single tap → open the SOS page
+    }
+  }
+
+  // Leaving the button mid-press cancels the pending hold without navigating.
+  function onPointerLeave() {
     if (holdTimer.current) {
       clearTimeout(holdTimer.current);
       holdTimer.current = null;
@@ -52,21 +75,12 @@ export default function SOSButton() {
     setCountdown(5);
   }
 
-  function handlePress() {
-    if (isActive) {
-      if (window.confirm("Cancel active SOS session?")) {
-        cancelSOS();
-      }
-    }
-  }
-
   return (
     <>
       <button
         onPointerDown={onPointerDown}
         onPointerUp={onPointerUp}
-        onPointerLeave={onPointerUp}
-        onClick={handlePress}
+        onPointerLeave={onPointerLeave}
         style={{
           position: 'fixed',
           // Sits above the nav, and lifts further on screens that raise

@@ -4,6 +4,7 @@ import { useApp } from '../context/AppContext';
 import { meApi } from '../services/api';
 import BottomSheet from '../components/BottomSheet';
 import { PHQ9_QUESTIONS, PHQ9_OPTIONS, GAD7_QUESTIONS } from '../data/mock';
+import { IconBrain, IconMind, IconHospital, IconLock, IconUser, IconPhone } from '../icons.jsx';
 
 export default function MentalHealth() {
   const { state, dispatch } = useApp();
@@ -223,16 +224,16 @@ export default function MentalHealth() {
           <p className="section-title">Screening tools</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
             {[
-              { key: 'phq9', icon: '🧠', label: 'Depression check (PHQ-9)', desc: '9 questions · ~3 minutes', color: 'var(--clr-brand-soft)' },
-              { key: 'gad7', icon: '🌊', label: 'Anxiety check (GAD-7)', desc: '7 questions · ~2 minutes', color: 'var(--clr-fertile-soft)' },
+              { key: 'phq9', Icon: IconBrain, iconColor: 'var(--clr-brand)', label: 'Depression check (PHQ-9)', desc: '9 questions · ~3 minutes', color: 'var(--clr-brand-soft)' },
+              { key: 'gad7', Icon: IconMind, iconColor: 'var(--clr-fertile)', label: 'Anxiety check (GAD-7)', desc: '7 questions · ~2 minutes', color: 'var(--clr-fertile-soft)' },
             ].map(t => (
               <button
                 key={t.key}
                 onClick={() => startTool(t.key)}
                 style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', padding: 'var(--sp-4) var(--sp-5)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-lg)', cursor: 'pointer', textAlign: 'left', transition: 'background var(--dur-fast)' }}
               >
-                <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-md)', background: t.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>
-                  {t.icon}
+                <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-md)', background: t.color, color: t.iconColor, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <t.Icon size={24} />
                 </div>
                 <div style={{ flex: 1 }}>
                   <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink)' }}>{t.label}</p>
@@ -251,7 +252,7 @@ export default function MentalHealth() {
             onClick={() => setNimhansOpen(true)}
             style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', padding: 'var(--sp-4) var(--sp-5)', background: 'var(--clr-dark)', border: 'none', borderRadius: 'var(--radius-lg)', cursor: 'pointer', width: '100%', textAlign: 'left' }}
           >
-            <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-md)', background: 'var(--clr-dark-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 }}>🏥</div>
+            <div style={{ width: 48, height: 48, borderRadius: 'var(--radius-md)', background: 'var(--clr-dark-3)', color: 'var(--clr-gold)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><IconHospital size={24} /></div>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink-on-dark)' }}>NIMHANS 24/7 Helpline</p>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted-on-dark)', marginTop: 2 }}>Free · Confidential · Trained counsellors</p>
@@ -273,8 +274,10 @@ function NimhansSheet({ open, onClose, anonymous, dispatch }) {
     <BottomSheet open={open} onClose={onClose} title="Connect to NIMHANS">
       <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
         <div style={{ background: anonymous ? 'var(--clr-surface-2)' : 'var(--clr-brand-soft)', borderRadius: 'var(--radius-md)', padding: 'var(--sp-4)', textAlign: 'center' }}>
-          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: anonymous ? 'var(--clr-ink-muted)' : 'var(--clr-brand)' }}>
-            {anonymous ? '🔒 Anonymous mode is ON — your identity is hidden' : '👤 Your profile will be visible to the counsellor'}
+          <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: anonymous ? 'var(--clr-ink-muted)' : 'var(--clr-brand)', display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            {anonymous
+              ? <><IconLock size={15} /> Anonymous mode is ON — your identity is hidden</>
+              : <><IconUser size={15} /> Your profile will be visible to the counsellor</>}
           </p>
         </div>
         <a
@@ -282,7 +285,7 @@ function NimhansSheet({ open, onClose, anonymous, dispatch }) {
           className="btn btn--primary"
           style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 'var(--sp-3)', textDecoration: 'none' }}
         >
-          📞 Call NIMHANS helpline
+          <IconPhone size={18} /> Call NIMHANS helpline
         </a>
         <button className="btn btn--secondary" onClick={onClose}>
           Not right now

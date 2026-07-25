@@ -1,4 +1,5 @@
 import { useVideoCall } from '../../hooks/useVideoCall';
+import { IconLive } from '../../icons.jsx';
 
 export default function CallTimer() {
   const { duration } = useVideoCall();
@@ -11,7 +12,7 @@ export default function CallTimer() {
 
   return (
     <div className="call-timer-badge">
-      <span className="timer-icon">🔴</span>
+      <span className="timer-icon"><IconLive size={8} /></span>
       <span className="timer-text">{formatDuration(duration)}</span>
     </div>
   );

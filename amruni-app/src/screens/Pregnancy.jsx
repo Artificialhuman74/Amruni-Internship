@@ -1,26 +1,36 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { useApp } from '../context/AppContext';
+import { useApp, usePregnancyData } from '../context/AppContext';
 import BottomSheet from '../components/BottomSheet';
+import PregnancyDueDateForm from '../components/PregnancyDueDateForm';
+import PregnancySymptoms from '../components/PregnancySymptoms';
+import PregnancyKickCounter from '../components/PregnancyKickCounter';
+import PregnancyWeightTracker from '../components/PregnancyWeightTracker';
 import { useToast } from '../components/Toast';
 import { confirm, warn } from '../lib/haptics';
+import { appointmentApi } from '../services/appointmentApi';
+import { IconStar, IconLink, IconCheck, IconPill, IconAppointment, IconMood } from '../icons.jsx';
 
 const BABY_SIZE = ['Poppy seed','Sesame','Blueberry','Raspberry','Green olive','Prune','Lime','Lemon','Peach','Apple','Avocado','Turnip','Bell pepper','Tomato','Onion','Sweet potato','Mango','Banana','Papaya','Carrot','Corn','Spaghetti squash','Rutabaga','Eggplant','Acorn squash','Butternut squash','Cauliflower','Cabbage','Pineapple','Coconut','Jicama','Bok choy','Celery root','Honeydew melon','Cantaloupe','Romaine lettuce','Swiss chard','Watermelon','Pumpkin','Mini watermelon'];
 
+// scanName is only set on real medical checkpoints — those get a booking CTA;
+// the others stay purely informational.
 const MILESTONES = [
   { week: 8, text: 'Tiny fingers and toes are forming.' },
-  { week: 12, text: 'End of first trimester. Risk of miscarriage drops significantly.' },
-  { week: 20, text: 'Anatomy scan this week. Baby can hear your voice.' },
-  { week: 28, text: 'Third trimester begins. Baby can open her eyes.' },
-  { week: 36, text: 'Baby is considered early term. Time to finalise birth plan.' },
+  { week: 12, text: 'End of first trimester. Risk of miscarriage drops significantly.', scanName: 'first-trimester scan' },
+  { week: 20, text: 'Anatomy scan this week. Baby can hear your voice.', scanName: 'anatomy scan' },
+  { week: 28, text: 'Third trimester begins. Baby can open her eyes.', scanName: 'third-trimester check-in' },
+  { week: 36, text: 'Baby is considered early term. Time to finalise birth plan.', scanName: 'birth-plan visit' },
   { week: 40, text: 'Due week. Your baby is ready to meet the world.' },
 ];
 
 export default function Pregnancy() {
   const { state, dispatch } = useApp();
+  const navigate = useNavigate();
   const toast = useToast();
   const reduce = useReducedMotion();
-  const weeks = state.pregnancy.weeksPregnant || 16;
+  const pregnancyData = usePregnancyData(state);
   const contacts = state.pregnancy.trustedContacts;
 
   const [panicState, setPanicState] = useState('idle'); // idle | confirm | triggered
@@ -28,24 +38,44 @@ export default function Pregnancy() {
   const [contactSheet, setContactSheet] = useState(false);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
+  const [editDateSheet, setEditDateSheet] = useState(false);
+  const [pregDoctorId, setPregDoctorId] = useState(null);
+
+  // Same specialty-matching Home.jsx uses for its recommended-doctors list —
+  // one doctor list, not a second one invented for this CTA.
+  useEffect(() => {
+    let cancelled = false;
+    appointmentApi.getDoctors()
+      .then((doctors) => {
+        if (cancelled) return;
+        const match = doctors.find((d) => d.specialty.toLowerCase() === 'pregnancy');
+        setPregDoctorId(match?.id ?? null);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const weeks = pregnancyData.known ? pregnancyData.weeks : 0;
 
   // The week count climbs to today's value on mount — a small "you've come this
-  // far" moment, synced with the ring sweeping to fill.
-  const [shownWeeks, setShownWeeks] = useState(reduce ? weeks : 0);
+  // far" moment, synced with the ring sweeping to fill. Reduced motion skips the
+  // animated state entirely and reads the final value straight from render.
+  const [animatedWeeks, setAnimatedWeeks] = useState(0);
+  const shownWeeks = reduce ? weeks : animatedWeeks;
   useEffect(() => {
-    if (reduce) return; // initial state already rests at the final value
+    if (!pregnancyData.known || reduce) return;
     let raf;
     const start = performance.now();
     const dur = 950;
     const step = (now) => {
       const t = Math.min((now - start) / dur, 1);
       const eased = 1 - Math.pow(1 - t, 3);
-      setShownWeeks(Math.round(eased * weeks));
+      setAnimatedWeeks(Math.round(eased * weeks));
       if (t < 1) raf = requestAnimationFrame(step);
     };
     raf = requestAnimationFrame(step);
     return () => cancelAnimationFrame(raf);
-  }, [weeks, reduce]);
+  }, [weeks, reduce, pregnancyData.known]);
 
   const progress = Math.min(weeks / 40, 1);
   const circumference = 2 * Math.PI * 66;
@@ -53,6 +83,13 @@ export default function Pregnancy() {
 
   const nextMilestone = MILESTONES.find(m => m.week >= weeks);
   const babySize = BABY_SIZE[Math.max(0, Math.min(weeks - 4, BABY_SIZE.length - 1))];
+
+  function saveDueDate(payload) {
+    dispatch({ type: 'SET_PREGNANCY', payload });
+    setEditDateSheet(false);
+    confirm();
+    toast('Your dates are updated', { icon: 'calendar' });
+  }
 
   function handlePanic() {
     if (panicState === 'idle') {
@@ -73,19 +110,44 @@ export default function Pregnancy() {
     setContactPhone('');
     setContactSheet(false);
     confirm();
-    toast(`${name} is now in your circle`, { icon: '🤍' });
+    toast(`${name} is now in your circle`, { icon: 'heart' });
   }
 
-  const trimester = weeks <= 12 ? 1 : weeks <= 27 ? 2 : 3;
+  if (!pregnancyData.known) {
+    return (
+      <div className="screen screen--light preg-tint">
+        <div style={{ padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-8)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}>
+            <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-ink)' }}>Let's find your due date</h1>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>This drives everything else in your pregnancy journey.</p>
+          </motion.div>
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
+            <PregnancyDueDateForm onSave={saveDueDate} />
+          </motion.div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="screen screen--light preg-tint">
       <div style={{ padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-8)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
 
         {/* Header */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }}>
-          <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-ink)' }}>Pregnancy mode</h1>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>Trimester {trimester} · Week {weeks}</p>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, ease: [0.16, 1, 0.3, 1] }} style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 'var(--sp-3)' }}>
+          <div>
+            <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-ink)' }}>
+              Due {formatDueDate(pregnancyData.dueDate)} · {pregnancyData.daysToGo} days to go
+            </h1>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>Trimester {pregnancyData.trimester} · Week {weeks}</p>
+          </div>
+          <button
+            onClick={() => setEditDateSheet(true)}
+            className="btn btn--ghost btn--sm"
+            style={{ color: 'var(--clr-brand)', fontSize: 'var(--text-xs)', width: 'auto', minHeight: 'auto', padding: 'var(--sp-2) var(--sp-3)', flexShrink: 0 }}
+          >
+            Edit
+          </button>
         </motion.div>
 
         {/* Week ring */}
@@ -116,41 +178,58 @@ export default function Pregnancy() {
               <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--clr-ink-muted)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--sp-2)' }}>
                 Baby is the size of a
               </p>
-              <p style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>
+              <p style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--clr-ink)' }}>
                 {babySize}
-              </p>
-              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', lineHeight: 'var(--leading-snug)', textWrap: 'pretty' }}>
-                {40 - weeks} weeks to go
               </p>
             </div>
           </div>
         </motion.div>
 
+        {/* Today's check-in — mood read-back + physical symptom chips */}
+        <PregnancySymptoms />
+
+        {/* Kick counter — only meaningful once movement is reliably felt */}
+        {weeks >= 28 && <PregnancyKickCounter />}
+
+        {/* Weight tracker */}
+        <PregnancyWeightTracker weeks={weeks} />
+
         {/* Next milestone */}
         {nextMilestone && (
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
-            <div style={{ background: 'var(--clr-gold-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-4) var(--sp-5)', display: 'flex', gap: 'var(--sp-4)', alignItems: 'flex-start' }}>
-              <span style={{ fontSize: 22, flexShrink: 0 }}>⭐</span>
-              <div>
-                <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--clr-gold)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
-                  Week {nextMilestone.week} milestone
-                </p>
-                <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink)', fontWeight: 500, lineHeight: 'var(--leading-snug)' }}>
-                  {nextMilestone.text}
-                </p>
+          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}>
+            <div style={{ background: 'var(--clr-gold-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-4) var(--sp-5)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+              <div style={{ display: 'flex', gap: 'var(--sp-4)', alignItems: 'flex-start' }}>
+                <span style={{ color: 'var(--clr-gold)', display: 'flex', flexShrink: 0 }}><IconStar size={22} fill="currentColor" strokeWidth={0} /></span>
+                <div>
+                  <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--clr-gold)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 2 }}>
+                    Week {nextMilestone.week} milestone
+                  </p>
+                  <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink)', fontWeight: 500, lineHeight: 'var(--leading-snug)' }}>
+                    {nextMilestone.text}
+                  </p>
+                </div>
               </div>
+              {nextMilestone.scanName && (
+                <button
+                  className="btn btn--primary btn--sm"
+                  style={{ width: 'auto', alignSelf: 'flex-start', marginLeft: 38 }}
+                  onClick={() => navigate(pregDoctorId ? `/doctor/${pregDoctorId}` : '/consult')}
+                >
+                  Book your {nextMilestone.scanName}
+                </button>
+              )}
             </div>
           </motion.div>
         )}
 
         {/* Share with loved one */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.12 }}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.34, ease: [0.16, 1, 0.3, 1] }}>
           <p className="section-title">Share with a loved one</p>
           <button
             onClick={() => setShareSheet(true)}
             style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', padding: 'var(--sp-4) var(--sp-5)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-lg)', cursor: 'pointer', textAlign: 'left' }}
           >
-            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: 'var(--clr-fertile-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 20, flexShrink: 0 }}>🔗</div>
+            <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: 'var(--clr-fertile-soft)', color: 'var(--clr-fertile)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><IconLink size={22} /></div>
             <div style={{ flex: 1 }}>
               <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink)' }}>Share health updates</p>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>Appointments, mood, and medicine with family</p>
@@ -160,7 +239,7 @@ export default function Pregnancy() {
         </motion.div>
 
         {/* Trusted contacts */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.15 }}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.38, ease: [0.16, 1, 0.3, 1] }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 'var(--sp-3)' }}>
             <p className="section-title" style={{ marginBottom: 0 }}>Trusted contacts</p>
             <button className="btn btn--ghost btn--sm" onClick={() => setContactSheet(true)} style={{ color: 'var(--clr-brand)', fontSize: 'var(--text-sm)' }}>
@@ -189,7 +268,7 @@ export default function Pregnancy() {
         </motion.div>
 
         {/* Panic button */}
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.18 }}>
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.42, ease: [0.16, 1, 0.3, 1] }}>
           <p className="section-title">Emergency</p>
           <button
             className={`panic-btn${panicState === 'confirm' ? ' panic-btn--confirming' : ''}`}
@@ -198,7 +277,7 @@ export default function Pregnancy() {
           >
             {panicState === 'idle' && <><AlertIcon /> Emergency alert</>}
             {panicState === 'confirm' && <><AlertIcon /> Tap again to confirm</>}
-            {panicState === 'triggered' && <>✅ Contacts notified</>}
+            {panicState === 'triggered' && <><IconCheck size={18} /> Contacts notified</>}
           </button>
           <p style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginTop: 'var(--sp-3)', lineHeight: 1.6 }}>
             {panicState === 'idle' && 'Notifies your trusted contacts and pre-booked hospital.'}
@@ -212,12 +291,12 @@ export default function Pregnancy() {
       <BottomSheet open={shareSheet} onClose={() => setShareSheet(false)} title="Share with loved one">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
           {[
-            { icon: '💊', label: 'Medicine schedule', desc: 'Prescriptions and reminders' },
-            { icon: '📅', label: 'Appointments', desc: 'Upcoming consultations and follow-ups' },
-            { icon: '😊', label: 'Mood updates', desc: 'Daily emotional check-ins' },
+            { Icon: IconPill, label: 'Medicine schedule', desc: 'Prescriptions and reminders' },
+            { Icon: IconAppointment, label: 'Appointments', desc: 'Upcoming consultations and follow-ups' },
+            { Icon: IconMood, label: 'Mood updates', desc: 'Daily emotional check-ins' },
           ].map(item => (
             <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-4)', padding: 'var(--sp-4)', background: 'var(--clr-surface-2)', borderRadius: 'var(--radius-md)' }}>
-              <span style={{ fontSize: 22 }}>{item.icon}</span>
+              <span style={{ color: 'var(--clr-brand)', display: 'flex' }}><item.Icon size={22} /></span>
               <div>
                 <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink)' }}>{item.label}</p>
                 <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)' }}>{item.desc}</p>
@@ -246,8 +325,22 @@ export default function Pregnancy() {
           </button>
         </div>
       </BottomSheet>
+
+      {/* Edit due date sheet */}
+      <BottomSheet open={editDateSheet} onClose={() => setEditDateSheet(false)} title="Edit your dates">
+        <PregnancyDueDateForm
+          defaultMethod={state.pregnancy.dueDateOverride ? 'doctor' : 'lmp'}
+          defaultDate={state.pregnancy.dueDateOverride || state.pregnancy.lastPeriodStart || ''}
+          onSave={saveDueDate}
+          onCancel={() => setEditDateSheet(false)}
+        />
+      </BottomSheet>
     </div>
   );
+}
+
+function formatDueDate(iso) {
+  return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
 function AlertIcon() {

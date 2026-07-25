@@ -36,7 +36,7 @@ export default function GoalsStep() {
 
     // Goals whose feature isn't built yet land on the Coming-soon page.
     if (goal?.soon) {
-      navigate('/coming-soon', { replace: true, state: { feature: goal.label, icon: goal.icon } });
+      navigate('/coming-soon', { replace: true, state: { feature: goal.label, goalId: goal.id } });
     } else {
       navigate('/home', { replace: true });
     }
@@ -78,7 +78,7 @@ export default function GoalsStep() {
                 aria-pressed={on}
                 whileTap={{ scale: 0.98 }}
               >
-                <span className="goal-tile__icon" aria-hidden="true">{g.icon}</span>
+                <span className="goal-tile__icon" aria-hidden="true"><g.Icon size={22} /></span>
                 <span style={{ flex: 1, textAlign: 'left' }}>
                   <span className="goal-tile__title">{g.label}</span>
                   <span className="goal-tile__desc">{g.desc}</span>

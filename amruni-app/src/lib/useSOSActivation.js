@@ -77,13 +77,13 @@ export function useSOSActivation() {
       navigator.geolocation.getCurrentPosition(
         (pos) => proceedWithCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
         (err) => {
-          toast('Could not get precise location (GPS blocked). Sending SOS anyway.', { icon: '⚠️' });
+          toast('Could not get precise location (GPS blocked). Sending SOS anyway.', { icon: 'warning' });
           proceedWithCoords(null);
         },
         { enableHighAccuracy: true, timeout: 5000 }
       );
     } else {
-      toast('Geolocation not supported by browser. Sending SOS without GPS.', { icon: '⚠️' });
+      toast('Geolocation not supported by browser. Sending SOS without GPS.', { icon: 'warning' });
       proceedWithCoords(null);
     }
   }
@@ -91,7 +91,7 @@ export function useSOSActivation() {
   function cancelSOS() {
     if (stopWatch.current) { stopWatch.current(); stopWatch.current = null; }
     dispatch({ type: 'SOS_CANCEL' });
-    toast('SOS cancelled', { icon: '✓' });
+    toast('SOS cancelled', { icon: 'check' });
   }
 
   return { activateSOS, cancelSOS };

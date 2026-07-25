@@ -1,3 +1,8 @@
+import {
+  IconCycle, IconSprout, IconPregnant, IconCamellia, IconWellness,
+  IconStethoscope, IconWeight, IconSleep, IconGuide, IconHome,
+} from '../icons.jsx';
+
 /**
  * Life stage is inferred from the woman's age rather than asked outright —
  * one less question, and it can't be set wrong. The goal she picks afterwards
@@ -33,16 +38,16 @@ export function stageFromDob(dob) {
 // `soon: true` marks a goal whose dedicated feature isn't built yet — picking
 // it still completes onboarding, then lands on the Coming-soon page.
 export const GOALS = [
-  { id: 'cycle', icon: '🌙', label: 'Track my cycle', desc: 'Periods, symptoms and predictions' },
-  { id: 'conceive', icon: '🌱', label: 'Trying to conceive', desc: 'Fertile window and ovulation' },
-  { id: 'pregnancy', icon: '🤰', label: "I'm pregnant", desc: 'Week-by-week, gently guided', pregnancyMode: true },
-  { id: 'menopause', icon: '🌺', label: 'Menopause support', desc: 'Hormones, mood and bone health', stage: 'menopause' },
-  { id: 'mental', icon: '🧘', label: 'Mental wellbeing', desc: 'Screening and quiet support' },
-  { id: 'pcos', icon: '🩺', label: 'Manage PCOS / a condition', desc: 'Track signs, get a specialist' },
-  { id: 'weight', icon: '⚖️', label: 'Manage my weight', desc: 'Track weight alongside your cycle', soon: true },
-  { id: 'sleep', icon: '😴', label: 'Improve my sleep', desc: 'See how rest moves with your hormones', soon: true },
-  { id: 'body', icon: '📖', label: 'Understand my body', desc: 'Learn your patterns and what’s normal', soon: true },
-  { id: 'caretaker', icon: '🏡', label: 'Set up for a family member', desc: 'Appointments and care, on their behalf', stage: 'elderly' },
+  { id: 'cycle', Icon: IconCycle, label: 'Track my cycle', desc: 'Periods, symptoms and predictions' },
+  { id: 'conceive', Icon: IconSprout, label: 'Trying to conceive', desc: 'Fertile window and ovulation' },
+  { id: 'pregnancy', Icon: IconPregnant, label: "I'm pregnant", desc: 'Week-by-week, gently guided', pregnancyMode: true },
+  { id: 'menopause', Icon: IconCamellia, label: 'Menopause support', desc: 'Hormones, mood and bone health', stage: 'menopause' },
+  { id: 'mental', Icon: IconWellness, label: 'Mental wellbeing', desc: 'Screening and quiet support' },
+  { id: 'pcos', Icon: IconStethoscope, label: 'Manage PCOS / a condition', desc: 'Track signs, get a specialist' },
+  { id: 'weight', Icon: IconWeight, label: 'Manage my weight', desc: 'Track weight alongside your cycle', soon: true },
+  { id: 'sleep', Icon: IconSleep, label: 'Improve my sleep', desc: 'See how rest moves with your hormones', soon: true },
+  { id: 'body', Icon: IconGuide, label: 'Understand my body', desc: 'Learn your patterns and what’s normal', soon: true },
+  { id: 'caretaker', Icon: IconHome, label: 'Set up for a family member', desc: 'Appointments and care, on their behalf', stage: 'elderly' },
 ];
 
 /** Resolve final { lifeStage, pregnancyMode } from age-derived stage + chosen goal. */
