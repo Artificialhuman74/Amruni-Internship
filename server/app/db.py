@@ -115,10 +115,23 @@ CREATE TABLE IF NOT EXISTS cycle_logs (
 );
 
 CREATE TABLE IF NOT EXISTS pregnancy_state (
-  user_id          INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  weeks_pregnant   INTEGER NOT NULL DEFAULT 16,
-  due_date         TEXT,
-  trusted_contacts TEXT NOT NULL DEFAULT '[]'
+  user_id                 INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  last_period_start       TEXT,
+  due_date_override        TEXT,
+  pre_pregnancy_weight_kg REAL,
+  height_cm               REAL,
+  trusted_contacts        TEXT NOT NULL DEFAULT '[]',
+  weight_logs             TEXT NOT NULL DEFAULT '[]',
+  kick_counts             TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS pregnancy_logs (
+  user_id  INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date     TEXT NOT NULL,
+  mood     TEXT,
+  valence  INTEGER,
+  symptoms TEXT NOT NULL DEFAULT '[]',
+  PRIMARY KEY (user_id, date)
 );
 
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -171,6 +184,68 @@ CREATE TABLE IF NOT EXISTS screenings (
   created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_screenings_user ON screenings(user_id);
+
+CREATE TABLE IF NOT EXISTS journal_entries (
+  id                TEXT PRIMARY KEY,
+  user_id           INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date              TEXT NOT NULL,
+  text              TEXT NOT NULL,
+  tags              TEXT NOT NULL DEFAULT '[]',
+  shared_as_post_id TEXT,
+  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_journal_user ON journal_entries(user_id, date);
+
+-- Stable per-user anonymous handle for the community, e.g. "VioletHarbor192".
+-- Allocated lazily on first community interaction, not at signup.
+CREATE TABLE IF NOT EXISTS anon_handles (
+  user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  handle  TEXT NOT NULL UNIQUE
+);
+
+CREATE TABLE IF NOT EXISTS community_posts (
+  id                TEXT PRIMARY KEY,
+  author_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  is_anonymous      INTEGER NOT NULL DEFAULT 1,
+  tags              TEXT NOT NULL DEFAULT '[]',
+  type              TEXT NOT NULL DEFAULT 'text',   -- text | poll
+  text              TEXT,
+  poll_options      TEXT,                            -- JSON list of option labels; tallies are computed live from community_poll_votes
+  reply_to_id       TEXT REFERENCES community_posts(id) ON DELETE CASCADE,
+  like_count        INTEGER NOT NULL DEFAULT 0,
+  reply_count       INTEGER NOT NULL DEFAULT 0,
+  moderation_status TEXT NOT NULL DEFAULT 'pending',  -- pending | approved | rejected
+  created_at        TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_posts_feed ON community_posts(reply_to_id, moderation_status, created_at);
+
+CREATE TABLE IF NOT EXISTS community_likes (
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, post_id)
+);
+
+CREATE TABLE IF NOT EXISTS community_poll_votes (
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  post_id      TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+  option_index INTEGER NOT NULL,
+  PRIMARY KEY (user_id, post_id)
+);
+
+CREATE TABLE IF NOT EXISTS community_reports (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  post_id     TEXT NOT NULL REFERENCES community_posts(id) ON DELETE CASCADE,
+  reporter_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  reason      TEXT,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
+CREATE TABLE IF NOT EXISTS community_blocks (
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  PRIMARY KEY (user_id, blocked_id)
+);
 """
 
 SEED_DOCTORS = [
@@ -216,9 +291,54 @@ def get_db():
         conn.close()
 
 
+def _migrate_pregnancy_state(db: sqlite3.Connection):
+    """One-time migration for the pre-rebuild `pregnancy_state` schema
+    (weeks_pregnant/due_date instead of last_period_start/due_date_override).
+    `CREATE TABLE IF NOT EXISTS` never alters an existing table, so a database
+    created before this rebuild needs its old table renamed out of the way
+    before the new schema can be created, then its salvageable columns
+    (due_date, trusted_contacts) copied across.
+    """
+    cols = {row["name"] for row in db.execute("PRAGMA table_info(pregnancy_state)").fetchall()}
+    if not cols or "last_period_start" in cols:
+        return  # fresh install, or already migrated
+    db.execute("ALTER TABLE pregnancy_state RENAME TO pregnancy_state_legacy")
+
+
+def _finish_pregnancy_state_migration(db: sqlite3.Connection):
+    legacy = db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='pregnancy_state_legacy'"
+    ).fetchone()
+    if not legacy:
+        return
+    rows = db.execute("SELECT user_id, due_date, trusted_contacts FROM pregnancy_state_legacy").fetchall()
+    for row in rows:
+        db.execute(
+            """INSERT INTO pregnancy_state (user_id, due_date_override, trusted_contacts)
+               VALUES (?, ?, ?)
+               ON CONFLICT(user_id) DO UPDATE SET
+                 due_date_override = excluded.due_date_override,
+                 trusted_contacts = excluded.trusted_contacts""",
+            (row["user_id"], row["due_date"], row["trusted_contacts"]),
+        )
+    db.execute("DROP TABLE pregnancy_state_legacy")
+
+
+def _ensure_column(db: sqlite3.Connection, table: str, column: str, decl: str):
+    """Adds a column to an existing table if it isn't there yet. `CREATE TABLE
+    IF NOT EXISTS` never alters an already-created table, so new columns on a
+    long-lived table (like `user_settings`) need this instead."""
+    cols = {row["name"] for row in db.execute(f"PRAGMA table_info({table})").fetchall()}
+    if column not in cols:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+
+
 def init_db():
     with get_db() as db:
+        _migrate_pregnancy_state(db)
         db.executescript(SCHEMA)
+        _finish_pregnancy_state_migration(db)
+        _ensure_column(db, "user_settings", "identity_warning_seen", "INTEGER NOT NULL DEFAULT 0")
         if db.execute("SELECT COUNT(*) AS n FROM doctors").fetchone()["n"] == 0:
             for d in SEED_DOCTORS:
                 db.execute(

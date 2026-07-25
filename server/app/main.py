@@ -18,7 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db
-from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos
+from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community
 
 IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
 
@@ -81,7 +81,7 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos):
+for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community):
     app.include_router(module.router, prefix="/api")
 
 
