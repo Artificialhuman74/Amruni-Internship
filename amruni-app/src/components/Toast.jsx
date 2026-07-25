@@ -1,5 +1,41 @@
-import { createContext, useCallback, useContext, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useRef, useState, isValidElement } from 'react';
 import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
+import {
+  IconHeart, IconBlossom, IconLeaf, IconTrash, IconAlert, IconCheck,
+  IconCheckCircle, IconTrend, IconAppointment, IconReport, IconDaisy, IconHome,
+} from '../icons.jsx';
+
+/*
+  Confirmation toasts speak in one small icon vocabulary. Callers pass a
+  semantic key (icon: 'saved') — never a glyph — so the mark, its size and
+  its colour are decided once, here, against the dark toast surface.
+*/
+const TOAST_ICON = {
+  heart: { Cmp: IconHeart, color: 'var(--clr-brand-muted)' },
+  saved: { Cmp: IconCheckCircle, color: 'var(--clr-gold)' },
+  check: { Cmp: IconCheck, color: 'var(--clr-gold)' },
+  bloom: { Cmp: IconBlossom, color: 'var(--clr-brand-muted)' },
+  daisy: { Cmp: IconDaisy, color: 'var(--clr-gold)' },
+  leaf: { Cmp: IconLeaf, color: 'var(--clr-sage)' },
+  trash: { Cmp: IconTrash, color: 'var(--clr-ink-muted-on-dark)' },
+  warning: { Cmp: IconAlert, color: 'var(--clr-warning)' },
+  trend: { Cmp: IconTrend, color: 'var(--clr-gold)' },
+  calendar: { Cmp: IconAppointment, color: 'var(--clr-gold)' },
+  file: { Cmp: IconReport, color: 'var(--clr-gold)' },
+  home: { Cmp: IconHome, color: 'var(--clr-gold)' },
+};
+
+function ToastIcon({ icon }) {
+  if (isValidElement(icon)) return <span className="toast__icon" aria-hidden="true">{icon}</span>;
+  const spec = TOAST_ICON[icon];
+  if (!spec) return null;
+  const { Cmp, color } = spec;
+  return (
+    <span className="toast__icon" aria-hidden="true" style={{ color }}>
+      <Cmp size={18} />
+    </span>
+  );
+}
 
 /*
   A single, quiet confirmation toast. Sits just above the bottom nav, inside the
@@ -43,11 +79,7 @@ function ToastViewport({ toast }) {
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: 10, scale: 0.98 }}
             transition={{ duration: 0.32, ease: [0.16, 1, 0.3, 1] }}
           >
-            {toast.icon && (
-              <span className="toast__icon" aria-hidden="true">
-                {toast.icon}
-              </span>
-            )}
+            <ToastIcon icon={toast.icon} />
             <span className="toast__msg">{toast.message}</span>
           </motion.div>
         )}

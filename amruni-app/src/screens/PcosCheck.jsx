@@ -6,6 +6,7 @@ import { meApi, apiError } from '../services/api';
 import { useToast } from '../components/Toast';
 import { tap, confirm as confirmHaptic } from '../lib/haptics';
 import { useSosLift } from '../lib/useSosLift';
+import { IconDaisy, IconCheck } from '../icons.jsx';
 
 // Self-reportable questions behind the clinical PCOS model (AUC 0.88).
 const QUESTIONS = [
@@ -81,9 +82,9 @@ export default function PcosCheck() {
       await meApi.addCondition('PCOS');
       setAdded(true);
       confirmHaptic();
-      toast('Added to your health record', { icon: '🌼' });
+      toast('Added to your health record', { icon: 'daisy' });
     } catch (err) {
-      toast(apiError(err, 'Could not update your record.'), { icon: '⚠️' });
+      toast(apiError(err, 'Could not update your record.'), { icon: 'warning' });
     }
   }
 
@@ -213,7 +214,7 @@ export default function PcosCheck() {
                   onClick={addPcos}
                   disabled={added}
                 >
-                  {added ? '✓ Added to your record' : 'Add PCOS to my health record'}
+                  {added ? <><IconCheck size={16} /> Added to your record</> : 'Add PCOS to my health record'}
                 </button>
                 <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', textAlign: 'center', lineHeight: 'var(--leading-base)', marginTop: 'var(--sp-1)' }}>
                   This is an educational screening tool trained on clinical data, not a diagnosis. Only a doctor can confirm PCOS.
@@ -243,7 +244,7 @@ function RiskDial({ band, reduced }) {
           animate={{ strokeDashoffset: C * (1 - pct) }}
           transition={{ duration: reduced ? 0 : 0.9, ease: [0.16, 1, 0.3, 1], delay: 0.15 }}
         />
-        <text x="70" y="70" textAnchor="middle" dominantBaseline="central" style={{ fontSize: 30 }}>🌼</text>
+        <IconDaisy x={54} y={54} size={32} color="var(--clr-brand)" strokeWidth={1.5} />
       </svg>
     </div>
   );

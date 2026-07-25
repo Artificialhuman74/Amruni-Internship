@@ -167,20 +167,20 @@ def cycle_predictions(user: dict = Depends(current_user)):
         })
     if pcos_signal:
         insights.append({
-            "icon": "🩺",
+            "iconKey": "care",
             "text": f"Your cycle pattern shows some signs associated with PCOS. It's not a diagnosis — a 2-minute self-check can tell you whether it's worth a specialist's view.",
             "action": "pcos-check",
         })
     if reg["label"]:
-        insights.append({"icon": "📈", "text": INSIGHT_REGULARITY[reg["label"]]})
+        insights.append({"iconKey": "trend", "text": INSIGHT_REGULARITY[reg["label"]]})
     bucket_now = ml.phase_bucket(min(cycle_day, 60), cycle_len_for_phase, period_len)
     top_now = [s for s in forecast.get(bucket_now, []) if s["fromYou"]][:2]
     if top_now:
         names = " and ".join(SYMPTOM_LABELS.get(s["id"], s["id"]) for s in top_now)
-        insights.append({"icon": "🔮", "text": f"In this phase you've most often logged {names}. Gentle movement and hydration usually take the edge off."})
+        insights.append({"iconKey": "forecast", "text": f"In this phase you've most often logged {names}. Gentle movement and hydration usually take the edge off."})
     if len(lengths) < 3:
         remaining = 3 - len(lengths)
-        insights.append({"icon": "✍️", "text": f"Log {remaining} more period{'s' if remaining > 1 else ''} and predictions switch fully to your personal pattern."})
+        insights.append({"iconKey": "log", "text": f"Log {remaining} more period{'s' if remaining > 1 else ''} and predictions switch fully to your personal pattern."})
 
     return {
         "ready": True,

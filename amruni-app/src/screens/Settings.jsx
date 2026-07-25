@@ -10,6 +10,11 @@ import { useToast } from '../components/Toast';
 import { confirm } from '../lib/haptics';
 import { getContacts, addContact, deleteContact } from '../lib/sosService';
 import { useEffect } from 'react';
+import {
+  IconUser, IconSprout, IconRecords, IconHospital, IconBell, IconLock,
+  IconShield, IconPregnant, IconHome, IconPlus, IconClose, IconSettings,
+  IconStar, IconSend, IconLogout, FlagIN,
+} from '../icons.jsx';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -26,7 +31,7 @@ export default function Settings() {
     if (next) {
       setBloom(true); // The Bloom plays, then we land on the reshaped Home
     } else {
-      toast('Pregnancy mode off', { icon: '🌸' });
+      toast('Pregnancy mode off', { icon: 'bloom' });
     }
   }
 
@@ -66,7 +71,7 @@ export default function Settings() {
     if (changed) {
       confirm();
       const label = LIFE_STAGES.find(s => s.id === selectedStage)?.label;
-      toast(`Switched to ${label}`, { icon: '🌿' });
+      toast(`Switched to ${label}`, { icon: 'leaf' });
     }
   }
 
@@ -99,9 +104,9 @@ export default function Settings() {
             background: 'oklch(0.52 0.18 355 / 0.25)',
             border: '2px solid var(--clr-brand)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 26, flexShrink: 0,
+            color: 'var(--clr-brand)', flexShrink: 0,
           }}>
-            {stageInfo?.icon ?? '👤'}
+            {stageInfo?.Icon ? <stageInfo.Icon size={26} /> : <IconUser size={26} />}
           </div>
           <div style={{ flex: 1, minWidth: 0 }}>
             <p style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--clr-ink-on-dark)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -122,7 +127,7 @@ export default function Settings() {
             <div className="settings-group__title">Account</div>
 
             <div className="settings-item" onClick={() => setStageSheet(true)} role="button" tabIndex={0}>
-              <div className="settings-item__icon">🌱</div>
+              <div className="settings-item__icon">{stageInfo?.Icon ? <stageInfo.Icon size={20} /> : <IconSprout size={20} />}</div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Life stage</div>
                 <div className="settings-item__desc">{stageInfo?.label ?? 'Not set'}</div>
@@ -131,7 +136,7 @@ export default function Settings() {
             </div>
 
             <div className="settings-item" role="button" tabIndex={0}>
-              <div className="settings-item__icon">📋</div>
+              <div className="settings-item__icon"><IconRecords size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Health records</div>
                 <div className="settings-item__desc">Prescriptions, reports, history</div>
@@ -140,7 +145,7 @@ export default function Settings() {
             </div>
 
             <div className="settings-item" role="button" tabIndex={0}>
-              <div className="settings-item__icon">🏥</div>
+              <div className="settings-item__icon"><IconHospital size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Linked hospitals</div>
                 <div className="settings-item__desc">Manage hospital associations</div>
@@ -156,7 +161,7 @@ export default function Settings() {
             <div className="settings-group__title">Notifications & Privacy</div>
 
             <div className="settings-item">
-              <div className="settings-item__icon">🔔</div>
+              <div className="settings-item__icon"><IconBell size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Push notifications</div>
                 <div className="settings-item__desc">Appointments, reminders, cycle alerts</div>
@@ -172,7 +177,7 @@ export default function Settings() {
             </div>
 
             <div className="settings-item">
-              <div className="settings-item__icon">🔒</div>
+              <div className="settings-item__icon"><IconLock size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Anonymous mode</div>
                 <div className="settings-item__desc">Hide identity in mental health sessions</div>
@@ -188,7 +193,7 @@ export default function Settings() {
             </div>
 
             <div className="settings-item" role="button" tabIndex={0}>
-              <div className="settings-item__icon">🛡️</div>
+              <div className="settings-item__icon"><IconShield size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Privacy policy</div>
                 <div className="settings-item__desc">How your data is used and protected</div>
@@ -203,7 +208,7 @@ export default function Settings() {
           <div className="settings-group">
             <div className="settings-group__title">Your experience</div>
             <div className="settings-item">
-              <div className="settings-item__icon" style={{ background: 'var(--clr-preg-soft)' }}>🤰</div>
+              <div className="settings-item__icon" style={{ background: 'var(--clr-preg-soft)' }}><IconPregnant size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Pregnancy mode</div>
                 <div className="settings-item__desc">Turn your Track tab into a week-by-week pregnancy journey</div>
@@ -225,7 +230,7 @@ export default function Settings() {
           <div className="settings-group">
             <div className="settings-group__title">Caretaker</div>
             <div className="settings-item" onClick={() => setCaretakerSheet(true)} role="button" tabIndex={0}>
-              <div className="settings-item__icon">🏡</div>
+              <div className="settings-item__icon"><IconHome size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Elderly care mode</div>
                 <div className="settings-item__desc">Set up on behalf of a family member</div>
@@ -254,9 +259,9 @@ export default function Settings() {
                       await deleteContact(c.id);
                       const updated = sosContacts.filter(contact => contact.id !== c.id);
                       dispatch({ type: 'SET_SOS_CONTACTS', payload: updated });
-                      toast('Contact removed', { icon: '🗑️' });
+                      toast('Contact removed', { icon: 'trash' });
                     } catch (e) {
-                      toast('Failed to remove contact', { icon: '⚠️' });
+                      toast('Failed to remove contact', { icon: 'warning' });
                     }
                   }}
                   aria-label={`Remove ${c.name}`}
@@ -265,11 +270,11 @@ export default function Settings() {
                     borderRadius: 'var(--radius-full)',
                     background: 'var(--clr-surface-2)',
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    fontSize: 14, color: 'var(--clr-ink-muted)', flexShrink: 0,
+                    color: 'var(--clr-ink-muted)', flexShrink: 0,
                     border: 'none', cursor: 'pointer',
                   }}
                 >
-                  ✕
+                  <IconClose size={15} />
                 </button>
               </div>
             ))}
@@ -277,7 +282,7 @@ export default function Settings() {
               className="settings-item"
               onClick={() => {
                 if (sosContacts.length >= 5) {
-                  toast('Maximum 5 emergency contacts allowed', { icon: '⚠️' });
+                  toast('Maximum 5 emergency contacts allowed', { icon: 'warning' });
                   return;
                 }
                 setContactName('');
@@ -287,7 +292,7 @@ export default function Settings() {
               role="button"
               tabIndex={0}
             >
-              <div className="settings-item__icon" style={{ background: 'var(--clr-emergency-soft)' }}>➕</div>
+              <div className="settings-item__icon" style={{ background: 'var(--clr-emergency-soft)', color: 'var(--clr-emergency)' }}><IconPlus size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label" style={{ color: 'var(--clr-emergency)' }}>Add contact</div>
                 <div className="settings-item__desc">{sosContacts.length}/5 contacts added</div>
@@ -302,15 +307,27 @@ export default function Settings() {
           <div className="settings-group">
             <div className="settings-group__title">App</div>
             <div className="settings-item" onClick={() => navigate('/admin')} role="button" tabIndex={0} style={{ cursor: 'pointer' }}>
-              <div className="settings-item__icon">⚙️</div>
+              <div className="settings-item__icon"><IconSettings size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Admin Portal</div>
                 <div className="settings-item__desc">Manage doctors and services</div>
               </div>
               <ChevronRight />
             </div>
+            {/* DEV ONLY — stripped from production builds (import.meta.env.DEV === false).
+                Tracked in PRODUCTION_CHECKLIST.md; must never ship enabled. */}
+            {import.meta.env.DEV && (
+              <div className="settings-item" onClick={() => navigate('/onboarding/privacy')} role="button" tabIndex={0} style={{ cursor: 'pointer' }}>
+                <div className="settings-item__icon" style={{ background: 'var(--clr-gold-soft)', color: 'oklch(0.5 0.1 70)' }}><IconSprout size={20} /></div>
+                <div style={{ flex: 1 }}>
+                  <div className="settings-item__label">Replay onboarding <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'oklch(0.5 0.1 70)', letterSpacing: '0.04em' }}>DEV</span></div>
+                  <div className="settings-item__desc">Jump back to the first-run flow · not shown in production</div>
+                </div>
+                <ChevronRight />
+              </div>
+            )}
             <div className="settings-item" role="button" tabIndex={0}>
-              <div className="settings-item__icon">⭐</div>
+              <div className="settings-item__icon"><IconStar size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Rate Amruni</div>
                 <div className="settings-item__desc">Help us improve</div>
@@ -318,7 +335,7 @@ export default function Settings() {
               <ChevronRight />
             </div>
             <div className="settings-item" role="button" tabIndex={0}>
-              <div className="settings-item__icon">📨</div>
+              <div className="settings-item__icon"><IconSend size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Send feedback</div>
                 <div className="settings-item__desc">Questions, suggestions, or concerns</div>
@@ -332,7 +349,7 @@ export default function Settings() {
               tabIndex={0}
               style={{ cursor: 'pointer' }}
             >
-              <div className="settings-item__icon">🚪</div>
+              <div className="settings-item__icon" style={{ color: 'var(--clr-brand)' }}><IconLogout size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label" style={{ color: 'var(--clr-brand)' }}>Sign out</div>
               </div>
@@ -346,7 +363,7 @@ export default function Settings() {
           transition={{ delay: 0.4 }}
           style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}
         >
-          Amruni v1.0 · Made with care in India 🇮🇳
+          Amruni v1.0 · Made with care in India <FlagIN size={13} style={{ verticalAlign: '-2px', marginLeft: 2 }} />
         </motion.p>
       </div>
 
@@ -360,7 +377,7 @@ export default function Settings() {
               onClick={() => setSelectedStage(stage.id)}
               style={{ width: '100%', textAlign: 'left' }}
             >
-              <div className="stage-tile__icon">{stage.icon}</div>
+              <div className="stage-tile__icon"><stage.Icon size={22} /></div>
               <div className="stage-tile__body">
                 <div className="stage-tile__title">{stage.label}</div>
               </div>
@@ -383,7 +400,7 @@ export default function Settings() {
       <BottomSheet open={caretakerSheet} onClose={() => setCaretakerSheet(false)} title="Elderly care mode">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
           <div style={{ background: 'var(--clr-surface-2)', borderRadius: 'var(--radius-md)', padding: 'var(--sp-5)', textAlign: 'center' }}>
-            <div style={{ fontSize: 40, marginBottom: 'var(--sp-3)' }}>🏡</div>
+            <div style={{ color: 'var(--clr-brand)', display: 'flex', justifyContent: 'center', marginBottom: 'var(--sp-3)' }}><IconHome size={40} /></div>
             <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink)', marginBottom: 'var(--sp-2)' }}>
               Setting up for a family member?
             </p>
@@ -391,7 +408,7 @@ export default function Settings() {
               Caretaker mode lets you manage appointments and health tracking for an elderly parent or relative. Their data stays private.
             </p>
           </div>
-          <button className="btn btn--primary" onClick={() => { dispatch({ type: 'SET_USER', payload: { lifeStage: 'elderly' } }); setSelectedStage('elderly'); setCaretakerSheet(false); confirm(); toast('Elderly care mode is on', { icon: '🏡' }); }}>
+          <button className="btn btn--primary" onClick={() => { dispatch({ type: 'SET_USER', payload: { lifeStage: 'elderly' } }); setSelectedStage('elderly'); setCaretakerSheet(false); confirm(); toast('Elderly care mode is on', { icon: 'home' }); }}>
             Switch to elderly care mode
           </button>
           <button className="btn btn--secondary" onClick={() => setCaretakerSheet(false)}>
@@ -468,9 +485,9 @@ export default function Settings() {
                 dispatch({ type: 'SET_SOS_CONTACTS', payload: updated });
                 setContactSheet(false);
                 confirm();
-                toast('Contact added', { icon: '✓' });
+                toast('Contact added', { icon: 'check' });
               } catch (e) {
-                toast('Failed to add contact', { icon: '⚠️' });
+                toast('Failed to add contact', { icon: 'warning' });
               } finally {
                 setIsSaving(false);
               }

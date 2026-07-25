@@ -8,6 +8,7 @@ import { useSosLift } from '../lib/useSosLift';
 import BottomSheet from '../components/BottomSheet';
 import SuccessCheck from '../components/SuccessCheck';
 import { confirm as confirmHaptic } from '../lib/haptics';
+import { IconChat, IconVideo } from '../icons.jsx';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -108,7 +109,8 @@ export default function BookAppointment() {
 
   const doctorName = currentDoctor?.name || 'Doctor';
   const doctorSpecialty = currentDoctor?.specialty || 'Specialist';
-  const modeLabel = consultMode === 'chat' ? '💬 Chat / DM' : '🎥 Video Call';
+  const modeLabel = consultMode === 'chat' ? 'Chat / DM' : 'Video Call';
+  const ModeIcon = consultMode === 'chat' ? IconChat : IconVideo;
 
   return (
     <div className="screen screen--light">
@@ -141,7 +143,7 @@ export default function BookAppointment() {
           padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)',
           marginBottom: 'var(--sp-6)', border: `1.5px solid ${consultMode === 'chat' ? 'oklch(0.85 0.08 150)' : 'oklch(0.85 0.08 260)'}`
         }}>
-          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)' }}>{modeLabel}</span>
+          <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}><ModeIcon size={16} /> {modeLabel}</span>
           {feeLabel && <span style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)' }}>{feeLabel}</span>}
         </div>
 

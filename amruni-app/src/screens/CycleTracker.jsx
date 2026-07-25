@@ -8,6 +8,19 @@ import BottomSheet from '../components/BottomSheet';
 import { useToast } from '../components/Toast';
 import { tap, confirm } from '../lib/haptics';
 import { PHASE_INFO, CYCLE_SYMPTOMS } from '../data/mock';
+import {
+  IconTrend, IconSparkles, IconJournal, IconStethoscope, IconAppointment,
+  IconDaisy,
+} from '../icons.jsx';
+
+// Cycle insights arrive from the ML endpoint as semantic keys; the mark is
+// chosen here so the API stays glyph-free and the icon stays on-brand.
+const INSIGHT_ICON = {
+  care: IconStethoscope,
+  trend: IconTrend,
+  forecast: IconSparkles,
+  log: IconJournal,
+};
 
 function fmtShort(iso) {
   return new Date(`${iso}T00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
@@ -89,7 +102,7 @@ export default function CycleTracker() {
     }
     setLogSheet(false);
     confirm();
-    toast(selectedDate === today ? 'Logged for today' : 'Day saved', { icon: '🌸' });
+    toast(selectedDate === today ? 'Logged for today' : 'Day saved', { icon: 'bloom' });
     schedulePredictionRefresh();
   }
 
@@ -143,7 +156,7 @@ export default function CycleTracker() {
         {phaseInfo && (
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.06 }}>
             <div className={`phase-banner phase-banner--${phaseInfo.class}`}>
-              <div className="phase-banner__icon">{phaseInfo.icon}</div>
+              <div className="phase-banner__icon">{phaseInfo.Icon && <phaseInfo.Icon size={24} />}</div>
               <div style={{ flex: 1 }}>
                 <div className="phase-banner__day">Day {cycleData.cycleDay}</div>
                 <div className="phase-banner__name">{phaseInfo.name}</div>
@@ -237,7 +250,9 @@ export default function CycleTracker() {
                   transition={{ duration: 0.25, delay: Math.min(i, 4) * 0.05, ease: [0.16, 1, 0.3, 1] }}
                   style={{ display: 'flex', gap: 'var(--sp-3)', alignItems: 'flex-start', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-4)' }}
                 >
-                  <span style={{ fontSize: 'var(--text-md)', lineHeight: 1 }} aria-hidden="true">{ins.icon}</span>
+                  <span style={{ color: 'var(--clr-brand)', display: 'flex', flexShrink: 0, marginTop: 1 }} aria-hidden="true">
+                    {(() => { const I = INSIGHT_ICON[ins.iconKey]; return I ? <I size={18} /> : null; })()}
+                  </span>
                   <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink)', lineHeight: 'var(--leading-base)' }}>{ins.text}</p>
                 </motion.div>
               ))}
@@ -259,7 +274,7 @@ export default function CycleTracker() {
               borderRadius: 'var(--radius-xl)', padding: 'var(--sp-4) var(--sp-5)', cursor: 'pointer',
             }}
           >
-            <span style={{ fontSize: 24, flexShrink: 0 }} aria-hidden="true">🩺</span>
+            <span style={{ color: 'var(--clr-brand)', display: 'flex', flexShrink: 0 }} aria-hidden="true"><IconStethoscope size={24} /></span>
             <span style={{ flex: 1 }}>
               <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-brand)' }}>
                 A quick PCOS self-check?
@@ -276,7 +291,7 @@ export default function CycleTracker() {
         {ml?.ready && ml.hasPcos && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
             <span className="chip chip--sm" style={{ cursor: 'default', background: 'var(--clr-brand-soft)', borderColor: 'transparent', color: 'var(--clr-brand)', fontWeight: 600 }}>
-              🌼 PCOS on record
+              <IconDaisy size={14} /> PCOS on record
             </span>
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>
               Predictions are widened to match PCOS cycle variability.
@@ -296,7 +311,7 @@ export default function CycleTracker() {
                 if (!meta) return null;
                 return (
                   <span key={s.id} className="chip chip--sm" style={{ cursor: 'default' }} title={s.fromYou ? 'From your own logs' : 'Common in this phase'}>
-                    {meta.icon} {meta.label}
+                    <meta.Icon size={14} />{meta.label}
                     <span style={{ color: s.fromYou ? 'var(--clr-brand)' : 'var(--clr-ink-subtle)', fontWeight: 700 }}>
                       {Math.round(s.p * 100)}%
                     </span>
@@ -314,7 +329,7 @@ export default function CycleTracker() {
             onClick={() => navigate('/pcos-check')}
             style={{ alignSelf: 'flex-start', display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)', color: 'var(--clr-ink-muted)', fontSize: 'var(--text-sm)', fontWeight: 600, padding: 'var(--sp-1) 0' }}
           >
-            🩺 Screen for PCOS
+            <IconStethoscope size={16} /> Screen for PCOS
             <span style={{ color: 'var(--clr-ink-subtle)' }} aria-hidden="true">→</span>
           </button>
         )}
@@ -353,7 +368,7 @@ export default function CycleTracker() {
               onClick={() => setSetupSheet(true)}
               style={{ width: '100%', padding: 'var(--sp-5)', background: 'var(--clr-surface)', border: '1.5px dashed var(--clr-brand-muted)', borderRadius: 'var(--radius-xl)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 'var(--sp-3)', cursor: 'pointer' }}
             >
-              <span style={{ fontSize: 32 }}>📅</span>
+              <span style={{ color: 'var(--clr-brand)', display: 'flex' }}><IconAppointment size={32} /></span>
               <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink)' }}>Set up your cycle</p>
               <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)' }}>Add your last period date to see predictions</p>
             </button>
@@ -368,7 +383,7 @@ export default function CycleTracker() {
               {loggedDays[today].symptoms.map(id => {
                 const s = CYCLE_SYMPTOMS.find(x => x.id === id);
                 return s ? (
-                  <span key={id} className="chip chip--active chip--sm">{s.icon} {s.label}</span>
+                  <span key={id} className="chip chip--active chip--sm"><s.Icon size={14} />{s.label}</span>
                 ) : null;
               })}
             </div>
@@ -421,7 +436,7 @@ export default function CycleTracker() {
                   onAnimationComplete={() => pulseId === s.id && setPulseId(null)}
                   transition={{ duration: 0.34, ease: [0.16, 1, 0.3, 1] }}
                 >
-                  {s.icon} {s.label}
+                  <s.Icon size={15} />{s.label}
                 </motion.button>
               ))}
             </div>

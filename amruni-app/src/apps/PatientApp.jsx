@@ -20,6 +20,9 @@ import Settings from '../screens/Settings';
 import SOSCenter from '../screens/SOSCenter';
 import PcosCheck from '../screens/PcosCheck';
 import ComingSoon from '../screens/ComingSoon';
+import Journal from '../screens/Journal';
+import Community from '../screens/Community';
+import CommunityThread from '../screens/CommunityThread';
 
 import DoctorProfile from '../screens/DoctorProfile';
 import BookAppointment from '../screens/BookAppointment';
@@ -73,6 +76,9 @@ export default function PatientApp() {
             <Route path="/pcos-check" element={<PcosCheck />} />
             <Route path="/coming-soon" element={<ComingSoon />} />
             <Route path="/settings" element={<Settings />} />
+            <Route path="/journal" element={<Journal />} />
+            <Route path="/community" element={<Community />} />
+            <Route path="/community/:id" element={<CommunityThread />} />
 
             {/* Booking journey */}
             <Route path="/doctor/:id" element={<DoctorProfile />} />
@@ -88,7 +94,13 @@ export default function PatientApp() {
             element={isAuthenticated ? <VideoCall /> : <Navigate to="/phone" replace />}
           />
 
-          <Route path="*" element={<Navigate to="/" replace />} />
+          {/* Unknown path: a signed-in, onboarded user goes to Home (never
+              replay the marketing splash — that reads as "bounced to the
+              landing page"); everyone else starts at the splash. */}
+          <Route
+            path="*"
+            element={<Navigate to={isAuthenticated && isOnboarded ? '/home' : '/'} replace />}
+          />
         </Routes>
       </AnimatePresence>
     </VideoProvider>

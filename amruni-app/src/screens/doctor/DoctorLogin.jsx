@@ -6,6 +6,7 @@ import OTPInput from '../../components/OTPInput';
 import Logo from '../../components/Logo';
 import { confirm as confirmHaptic } from '../../lib/haptics';
 import { patientAppHref } from '../../lib/siteLinks';
+import { FlagIN } from '../../icons.jsx';
 
 export default function DoctorLogin() {
   const navigate = useNavigate();
@@ -96,7 +97,7 @@ export default function DoctorLogin() {
               <div className="input-group">
                 <label className="input-label">Registered mobile number</label>
                 <div className="phone-row">
-                  <div className="phone-prefix"><span style={{ fontSize: 'var(--text-base)' }}>🇮🇳</span><span>+91</span></div>
+                  <div className="phone-prefix"><FlagIN size={20} /><span>+91</span></div>
                   <input
                     className="input-field input-field--dark"
                     style={{ flex: 1 }}

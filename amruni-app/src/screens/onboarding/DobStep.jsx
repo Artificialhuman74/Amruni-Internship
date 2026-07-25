@@ -69,7 +69,7 @@ export default function DobStep() {
                   transition={{ duration: 0.3, ease: [0.16, 1, 0.3, 1] }}
                   style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', background: 'var(--clr-brand-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-3) var(--sp-4)' }}
                 >
-                  <span style={{ fontSize: 24 }} aria-hidden="true">{stageInfo.icon}</span>
+                  <span style={{ color: 'var(--clr-brand)', display: 'flex' }} aria-hidden="true"><stageInfo.Icon size={24} /></span>
                   <div>
                     <div style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-brand)' }}>{stageInfo.label}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>Age {age} · we've set your experience to match</div>

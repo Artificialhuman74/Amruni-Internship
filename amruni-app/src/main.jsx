@@ -35,7 +35,7 @@ createRoot(document.getElementById('root')).render(
 // A small note for the curious who open the console.
 if (typeof window !== 'undefined' && !import.meta.env?.DEV) {
   console.log(
-    '%c🌺 Amruni%c\nBuilt with care for women’s health across India.\nIf you build for people who deserve better, we’d love to hear from you.',
+    '%cAmruni%c\nBuilt with care for women’s health across India.\nIf you build for people who deserve better, we’d love to hear from you.',
     'font-size:15px;font-weight:700;color:#9e1f4d',
     'font-size:12px;color:#6b6b6b;line-height:1.6',
   );

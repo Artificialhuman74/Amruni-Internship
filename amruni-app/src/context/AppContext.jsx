@@ -11,8 +11,24 @@ const initialState = {
     periodLength: 5,
     loggedDays: {},   // { 'YYYY-MM-DD': { flow, symptoms: [] } }
   },
-  pregnancy: { weeksPregnant: 16, dueDate: null, trustedContacts: [] },
-  settings: { notifications: true, anonymousMode: false, pregnancyMode: false },
+  pregnancy: {
+    lastPeriodStart: null,      // LMP anchor, same concept as cycle's field
+    dueDateOverride: null,      // doctor-given due date; wins over LMP calc if set
+    prePregnancyWeightKg: null,
+    heightCm: null,
+    trustedContacts: [],
+    loggedDays: {},             // { 'YYYY-MM-DD': { mood, valence, symptoms: [] } }
+    weightLogs: [],             // [{ date, weightKg }]
+    kickCounts: {},             // { 'YYYY-MM-DD': count }
+  },
+  settings: {
+    notifications: true,
+    anonymousMode: false,
+    pregnancyMode: false,
+    // How many times the community identity-exposure warning has been shown
+    // (capped at 2, ever — see IdentityWarningSheet.jsx).
+    identityWarningSeen: 0,
+  },
   sos: {
     contacts: [],          // [{ id, name, phone, relation, userId, createdAt }]
     alerts: [],            // [{ id, message, sentTo, userId, timestamp }]
@@ -57,6 +73,34 @@ function reducer(state, action) {
       };
     case 'SET_PREGNANCY':
       return { ...state, pregnancy: { ...state.pregnancy, ...action.payload } };
+    case 'LOG_PREGNANCY_DAY':
+      return {
+        ...state,
+        pregnancy: {
+          ...state.pregnancy,
+          loggedDays: {
+            ...state.pregnancy.loggedDays,
+            [action.date]: { ...state.pregnancy.loggedDays[action.date], ...action.data },
+          },
+        },
+      };
+    case 'LOG_PREGNANCY_WEIGHT': {
+      const rest = state.pregnancy.weightLogs.filter(w => w.date !== action.date);
+      const weightLogs = [...rest, { date: action.date, weightKg: action.weightKg }]
+        .sort((a, b) => a.date.localeCompare(b.date));
+      return { ...state, pregnancy: { ...state.pregnancy, weightLogs } };
+    }
+    case 'INC_KICK_COUNT':
+      return {
+        ...state,
+        pregnancy: {
+          ...state.pregnancy,
+          kickCounts: {
+            ...state.pregnancy.kickCounts,
+            [action.date]: (state.pregnancy.kickCounts[action.date] || 0) + 1,
+          },
+        },
+      };
     case 'SET_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.payload } };
     case 'SET_SOS_CONTACTS':
@@ -96,8 +140,17 @@ export function AppProvider({ children }) {
       const saved = localStorage.getItem('amruni_state');
       if (!saved) return init;
       const parsed = JSON.parse(saved);
-      // Fill in any slice a previous app version didn't persist.
-      const merged = { ...init, ...parsed, sos: parsed.sos || init.sos };
+      // Fill in any slice a previous app version didn't persist. `pregnancy`
+      // merges per-field (not replaced wholesale) so a stale local session
+      // still gets the new loggedDays/weightLogs/kickCounts defaults instead
+      // of an old shape missing them entirely.
+      const merged = {
+        ...init,
+        ...parsed,
+        pregnancy: { ...init.pregnancy, ...parsed.pregnancy },
+        settings: { ...init.settings, ...parsed.settings },
+        sos: parsed.sos || init.sos,
+      };
       // A session is only valid if the API token is still present.
       if (merged.auth?.isAuthenticated && !getToken()) {
         return { ...merged, auth: { ...merged.auth, isAuthenticated: false } };
@@ -227,4 +280,36 @@ export function useCycleData(state) {
   else if (normalizedCycleDay <= cycleLength - 14 + 1) phase = 'ovulation';
 
   return { periodDays, fertileDays, predictedDays, ovulationDate, cycleDay: normalizedCycleDay, phase };
+}
+
+// weeksPregnant is never stored directly — a saved integer goes stale the
+// moment the day changes. The anchor date (LMP or a doctor-given due date)
+// is stored instead and the week/trimester/countdown are derived fresh on
+// every read, mirroring how useCycleData derives from lastPeriodStart.
+export function usePregnancyData(state) {
+  const { lastPeriodStart, dueDateOverride } = state.pregnancy;
+  if (!lastPeriodStart && !dueDateOverride) return { known: false };
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  const lmp = lastPeriodStart
+    ? new Date(lastPeriodStart)
+    : new Date(new Date(dueDateOverride).getTime() - 280 * 86400000);
+  const dueDate = dueDateOverride
+    ? new Date(dueDateOverride)
+    : new Date(lmp.getTime() + 280 * 86400000);
+
+  const days = Math.floor((today - lmp) / 86400000);
+  const weeks = Math.max(0, Math.min(42, Math.floor(days / 7)));
+  const daysToGo = Math.max(0, Math.ceil((dueDate - today) / 86400000));
+  const trimester = weeks <= 13 ? 1 : weeks <= 27 ? 2 : 3;
+
+  return {
+    known: true,
+    weeks,
+    dueDate: dueDate.toISOString().split('T')[0],
+    daysToGo,
+    trimester,
+  };
 }

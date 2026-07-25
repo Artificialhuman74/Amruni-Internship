@@ -7,6 +7,7 @@ import BottomSheet from '../components/BottomSheet';
 import SuccessCheck from '../components/SuccessCheck';
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
+import { IconSearch, IconStar, IconVideo, IconChat } from '../icons.jsx';
 
 const stagger = {
   hidden: {},
@@ -137,7 +138,7 @@ export default function Telemedicine() {
                 outline: 'none'
               }}
             />
-            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', fontSize: 13, opacity: 0.5 }}>🔍</span>
+            <span style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', display: 'flex', color: 'var(--clr-ink-subtle)' }}><IconSearch size={15} /></span>
           </div>
           <select
             value={sortBy}
@@ -155,10 +156,10 @@ export default function Telemedicine() {
             }}
           >
             <option value="default">Sort: Default</option>
-            <option value="rating">★ Highest Rating</option>
-            <option value="fee-low">₹ Fee: Low to High</option>
-            <option value="fee-high">₹ Fee: High to Low</option>
-            <option value="experience">💼 Experience</option>
+            <option value="rating">Highest Rating</option>
+            <option value="fee-low">Fee: Low to High</option>
+            <option value="fee-high">Fee: High to Low</option>
+            <option value="experience">Most Experience</option>
           </select>
         </div>
       </div>
@@ -192,7 +193,7 @@ export default function Telemedicine() {
                       <div className="doctor-name">{doc.name}</div>
                       <div className="doctor-specialty">{doc.specialty}</div>
                       <div className="doctor-meta">
-                        <span className="doctor-rating">★ {doc.rating}</span>
+                        <span className="doctor-rating"><IconStar size={13} fill="currentColor" strokeWidth={0} /> {doc.rating}</span>
                         <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>·</span>
                         <span className="doctor-avail">{doc.nextSlot}</span>
                       </div>
@@ -210,7 +211,7 @@ export default function Telemedicine() {
 
           {filtered.length === 0 && (
             <div style={{ textAlign: 'center', padding: 'var(--sp-12) var(--sp-6)', color: 'var(--clr-ink-muted)' }}>
-              <div style={{ fontSize: 48, marginBottom: 'var(--sp-4)' }}>🔍</div>
+              <div style={{ color: 'var(--clr-ink-subtle)', display: 'flex', justifyContent: 'center', marginBottom: 'var(--sp-4)' }}><IconSearch size={44} /></div>
               <p style={{ fontWeight: 600, color: 'var(--clr-ink)' }}>No doctors found</p>
               <p style={{ fontSize: 'var(--text-sm)', marginTop: 'var(--sp-2)' }}>Try a different specialty or search term</p>
             </div>
@@ -228,13 +229,13 @@ export default function Telemedicine() {
                 <div style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--clr-ink)' }}>{selected.name}</div>
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>{selected.specialty}</div>
                 <div style={{ display: 'flex', gap: 'var(--sp-3)', marginTop: 'var(--sp-2)' }}>
-                  <span className="doctor-rating">★ {selected.rating} ({selected.reviews} reviews)</span>
+                  <span className="doctor-rating"><IconStar size={13} fill="currentColor" strokeWidth={0} /> {selected.rating} ({selected.reviews} reviews)</span>
                 </div>
               </div>
             </div>
 
             <div style={{ display: 'flex', gap: 'var(--sp-3)', marginBottom: 'var(--sp-5)' }}>
-              {[['🎥', 'Video', 'video'], ...(selected.phone ? [['💬', 'Chat', 'chat']] : [])].map(([icon, label, mode]) => (
+              {[[IconVideo, 'Video', 'video'], ...(selected.phone ? [[IconChat, 'Chat', 'chat']] : [])].map(([ModeIcon, label, mode]) => (
                 <button
                   key={mode}
                   onClick={() => setBookMode(mode)}
@@ -247,7 +248,7 @@ export default function Telemedicine() {
                     transition: 'background var(--dur-fast)',
                   }}
                 >
-                  <span style={{ fontSize: 20 }}>{icon}</span>
+                  <span style={{ color: 'var(--clr-brand)', display: 'flex' }}><ModeIcon size={22} /></span>
                   {label}
                   <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', fontWeight: 500 }}>
                     {mode === 'chat' ? `₹${Math.round(parseInt(selected.fee.replace(/\D/g, '')) / 3)}` : selected.fee}

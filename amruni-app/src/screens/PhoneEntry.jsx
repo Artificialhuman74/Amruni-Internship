@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { authApi, apiError } from '../services/api';
 import Logo from '../components/Logo';
 import { doctorAppHref } from '../lib/siteLinks';
+import { FlagIN } from '../icons.jsx';
 
 export default function PhoneEntry() {
   const navigate = useNavigate();
@@ -91,7 +92,7 @@ export default function PhoneEntry() {
             </label>
             <div className="phone-row">
               <div className="phone-prefix">
-                <span style={{ fontSize: 'var(--text-base)' }}>🇮🇳</span>
+                <FlagIN size={20} />
                 <span>+91</span>
               </div>
               <input

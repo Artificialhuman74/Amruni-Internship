@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useVideoCall } from '../../hooks/useVideoCall';
 import ParticipantCard from './ParticipantCard';
 import DoctorAvatar from '../DoctorAvatar';
+import { IconUser } from '../../icons.jsx';
 
 export default function VideoPlayer() {
   const { localStream, isCamOn, activeAppointment, currentDoctor } = useVideoCall();
@@ -18,7 +19,6 @@ export default function VideoPlayer() {
   }, [localStream, isCamOn]);
 
   const doctorName = activeAppointment?.doctor?.name || currentDoctor?.name || 'Doctor';
-  const doctorAvatar = activeAppointment?.doctor?.avatar || currentDoctor?.avatar || '🩺';
   const doctorSpecialty = activeAppointment?.doctor?.specialty || currentDoctor?.specialty || 'Specialist';
 
   return (
@@ -64,7 +64,7 @@ export default function VideoPlayer() {
           />
         ) : (
           <div className="patient-fallback-avatar">
-            <span className="patient-avatar-emoji">👩</span>
+            <span className="patient-avatar-emoji"><IconUser size={32} /></span>
             <span className="camera-muted-badge">Camera Off</span>
           </div>
         )}

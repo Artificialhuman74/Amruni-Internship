@@ -5,6 +5,7 @@ import { useVideoCall } from '../hooks/useVideoCall';
 import SuccessCheck from '../components/SuccessCheck';
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
+import { IconStar, IconPrescription } from '../icons.jsx';
 
 export default function ConsultationSummary() {
   const { id } = useParams();
@@ -61,7 +62,6 @@ export default function ConsultationSummary() {
   }
 
   const doctorName = appointment?.doctor?.name || 'Doctor';
-  const doctorAvatar = appointment?.doctor?.avatar || '🩺';
   const doctorSpecialty = appointment?.doctor?.specialty || 'Specialist';
   const appointmentDate = appointment?.date || new Date().toISOString().split('T')[0];
 
@@ -100,7 +100,7 @@ export default function ConsultationSummary() {
           style={{ width: '100%', justifyContent: 'space-between', display: 'flex', alignItems: 'center', padding: 'var(--sp-4)' }}
         >
           <span style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
-            📝 <span>View E-Prescription</span>
+            <IconPrescription size={18} /> <span>View E-Prescription</span>
           </span>
           <span>{showPrescription ? '▲' : '▼'}</span>
         </button>
@@ -175,7 +175,7 @@ export default function ConsultationSummary() {
       }}>
         {ratingSubmitted ? (
           <div>
-            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-success)' }}>★ Thank you for your feedback!</p>
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-success)', display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}><IconStar size={15} fill="currentColor" strokeWidth={0} /> Thank you for your feedback!</p>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 4 }}>Your rating helps us improve our consultation services.</p>
           </div>
         ) : (
@@ -192,11 +192,12 @@ export default function ConsultationSummary() {
                   onMouseEnter={() => setHoverRating(star)}
                   onMouseLeave={() => setHoverRating(0)}
                   style={{
-                    fontSize: 28, cursor: 'pointer', transition: 'color var(--dur-fast)',
+                    display: 'flex', cursor: 'pointer', transition: 'color var(--dur-fast)',
                     color: (hoverRating || rating) >= star ? 'var(--clr-gold)' : 'var(--clr-border)'
                   }}
+                  aria-label={`${star} star${star > 1 ? 's' : ''}`}
                 >
-                  ★
+                  <IconStar size={28} fill="currentColor" strokeWidth={0} />
                 </button>
               ))}
             </div>
