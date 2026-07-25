@@ -1,61 +1,45 @@
 import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence, useMotionValue, useTransform, animate, useReducedMotion } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useApp, usePregnancyData } from '../context/AppContext';
 import { useToast } from './Toast';
 import { tap, confirm } from '../lib/haptics';
+import MoodFlower, { BANDS } from './MoodFlower';
+import { IconClose, IconCheck } from '../icons.jsx';
 
 /**
- * Daily pregnancy mood check-in — Amruni's own take on the Apple Health
- * "State of Mind" mechanic: drag a valence slider, then pick the word that
- * fits. The live feedback during the drag is a small camellia bud built from
- * the same petal generator as PregnancyBloom — closed and cool-toned at the
- * unpleasant end, open and warm gold at the pleasant end — rather than
- * Apple's blob. Shows once a day on Home, then fades itself out on submit.
+ * Daily pregnancy mood check-in, built on the Apple Health "State of Mind"
+ * mechanic: choose a valence, name the feeling, then name what's driving it.
+ *
+ * Home carries only a quiet invitation. The choosing happens in a full-bleed
+ * surface whose entire field — background, bloom, type colour, button — is
+ * mixed from the valence, so the screen answers before the label does. That
+ * whole-field response is the point of the reference, and it cannot be done
+ * inside a card.
+ *
+ * What's logged stays what the product already stores: a word, a valence, and
+ * the factors behind it (persisted in the day's existing `symptoms` list).
  */
 
 const EXPO = [0.16, 1, 0.3, 1];
-
-// One camellia petal (teardrop pointing up from the origin) — same generator
-// convention as PregnancyBloom's petalPath, rebuilt locally at a smaller scale
-// for this in-card element.
-function petalPath(len, w) {
-  return `M0 0 C ${-w / 2} ${-len * 0.35}, ${-w / 2} ${-len * 0.82}, 0 ${-len} C ${w / 2} ${-len * 0.82}, ${w / 2} ${-len * 0.35}, 0 0 Z`;
-}
-
-const BUD_PETALS = Array.from({ length: 5 }, (_, i) => ({ angle: i * 72, len: 20, w: 13 }));
-
-// Purple/cool → blue/neutral → warm gold, muted and dignified rather than
-// saturated — three anchor stops the live drag position interpolates across.
-const MOOD_HUES = {
-  wash: ['#59507c', '#7c8ca8', '#c9a868'],
-  fill: ['#8b7fa8', '#a7b6c8', '#dcc08c'],
-  stroke: ['#453c61', '#5c6c84', '#a3823f'],
-};
+const ORDER = [-3, -2, -1, 0, 1, 2, 3];
 
 const WORD_BANDS = {
-  '-3': { label: 'Very Unpleasant', words: ['Anxious about baby', 'Overwhelmed', 'Exhausted', 'Nauseous', 'Scared'] },
-  '-2': { label: 'Unpleasant', words: ['Uncomfortable', 'Irritable', 'Drained', 'Achy', 'Worried'] },
-  '-1': { label: 'Slightly Unpleasant', words: ['Restless', 'Tired', 'Uneasy', 'Sensitive', 'Low'] },
-  '0': { label: 'Neutral', words: ['Calm', 'Steady', 'Quiet', 'Reflective', 'Unsure'] },
-  '1': { label: 'Slightly Pleasant', words: ['Content', 'Hopeful', 'Relieved', 'Comfortable', 'Grateful'] },
-  '2': { label: 'Pleasant', words: ['Peaceful', 'Joyful', 'Connected', 'Energised', 'Glowing'] },
-  '3': { label: 'Very Pleasant', words: ['Radiant', 'Elated', 'Blessed', 'Amazed', 'Overjoyed'] },
+  '-3': ['Anxious about baby', 'Overwhelmed', 'Exhausted', 'Nauseous', 'Scared', 'Alone'],
+  '-2': ['Uncomfortable', 'Irritable', 'Drained', 'Achy', 'Worried', 'Restless'],
+  '-1': ['Tired', 'Uneasy', 'Sensitive', 'Low', 'Distracted', 'Impatient'],
+  '0': ['Calm', 'Steady', 'Quiet', 'Reflective', 'Unsure', 'Waiting'],
+  '1': ['Content', 'Hopeful', 'Relieved', 'Comfortable', 'Grateful', 'Rested'],
+  '2': ['Peaceful', 'Joyful', 'Connected', 'Energised', 'Glowing', 'Confident'],
+  '3': ['Radiant', 'Elated', 'Blessed', 'Amazed', 'Overjoyed', 'Powerful'],
 };
 
-function valenceFromT(v) {
-  return Math.max(-3, Math.min(3, Math.round(v * 6) - 3));
-}
-function tFromValence(value) {
-  return (value + 3) / 6;
-}
-
-function BackChevron() {
-  return (
-    <svg width="14" height="14" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-      <path d="M10 4l-4 4 4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  );
-}
+// Grouped the way the reference groups them — body, people, life — so the eye
+// lands on a short list rather than one long wall of chips.
+const FACTOR_GROUPS = [
+  ['Health', 'Sleep', 'Energy', 'Body changes', 'Nausea', 'Pain'],
+  ['Baby', 'Partner', 'Family', 'Friends'],
+  ['Work', 'Money', 'Appointments', 'Travel', 'Weather'],
+];
 
 export default function PregnancyMoodCheckIn() {
   const { state, dispatch } = useApp();
@@ -68,224 +52,296 @@ export default function PregnancyMoodCheckIn() {
   const gating = Boolean(state.settings?.pregnancyMode) && Boolean(pregnancyData?.known) && !alreadyLogged;
 
   const [dismissed, setDismissed] = useState(false);
-  const [phase, setPhase] = useState('slider'); // 'slider' | 'words'
-  const [selectedBand, setSelectedBand] = useState(0);
-  const [liveBand, setLiveBand] = useState(0);
+  const [open, setOpen] = useState(false);
+  const [step, setStep] = useState(0); // 0 feel · 1 word · 2 factors
+  const [band, setBand] = useState(0);
+  const [word, setWord] = useState(null);
+  const [factors, setFactors] = useState([]);
 
   const trackRef = useRef(null);
-  const firstWordRef = useRef(null);
-  const pendingValenceRef = useRef(0);
+  const sliderRef = useRef(null);
+  const openerRef = useRef(null);
 
-  const t = useMotionValue(0.5); // 0 = very unpleasant, 1 = very pleasant
+  const b = BANDS[String(band)];
 
-  const thumbLeft = useTransform(t, (v) => `${v * 100}%`);
-  const washColor = useTransform(t, [0, 0.5, 1], MOOD_HUES.wash);
-  const petalFill = useTransform(t, [0, 0.5, 1], MOOD_HUES.fill);
-  const petalStroke = useTransform(t, [0, 0.5, 1], MOOD_HUES.stroke);
-  const budScale = useTransform(t, [0, 1], [0.82, 1.06]);
-  const petalSpread = useTransform(t, [0, 1], [0.55, 1]);
-  const budSwirl = useTransform(t, [0, 1], [-12, 0]);
-
-  // Keep the accessible value + the pending commit target in sync with the
-  // live drag/keyboard position, without forcing a re-render on every pixel.
+  // The sheet owns the screen while it's up: lock the page behind it, focus the
+  // control that matters, and let Escape out.
   useEffect(() => {
-    const unsubscribe = t.on('change', (v) => {
-      const band = valenceFromT(v);
-      pendingValenceRef.current = band;
-      setLiveBand((prev) => (prev === band ? prev : band));
-    });
-    return unsubscribe;
-  }, [t]);
+    if (!open) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => { if (e.key === 'Escape') close(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
 
   useEffect(() => {
-    if (phase === 'words') firstWordRef.current?.focus();
-  }, [phase]);
+    if (open && step === 0) sliderRef.current?.focus();
+  }, [open, step]);
 
-  if (!gating && !dismissed) return null;
+  function launch() {
+    tap();
+    setStep(0);
+    setWord(null);
+    setFactors([]);
+    setOpen(true);
+  }
 
-  function updateFromClientX(clientX) {
+  function close() {
+    setOpen(false);
+    openerRef.current?.focus();
+  }
+
+  function bandFromClientX(clientX) {
     const el = trackRef.current;
-    if (!el) return;
+    if (!el) return band;
     const rect = el.getBoundingClientRect();
     const frac = rect.width ? (clientX - rect.left) / rect.width : 0.5;
-    t.set(Math.min(1, Math.max(0, frac)));
+    const idx = Math.round(Math.min(1, Math.max(0, frac)) * 6);
+    return ORDER[idx];
   }
 
-  function handlePanStart(_event, info) {
-    updateFromClientX(info.point.x);
-  }
-  function handlePan(_event, info) {
-    updateFromClientX(info.point.x);
+  function setFromPointer(clientX) {
+    const next = bandFromClientX(clientX);
+    if (next !== band) { tap(); setBand(next); }
   }
 
-  function stepTo(value) {
-    pendingValenceRef.current = value;
-    const target = tFromValence(value);
-    if (reduce) t.set(target);
-    else animate(t, target, { duration: 0.22, ease: EXPO });
+  function onKeyDown(e) {
+    const i = ORDER.indexOf(band);
+    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
+      e.preventDefault(); setBand(ORDER[Math.min(6, i + 1)]);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
+      e.preventDefault(); setBand(ORDER[Math.max(0, i - 1)]);
+    } else if (e.key === 'Home') { e.preventDefault(); setBand(-3); }
+    else if (e.key === 'End') { e.preventDefault(); setBand(3); }
   }
 
-  function commit() {
-    const band = pendingValenceRef.current;
-    const target = tFromValence(band);
-    if (reduce) t.set(target);
-    else animate(t, target, { duration: 0.35, ease: EXPO });
-    setSelectedBand(band);
-    setPhase('words');
-  }
-
-  function handleKeyDown(event) {
-    const current = valenceFromT(t.get());
-    if (event.key === 'ArrowRight' || event.key === 'ArrowUp') {
-      event.preventDefault();
-      stepTo(Math.min(3, current + 1));
-    } else if (event.key === 'ArrowLeft' || event.key === 'ArrowDown') {
-      event.preventDefault();
-      stepTo(Math.max(-3, current - 1));
-    } else if (event.key === 'Home') {
-      event.preventDefault();
-      stepTo(-3);
-    } else if (event.key === 'End') {
-      event.preventDefault();
-      stepTo(3);
-    } else if (event.key === 'Enter' || event.key === ' ') {
-      event.preventDefault();
-      commit();
-    }
-  }
-
-  function handleBack() {
-    setPhase('slider');
-  }
-
-  function handleSelectWord(word) {
+  function toggleFactor(f) {
     tap();
-    dispatch({ type: 'LOG_PREGNANCY_DAY', date: today, data: { mood: word, valence: selectedBand } });
+    setFactors((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
+  }
+
+  function finish() {
+    dispatch({
+      type: 'LOG_PREGNANCY_DAY',
+      date: today,
+      data: { mood: word, valence: band, symptoms: factors },
+    });
     confirm();
     toast('Logged. Thank you for sharing.', { icon: 'heart' });
+    setOpen(false);
     setDismissed(true);
   }
 
+  if (!gating && !dismissed) return null;
   const visible = gating && !dismissed;
-  const bandInfo = WORD_BANDS[String(selectedBand)];
-  const liveLabel = WORD_BANDS[String(liveBand)].label;
 
   return (
     <div className="preg-tint">
       <AnimatePresence>
         {visible && (
-          <motion.div
-            key="mood-checkin"
-            className="mood-checkin"
-            role="group"
-            aria-label="Daily mood check-in"
+          <motion.button
+            key="mood-entry"
+            ref={openerRef}
+            type="button"
+            className="mood-entry"
+            onClick={launch}
+            aria-label="Start today's mood check-in"
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.98 }}
             transition={{ duration: reduce ? 0.18 : 0.46, ease: EXPO }}
           >
-            <motion.div className="mood-checkin__wash" aria-hidden="true" style={{ backgroundColor: washColor }} />
+            <span className="mood-entry__bloom" aria-hidden="true">
+              <MoodFlower band={2} size={64} />
+            </span>
+            <span className="mood-entry__text">
+              <span className="mood-entry__eyebrow">Daily check-in</span>
+              <span className="mood-entry__title">How are you feeling today?</span>
+              <span className="mood-entry__hint">Takes about a minute</span>
+            </span>
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="mood-entry__chev">
+              <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </motion.button>
+        )}
+      </AnimatePresence>
 
-            <div className="mood-checkin__content">
-              <AnimatePresence mode="wait">
-                {phase === 'slider' ? (
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            className="mood-sheet"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Daily mood check-in"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: '4%' }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: '3%' }}
+            transition={{ duration: reduce ? 0.18 : 0.5, ease: EXPO }}
+            style={{ color: b.ink }}
+          >
+            {/* The field itself carries the answer — it re-mixes on every change. */}
+            <motion.div
+              className="mood-sheet__field"
+              aria-hidden="true"
+              animate={{ background: `linear-gradient(178deg, ${b.wash2} 0%, ${b.wash} 62%, ${b.wash} 100%)` }}
+              transition={{ duration: reduce ? 0 : 0.62, ease: EXPO }}
+            />
+
+            <header className="mood-sheet__bar">
+              {step > 0 ? (
+                <button type="button" className="mood-sheet__circle" onClick={() => setStep(step - 1)} aria-label="Go back">
+                  <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+                    <path d="M10 3l-5 5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </button>
+              ) : <span className="mood-sheet__circle mood-sheet__circle--ghost" aria-hidden="true" />}
+
+              <span className="mood-sheet__bar-title">Daily check-in</span>
+
+              <button type="button" className="mood-sheet__circle" onClick={close} aria-label="Close check-in">
+                <IconClose size={17} strokeWidth={2} />
+              </button>
+            </header>
+
+            <div className="mood-sheet__body">
+              <AnimatePresence mode="wait" initial={false}>
+                {step === 0 && (
                   <motion.div
-                    key="step-slider"
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 12 }}
+                    key="feel"
+                    className="mood-step mood-step--feel"
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16 }}
                     animate={{ opacity: 1, x: 0 }}
-                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -12 }}
-                    transition={{ duration: reduce ? 0.15 : 0.32, ease: EXPO }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -16 }}
+                    transition={{ duration: reduce ? 0.15 : 0.34, ease: EXPO }}
                   >
-                    <p className="mood-checkin__eyebrow">Daily check-in</p>
-                    <h2 className="mood-checkin__title">How are you feeling today?</h2>
+                    <h2 className="mood-sheet__headline">Choose how you&rsquo;re feeling right now</h2>
 
-                    <div className="mood-checkin__stage">
-                      <p className="mood-checkin__live-label" aria-hidden="true">{liveLabel}</p>
+                    <div className="mood-step__stage">
+                      <MoodFlower band={band} size={250} />
+                    </div>
 
-                      <motion.div
-                        ref={trackRef}
-                        className="mood-checkin__track"
+                    <p className="mood-sheet__verdict" aria-hidden="true">{b.label}</p>
+
+                    <div className="mood-slider">
+                      <div
+                        ref={(el) => { trackRef.current = el; sliderRef.current = el; }}
+                        className="mood-slider__track"
                         role="slider"
                         tabIndex={0}
-                        aria-label="Today's mood"
+                        aria-label="How you're feeling"
                         aria-valuemin={-3}
                         aria-valuemax={3}
-                        aria-valuenow={liveBand}
-                        aria-valuetext={liveLabel}
-                        aria-describedby="mood-checkin-hint"
-                        onPanStart={handlePanStart}
-                        onPan={handlePan}
-                        onPanEnd={commit}
-                        onKeyDown={handleKeyDown}
-                        style={{ touchAction: 'none' }}
+                        aria-valuenow={band}
+                        aria-valuetext={b.label}
+                        onKeyDown={onKeyDown}
+                        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setFromPointer(e.clientX); }}
+                        onPointerMove={(e) => { if (e.buttons) setFromPointer(e.clientX); }}
                       >
-                        <div className="mood-checkin__track-fill" aria-hidden="true" />
-                        <motion.div
-                          className="mood-checkin__bud"
-                          aria-hidden="true"
-                          style={{ left: thumbLeft, scale: reduce ? 1 : budScale, rotate: reduce ? 0 : budSwirl }}
-                        >
-                          <svg viewBox="-30 -30 60 60" width="44" height="44">
-                            {BUD_PETALS.map((p) => (
-                              <g key={p.angle} transform={`rotate(${p.angle})`}>
-                                <motion.path
-                                  d={petalPath(p.len, p.w)}
-                                  strokeWidth="1.2"
-                                  style={{
-                                    fill: petalFill,
-                                    stroke: petalStroke,
-                                    scale: reduce ? 0.85 : petalSpread,
-                                    transformBox: 'fill-box',
-                                    transformOrigin: '50% 100%',
-                                  }}
-                                />
-                              </g>
-                            ))}
-                            <motion.circle cx="0" cy="0" r="4" style={{ fill: petalStroke }} />
-                          </svg>
-                        </motion.div>
-                      </motion.div>
-
-                      <p id="mood-checkin-hint" className="mood-checkin__hint">
-                        Drag to choose, or use the arrow keys — then press Enter.
-                      </p>
+                        <span className="mood-slider__rail" aria-hidden="true">
+                          <motion.span
+                            className="mood-slider__thumb"
+                            animate={{ left: `${((band + 3) / 6) * 100}%` }}
+                            transition={{ duration: reduce ? 0 : 0.32, ease: EXPO }}
+                          />
+                        </span>
+                      </div>
+                      <div className="mood-slider__ends" aria-hidden="true">
+                        <span>Very Unpleasant</span>
+                        <span>Very Pleasant</span>
+                      </div>
                     </div>
                   </motion.div>
-                ) : (
-                  <motion.div
-                    key="step-words"
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -12 }}
-                    transition={{ duration: reduce ? 0.15 : 0.32, ease: EXPO }}
-                  >
-                    <button type="button" className="mood-checkin__back" onClick={handleBack} aria-label="Change your mood">
-                      <BackChevron />
-                      Change
-                    </button>
-                    <p className="mood-checkin__eyebrow">{bandInfo.label}</p>
-                    <h2 className="mood-checkin__title">What&rsquo;s behind it?</h2>
-                    <p className="mood-checkin__hint" style={{ textAlign: 'left', marginTop: 2 }}>
-                      Choose the word that feels closest.
-                    </p>
+                )}
 
-                    <div className="mood-checkin__word-grid" role="group" aria-label={`Words for ${bandInfo.label}`}>
-                      {bandInfo.words.map((word, i) => (
+                {step === 1 && (
+                  <motion.div
+                    key="word"
+                    className="mood-step"
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -16 }}
+                    transition={{ duration: reduce ? 0.15 : 0.34, ease: EXPO }}
+                  >
+                    <div className="mood-step__crown">
+                      <MoodFlower band={band} size={112} breathe={false} />
+                      <p className="mood-sheet__verdict mood-sheet__verdict--sm">{b.label}</p>
+                    </div>
+
+                    <h3 className="mood-sheet__question">What best describes this feeling?</h3>
+                    <div className="mood-chips" role="group" aria-label={`Words for ${b.label}`}>
+                      {WORD_BANDS[String(band)].map((w) => (
                         <button
-                          key={word}
+                          key={w}
                           type="button"
-                          ref={i === 0 ? firstWordRef : undefined}
-                          className="mood-checkin__word"
-                          onClick={() => handleSelectWord(word)}
+                          className={`mood-chip${word === w ? ' mood-chip--on' : ''}`}
+                          aria-pressed={word === w}
+                          onClick={() => { tap(); setWord(w); }}
+                          style={word === w ? { background: b.btn, borderColor: b.btn } : undefined}
                         >
-                          {word}
+                          {w}
                         </button>
                       ))}
                     </div>
                   </motion.div>
                 )}
+
+                {step === 2 && (
+                  <motion.div
+                    key="factors"
+                    className="mood-step"
+                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -16 }}
+                    transition={{ duration: reduce ? 0.15 : 0.34, ease: EXPO }}
+                  >
+                    <div className="mood-step__crown">
+                      <MoodFlower band={band} size={112} breathe={false} />
+                      <p className="mood-sheet__verdict mood-sheet__verdict--sm">{word || b.label}</p>
+                    </div>
+
+                    <h3 className="mood-sheet__question">What&rsquo;s having the biggest impact on you?</h3>
+                    {FACTOR_GROUPS.map((group, gi) => (
+                      <div className="mood-chips" key={gi} role="group" aria-label={`Factor group ${gi + 1}`}>
+                        {group.map((f) => {
+                          const on = factors.includes(f);
+                          return (
+                            <button
+                              key={f}
+                              type="button"
+                              className={`mood-chip${on ? ' mood-chip--on' : ''}`}
+                              aria-pressed={on}
+                              onClick={() => toggleFactor(f)}
+                              style={on ? { background: b.btn, borderColor: b.btn } : undefined}
+                            >
+                              {on && <IconCheck size={14} />}
+                              {f}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    ))}
+                    <p className="mood-sheet__optional">Optional — skip if nothing stands out.</p>
+                  </motion.div>
+                )}
               </AnimatePresence>
             </div>
+
+            <footer className="mood-sheet__foot">
+              <motion.button
+                type="button"
+                className="mood-sheet__cta"
+                onClick={() => (step === 2 ? finish() : setStep(step + 1))}
+                disabled={step === 1 && !word}
+                animate={{ backgroundColor: b.btn }}
+                transition={{ duration: reduce ? 0 : 0.5, ease: EXPO }}
+              >
+                {step === 2 ? 'Done' : 'Next'}
+              </motion.button>
+            </footer>
           </motion.div>
         )}
       </AnimatePresence>
