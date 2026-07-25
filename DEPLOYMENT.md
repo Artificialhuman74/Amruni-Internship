@@ -42,9 +42,17 @@ netlify deploy --prod --dir dist/patient --site amruni-patient --no-build
 netlify deploy --prod --dir dist/doctor  --site amruni-doctor  --no-build
 netlify deploy --prod --dir dist/admin   --site amruni-admin   --no-build
 
-# api
-cd server && railway up
+# api — from the REPO ROOT, not from server/ (see note below)
+railway up --service amruni-api
 ```
+
+> **Run `railway up` from the repo root.** The service's Root Directory is
+> `/server`, so the uploaded build context has to *contain* a `server/` folder.
+> Running `cd server && railway up` uploads server's *contents* at the top
+> level, and nixpacks then fails looking for `/server` inside it:
+> `Failed to read app source directory / No such file or directory (os error 2)`.
+> The root `.railwayignore` keeps that upload under 1 MB by excluding
+> `amruni-app/`, the virtualenvs, and the local database.
 
 ## Railway configuration
 

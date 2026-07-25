@@ -1,0 +1,32 @@
+# The amruni-api service has its Root Directory set to `/server`, so the
+# uploaded build context must CONTAIN a `server/` folder — which means
+# `railway up` runs from the repo root, not from inside `server/`.
+#
+# Everything the API doesn't need at build or runtime is excluded here; without
+# this the upload would be ~700 MB instead of well under 1 MB.
+
+# Frontends — deployed separately to Netlify (see DEPLOYMENT.md)
+amruni-app/
+amruni-backend/
+
+# Local virtualenv — Railway installs from server/requirements.txt
+.venv/
+server/.venv/
+
+# Local SQLite database. Production data lives on the Railway volume; uploading
+# a dev database here would be both pointless and risky.
+server/data/
+
+# Repo assets not used at build or runtime
+Amruni.pdf
+cycle tracking datasets/
+
+# Tooling and agent config
+.agents/
+.claude/
+.codex/
+.impeccable/
+
+__pycache__/
+*.pyc
+.DS_Store
