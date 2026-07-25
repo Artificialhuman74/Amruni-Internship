@@ -3,12 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { doctorApi, doctorApiError } from '../../services/doctorApi';
 import { useToast } from '../../components/Toast';
+import { IconLab, IconReport, IconScan, IconAttachment, IconAlert, IconClose } from '../../icons.jsx';
 
 const STAGE_LABEL = {
   adolescent: 'Adolescent', reproductive: 'Reproductive age',
   postpartum: 'Post-partum', menopause: 'Menopause', elderly: 'Elderly care',
 };
-const KIND_ICON = { lab: '🧪', report: '📄', scan: '🩻', other: '📎' };
+const KIND_ICON = { lab: IconLab, report: IconReport, scan: IconScan, other: IconAttachment };
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -46,7 +47,7 @@ export default function DoctorPatientChart() {
       });
     } catch (err) {
       setData((d) => ({ ...d, chart: prev }));
-      toast(doctorApiError(err, 'Could not update the chart.'), { icon: '⚠️' });
+      toast(doctorApiError(err, 'Could not update the chart.'), { icon: 'warning' });
     }
   }
 
@@ -68,7 +69,7 @@ export default function DoctorPatientChart() {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 2_500_000) {
-      toast('Keep documents under 2.5 MB.', { icon: '⚠️' });
+      toast('Keep documents under 2.5 MB.', { icon: 'warning' });
       return;
     }
     setUploading(true);
@@ -81,9 +82,9 @@ export default function DoctorPatientChart() {
           data: reader.result,
         });
         setData((d) => ({ ...d, documents: [doc, ...d.documents] }));
-        toast('Document added to the chart', { icon: '📄' });
+        toast('Document added to the chart', { icon: 'file' });
       } catch (err) {
-        toast(doctorApiError(err, 'Upload failed.'), { icon: '⚠️' });
+        toast(doctorApiError(err, 'Upload failed.'), { icon: 'warning' });
       } finally {
         setUploading(false);
         if (fileRef.current) fileRef.current.value = '';
@@ -101,7 +102,7 @@ export default function DoctorPatientChart() {
       window.open(url, '_blank');
       setTimeout(() => URL.revokeObjectURL(url), 60000);
     } catch (err) {
-      toast(doctorApiError(err, 'Could not open that document.'), { icon: '⚠️' });
+      toast(doctorApiError(err, 'Could not open that document.'), { icon: 'warning' });
     }
   }
 
@@ -111,7 +112,7 @@ export default function DoctorPatientChart() {
       await doctorApi.deleteDocument(userId, doc.id);
       setData((d) => ({ ...d, documents: d.documents.filter((x) => x.id !== doc.id) }));
     } catch (err) {
-      toast(doctorApiError(err, 'Could not remove the document.'), { icon: '⚠️' });
+      toast(doctorApiError(err, 'Could not remove the document.'), { icon: 'warning' });
     }
   }
 
@@ -170,14 +171,14 @@ export default function DoctorPatientChart() {
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)', alignItems: 'center' }}>
           {chart.allergies.map((a) => (
             <span key={a} className="flag-chip flag-chip--allergy">
-              ⚠ {a}
-              <button onClick={() => removeFlag('allergies', a)} aria-label={`Remove allergy ${a}`}>✕</button>
+              <IconAlert size={14} /> {a}
+              <button onClick={() => removeFlag('allergies', a)} aria-label={`Remove allergy ${a}`}><IconClose size={13} /></button>
             </span>
           ))}
           {chart.conditions.map((c) => (
             <span key={c} className="flag-chip flag-chip--condition">
               {c}
-              <button onClick={() => removeFlag('conditions', c)} aria-label={`Remove condition ${c}`}>✕</button>
+              <button onClick={() => removeFlag('conditions', c)} aria-label={`Remove condition ${c}`}><IconClose size={13} /></button>
             </span>
           ))}
           {chart.allergies.length === 0 && chart.conditions.length === 0 && flagInput.kind === null && (
@@ -229,7 +230,7 @@ export default function DoctorPatientChart() {
                   {[...vitalsHistory].reverse().map((v) => (
                     <div key={v.date} style={{ display: 'flex', justifyContent: 'space-between', fontVariantNumeric: 'tabular-nums' }}>
                       <span>{fmtDate(v.date)}</span>
-                      <span>{[v.bp && `BP ${v.bp}`, v.pulse && `♥ ${v.pulse}`, v.weight && `${v.weight} kg`].filter(Boolean).join(' · ')}</span>
+                      <span>{[v.bp && `BP ${v.bp}`, v.pulse && `${v.pulse} bpm`, v.weight && `${v.weight} kg`].filter(Boolean).join(' · ')}</span>
                     </div>
                   ))}
                 </div>
@@ -323,12 +324,14 @@ export default function DoctorPatientChart() {
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
           {documents.map((doc) => (
             <div key={doc.id} className="doc-queue-row">
-              <span style={{ fontSize: 'var(--text-md)' }} aria-hidden="true">{KIND_ICON[doc.kind] || '📎'}</span>
+              <span style={{ color: 'var(--clr-ink-muted)', display: 'flex' }} aria-hidden="true">
+                {(() => { const I = KIND_ICON[doc.kind] || IconAttachment; return <I size={18} />; })()}
+              </span>
               <button onClick={() => openDocument(doc)} style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</span>
                 <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>{doc.kind} · {fmtDate(doc.createdAt)}</span>
               </button>
-              <button onClick={() => removeDocument(doc)} aria-label={`Remove ${doc.title}`} style={{ color: 'var(--clr-ink-subtle)', padding: 'var(--sp-1)' }}>✕</button>
+              <button onClick={() => removeDocument(doc)} aria-label={`Remove ${doc.title}`} style={{ color: 'var(--clr-ink-subtle)', padding: 'var(--sp-1)' }}><IconClose size={15} /></button>
             </div>
           ))}
         </div>

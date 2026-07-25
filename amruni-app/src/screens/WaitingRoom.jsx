@@ -4,6 +4,7 @@ import { appointmentApi } from '../services/appointmentApi';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
+import { IconChat, IconVideo } from '../icons.jsx';
 
 export default function WaitingRoom() {
   const { appointmentId } = useParams();
@@ -145,10 +146,9 @@ export default function WaitingRoom() {
   }
 
   const doctorName = appointment.doctor?.name || 'Doctor';
-  const doctorAvatar = appointment.doctor?.avatar || '🩺';
   const isChat = appointment.consultMode === 'chat';
   const joinLabel = isChat ? 'Open WhatsApp Chat' : 'Join Video Call';
-  const joinIcon = isChat ? '💬' : '🎥';
+  const JoinIcon = isChat ? IconChat : IconVideo;
 
   return (
     <div className="screen screen--light" style={{ justifyContent: 'space-between', padding: 'var(--sp-5) var(--sp-6) calc(env(safe-area-inset-bottom) + var(--sp-6))' }}>
@@ -191,7 +191,7 @@ export default function WaitingRoom() {
           border: `1px solid ${isChat ? 'oklch(0.85 0.08 150)' : 'oklch(0.85 0.08 260)'}`,
           fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)'
         }}>
-          {joinIcon} {isChat ? 'Chat / DM' : 'Video Call'} {appointment.fee && `· ${appointment.fee}`}
+          <JoinIcon size={14} /> {isChat ? 'Chat / DM' : 'Video Call'} {appointment.fee && `· ${appointment.fee}`}
         </div>
 
         {/* Timer Box / Chat Info Box */}
@@ -205,8 +205,8 @@ export default function WaitingRoom() {
             boxShadow: 'var(--shadow-sm)',
             maxWidth: '300px'
           }}>
-            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-success)' }}>
-              💬 Instant Connect
+            <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-success)', display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+              <IconChat size={15} /> Instant Connect
             </p>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 4, lineHeight: 1.4 }}>
               Click below to initiate your WhatsApp chat with {doctorName}.
@@ -251,7 +251,7 @@ export default function WaitingRoom() {
       <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
         {isChat || doctorReady ? (
           <button className="btn btn--primary btn-pulse-effect" onClick={handleJoin}>
-            {joinIcon} {joinLabel}
+            <JoinIcon size={18} /> {joinLabel}
           </button>
         ) : (
           <button className="btn btn--secondary" disabled style={{ opacity: 0.6, cursor: 'not-allowed' }}>

@@ -10,13 +10,13 @@ export default function AppShell() {
   const { state } = useApp();
   const { lifeStage } = state.user;
 
+  // SOS lives on the floating red button (single tap opens /sos); Profile is
+  // reached from the avatar in the top-right of Home — so neither needs a tab.
   const tabs = [
     { path: '/home', label: 'Home', icon: HomeIcon },
     { path: '/consult', label: 'Consult', icon: ConsultIcon },
     { path: '/track', label: 'Track', icon: TrackIcon },
     { path: '/help', label: 'Help', icon: HelpIcon },
-    { path: '/sos', label: 'SOS', icon: SOSIcon },
-    { path: '/settings', label: 'Profile', icon: ProfileIcon },
   ];
 
   const activeTab = tabs.find(t => location.pathname.startsWith(t.path))?.path ?? '/home';
@@ -54,14 +54,15 @@ function ConsultIcon({ active }) {
 
 
 function TrackIcon({ active }) {
+  const w = active ? 2.2 : 1.8;
   return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      {/* ~300° clockwise arc — reads as "cycle" */}
-      <path d="M20 12A8 8 0 1 1 16 5" />
-      {/* Arrowhead continuing clockwise at arc end */}
-      <polyline points="14 8 16 5 19.5 6.5" />
-      {/* Centre dot — fills when active */}
-      <circle cx="12" cy="12" r="2.5" fill={active ? 'currentColor' : 'none'} />
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={w} strokeLinecap="round" strokeLinejoin="round">
+      {/* Clean clockwise cycle arrow with a crisp corner arrowhead — the
+          clearest read of a recurring cycle at nav scale. */}
+      <path d="M20 11a8 8 0 1 1-2.3-5" />
+      <path d="M20 3.5V8h-4.5" />
+      {/* Centre dot — fills when active, echoing the phase-banner motif */}
+      <circle cx="12" cy="12" r="2.4" fill={active ? 'currentColor' : 'none'} />
     </svg>
   );
 }
@@ -74,22 +75,3 @@ function HelpIcon({ active }) {
   );
 }
 
-function ProfileIcon({ active }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      <circle cx="12" cy="8" r="4" fill={active ? 'currentColor' : 'none'} fillOpacity={0.15} />
-      <path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
-    </svg>
-  );
-}
-
-function SOSIcon({ active }) {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-      strokeWidth={active ? 2.2 : 1.8} strokeLinecap="round" strokeLinejoin="round">
-      <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"
-        fill={active ? 'currentColor' : 'none'} fillOpacity={0.15} />
-      <path d="M12 8v4M12 16h.01" stroke={active ? 'var(--clr-emergency)' : 'currentColor'} />
-    </svg>
-  );
-}

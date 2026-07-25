@@ -1,10 +1,16 @@
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
-import { useApp, useCycleData } from '../context/AppContext';
+import { useApp, useCycleData, usePregnancyData } from '../context/AppContext';
 import { PHASE_INFO } from '../data/mock';
 import { appointmentApi } from '../services/appointmentApi';
 import DoctorAvatar from '../components/DoctorAvatar';
+import PregnancyMoodCheckIn from '../components/PregnancyMoodCheckIn';
+import {
+  IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
+  IconPregnant, IconBaby, IconStar, IconCamellia, IconSprout, IconBlossom,
+  IconHome, IconUser,
+} from '../icons.jsx';
 
 const stagger = {
   hidden: {},
@@ -20,7 +26,7 @@ export default function Home() {
   const { state } = useApp();
   const { name, lifeStage } = state.user;
   const { pregnancyMode } = state.settings;
-  const { weeksPregnant } = state.pregnancy;
+  const pregnancyData = usePregnancyData(state);
   const cycleData = useCycleData(state);
 
   const [appointments, setAppointments] = useState([]);
@@ -92,12 +98,15 @@ export default function Home() {
                 {greeting}
               </p>
               <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-ink)', marginTop: 2 }}>
-                {name || 'Welcome back'} <span className="greeting-wave" aria-hidden="true">👋</span>
+                {name || 'Welcome back'}{' '}
+                <span className="greeting-wave" aria-hidden="true" style={{ color: 'var(--clr-gold)' }}>
+                  <IconWave size={20} />
+                </span>
               </h1>
             </div>
             <button
               onClick={() => navigate('/settings')}
-              style={{ width: 40, height: 40, borderRadius: 'var(--radius-full)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, overflow: 'hidden' }}
+              style={{ width: 40, height: 40, borderRadius: 'var(--radius-full)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, overflow: 'hidden' }}
               aria-label="Profile settings"
             >
               {avatarFor(lifeStage)}
@@ -112,18 +121,31 @@ export default function Home() {
               onClick={() => navigate('/track')}
               className="phase-banner phase-banner--pregnancy"
               style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }}
-              aria-label="Pregnancy journey"
+              aria-label={pregnancyData.known ? 'Pregnancy journey' : 'Set your due date'}
             >
-              <div className="phase-banner__icon" style={{ background: 'var(--clr-preg)', color: 'white' }}>🤰</div>
-              <div style={{ flex: 1 }}>
-                <div className="phase-banner__day">Week {weeksPregnant} · {trimesterOf(weeksPregnant)}</div>
-                <div className="phase-banner__name">Your pregnancy journey</div>
-                <div className="phase-banner__desc">{Math.max(0, 40 - weeksPregnant)} weeks to go — tap for this week's update</div>
-              </div>
+              <div className="phase-banner__icon" style={{ background: 'var(--clr-preg-soft)' }}><IconPregnant size={24} /></div>
+              {pregnancyData.known ? (
+                <div style={{ flex: 1 }}>
+                  <div className="phase-banner__day">Week {pregnancyData.weeks} · {trimesterLabel(pregnancyData.trimester)}</div>
+                  <div className="phase-banner__name">Your pregnancy journey</div>
+                  <div className="phase-banner__desc">{pregnancyData.daysToGo} days to go — tap for this week's update</div>
+                </div>
+              ) : (
+                <div style={{ flex: 1 }}>
+                  <div className="phase-banner__name">Set your due date</div>
+                  <div className="phase-banner__desc">Add your dates to start your week-by-week journey</div>
+                </div>
+              )}
               <ChevronRight />
             </button>
           </motion.div>
         )}
+
+        {/* Daily mood check-in — self-gating, renders null unless pregnancy
+            mode is on, the due date is known, and today has no entry yet. */}
+        <motion.div variants={fadeUp}>
+          <PregnancyMoodCheckIn />
+        </motion.div>
 
         {/* Phase / cycle widget */}
         {!pregnancyMode && (lifeStage === 'reproductive' || lifeStage === 'adolescent') && cycleData.phase && (
@@ -134,7 +156,9 @@ export default function Home() {
               style={{ width: '100%', textAlign: 'left', border: 'none', cursor: 'pointer' }}
               aria-label={`Cycle phase: ${PHASE_INFO[cycleData.phase]?.name}`}
             >
-              <div className="phase-banner__icon">{PHASE_INFO[cycleData.phase]?.icon}</div>
+              <div className="phase-banner__icon">
+                {(() => { const I = PHASE_INFO[cycleData.phase]?.Icon; return I ? <I size={24} /> : null; })()}
+              </div>
               <div style={{ flex: 1 }}>
                 <div className="phase-banner__day">Day {cycleData.cycleDay} of cycle</div>
                 <div className="phase-banner__name">{PHASE_INFO[cycleData.phase]?.name}</div>
@@ -148,7 +172,7 @@ export default function Home() {
         {lifeStage === 'postpartum' && (
           <motion.div variants={fadeUp}>
             <div style={{ background: 'var(--clr-brand-soft)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-4) var(--sp-5)', display: 'flex', alignItems: 'center', gap: 'var(--sp-4)' }}>
-              <div style={{ fontSize: 28 }}>🤱</div>
+              <div style={{ color: 'var(--clr-brand)', display: 'flex' }}><IconBaby size={28} /></div>
               <div>
                 <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)' }}>Post-partum care</div>
                 <div style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>How are you feeling today?</div>
@@ -165,18 +189,49 @@ export default function Home() {
           <p className="section-title">Quick actions</p>
           <div className="quick-actions">
             <button className="quick-action" onClick={() => navigate('/consult')} aria-label="Book a consultation">
-              <div className="quick-action__icon" style={{ background: 'var(--clr-sky-soft)', fontSize: 20 }}>🩺</div>
+              <div className="quick-action__icon" style={{ background: 'var(--clr-sky-soft)', color: 'var(--clr-sky)' }}><IconStethoscope size={22} /></div>
               <span className="quick-action__label">Book Consult</span>
             </button>
             {(lifeStage !== 'elderly' || pregnancyMode) && (
               <button className="quick-action" onClick={() => navigate('/track')} aria-label={pregnancyMode ? 'Track your pregnancy' : 'Track cycle or health'}>
-                <div className="quick-action__icon" style={{ background: pregnancyMode ? 'var(--clr-preg-soft)' : 'var(--clr-sage-soft)', fontSize: 20 }}>{pregnancyMode ? '🤰' : '📅'}</div>
+                <div className="quick-action__icon" style={{ background: pregnancyMode ? 'var(--clr-preg-soft)' : 'var(--clr-sage-soft)', color: pregnancyMode ? 'var(--clr-preg)' : 'var(--clr-sage)' }}>{pregnancyMode ? <IconPregnant size={22} /> : <IconAppointment size={22} />}</div>
                 <span className="quick-action__label">{pregnancyMode ? 'Pregnancy' : 'Track Health'}</span>
               </button>
             )}
             <button className="quick-action" onClick={() => navigate('/help')} aria-label="Get mental health support">
-              <div className="quick-action__icon" style={{ background: 'var(--clr-mauve-soft)', fontSize: 20 }}>💬</div>
+              <div className="quick-action__icon" style={{ background: 'var(--clr-mauve-soft)', color: 'var(--clr-mauve)' }}><IconChat size={22} /></div>
               <span className="quick-action__label">I Need Help</span>
+            </button>
+          </div>
+        </motion.div>
+
+        {/* Journal & Community */}
+        <motion.div variants={fadeUp}>
+          <p className="section-title">Journal &amp; community</p>
+          <div style={{ display: 'flex', gap: 'var(--sp-3)' }}>
+            <button
+              className="quick-action"
+              onClick={() => navigate('/journal')}
+              aria-label="Open your private journal"
+              style={{ alignItems: 'flex-start', textAlign: 'left', padding: 'var(--sp-4)' }}
+            >
+              <div className="quick-action__icon" style={{ background: 'var(--clr-mauve-soft)', color: 'var(--clr-mauve)' }}><IconJournal size={22} /></div>
+              <span className="quick-action__label" style={{ textAlign: 'left' }}>My journal</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', lineHeight: 'var(--leading-snug)' }}>
+                Private notes, just for you
+              </span>
+            </button>
+            <button
+              className="quick-action"
+              onClick={() => navigate('/community')}
+              aria-label="Open the community"
+              style={{ alignItems: 'flex-start', textAlign: 'left', padding: 'var(--sp-4)' }}
+            >
+              <div className="quick-action__icon" style={{ background: 'var(--clr-sky-soft)', color: 'var(--clr-sky)' }}><IconChat size={22} /></div>
+              <span className="quick-action__label" style={{ textAlign: 'left' }}>Community</span>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', lineHeight: 'var(--leading-snug)' }}>
+                Anonymous threads &amp; support
+              </span>
             </button>
           </div>
         </motion.div>
@@ -209,7 +264,7 @@ export default function Home() {
                       <div className="doctor-name" style={{ fontSize: 'var(--text-sm)' }}>{doc.name}</div>
                       <div className="doctor-specialty" style={{ fontSize: 'var(--text-xs)' }}>{doc.specialty} · {doc.exp}</div>
                       <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 4, alignItems: 'center' }}>
-                        <span className="doctor-rating" style={{ fontSize: 10 }}>★ {doc.rating}</span>
+                        <span className="doctor-rating" style={{ fontSize: 10 }}><IconStar size={11} fill="currentColor" strokeWidth={0} /> {doc.rating}</span>
                         <span style={{ fontSize: 10, color: 'var(--clr-ink-subtle)' }}>({doc.reviews} reviews)</span>
                       </div>
                     </div>
@@ -287,8 +342,8 @@ export default function Home() {
                 {tipFor(lifeStage, pregnancyMode)}
               </p>
             </div>
-            <div style={{ position: 'absolute', right: -20, bottom: -20, fontSize: 80, opacity: 0.08 }} aria-hidden="true">
-              🌺
+            <div style={{ position: 'absolute', right: -18, bottom: -18, opacity: 0.1, color: 'var(--clr-gold)' }} aria-hidden="true">
+              <IconCamellia size={104} strokeWidth={1.1} />
             </div>
           </div>
         </motion.div>
@@ -301,14 +356,19 @@ export default function Home() {
 }
 
 function avatarFor(lifeStage) {
-  const map = { adolescent: '🌱', reproductive: '🌸', postpartum: '🤱', menopause: '🌺', elderly: '🏡' };
-  return map[lifeStage] ?? '👤';
+  const map = {
+    adolescent: IconSprout,
+    reproductive: IconBlossom,
+    postpartum: IconBaby,
+    menopause: IconCamellia,
+    elderly: IconHome,
+  };
+  const Icon = map[lifeStage] ?? IconUser;
+  return <Icon size={20} style={{ color: 'var(--clr-ink-muted)' }} />;
 }
 
-function trimesterOf(weeks) {
-  if (weeks <= 13) return 'First trimester';
-  if (weeks <= 27) return 'Second trimester';
-  return 'Third trimester';
+function trimesterLabel(trimester) {
+  return ['First trimester', 'Second trimester', 'Third trimester'][trimester - 1];
 }
 
 function tipFor(lifeStage, pregnancyMode) {

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { useSOSActivation } from '../lib/useSOSActivation';
+import { IconSOS } from '../icons.jsx';
 
 export default function SOSBanner() {
   const { state } = useApp();
@@ -43,8 +44,8 @@ export default function SOSBanner() {
             zIndex: 'var(--z-sticky)'
           }}
         >
-          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>
-            🚨 SOS Active · {elapsed}
+          <div style={{ fontSize: 'var(--text-sm)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <IconSOS size={16} /> SOS Active · {elapsed}
           </div>
           <button 
             className="btn btn--ghost" 

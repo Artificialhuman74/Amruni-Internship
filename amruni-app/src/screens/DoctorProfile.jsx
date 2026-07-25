@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { appointmentApi } from '../services/appointmentApi';
 import { useVideoCall } from '../hooks/useVideoCall';
 import DoctorAvatar from '../components/DoctorAvatar';
+import { IconStar, IconVideo, IconChat, IconLanguage } from '../icons.jsx';
 
 export default function DoctorProfile() {
   const { id } = useParams();
@@ -78,7 +79,7 @@ export default function DoctorProfile() {
             <div style={{ fontSize: 'var(--text-lg)', fontWeight: 700, color: 'var(--clr-ink)' }}>{doctor.name}</div>
             <div style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>{doctor.specialty}</div>
             <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)', alignItems: 'center' }}>
-              <span className="doctor-rating">★ {doctor.rating}</span>
+              <span className="doctor-rating"><IconStar size={13} fill="currentColor" strokeWidth={0} /> {doctor.rating}</span>
               {doctor.reviews > 0 && (
                 <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>({doctor.reviews} reviews)</span>
               )}
@@ -111,7 +112,7 @@ export default function DoctorProfile() {
         {/* Services Info */}
         <div style={{ background: 'var(--clr-surface-2)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-4) var(--sp-5)', border: '1px solid var(--clr-border)', marginBottom: 'var(--sp-6)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
-            <span style={{ fontSize: 20 }}>🎥</span>
+            <span style={{ color: 'var(--clr-sky)', display: 'flex' }}><IconVideo size={20} /></span>
             <div style={{ flex: 1 }}>
               <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)' }}>Video Consultation</h3>
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>Secure video call via Google Meet · {doctor.fee}</p>
@@ -119,7 +120,7 @@ export default function DoctorProfile() {
           </div>
           {hasChatEnabled && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', marginBottom: 'var(--sp-3)' }}>
-              <span style={{ fontSize: 20 }}>💬</span>
+              <span style={{ color: 'var(--clr-sage)', display: 'flex' }}><IconChat size={20} /></span>
               <div style={{ flex: 1 }}>
                 <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)' }}>Chat / DM Consultation</h3>
                 <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>WhatsApp chat with doctor · ₹{chatFeeNum}</p>
@@ -127,7 +128,7 @@ export default function DoctorProfile() {
             </div>
           )}
           <div style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)' }}>
-            <span style={{ fontSize: 20 }}>🌐</span>
+            <span style={{ color: 'var(--clr-mauve)', display: 'flex' }}><IconLanguage size={20} /></span>
             <div style={{ flex: 1 }}>
               <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)' }}>Languages Spoken</h3>
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>{doctor.lang.join(', ')}</p>
@@ -140,7 +141,7 @@ export default function DoctorProfile() {
           <div>
             <h2 style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-4)' }}>Patient Reviews</h2>
             <div style={{ textAlign: 'center', padding: 'var(--sp-6)', color: 'var(--clr-ink-muted)', background: 'var(--clr-surface-2)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)' }}>
-              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>★ {doctor.rating} · {doctor.reviews} reviews</p>
+              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, display: 'inline-flex', alignItems: 'center', gap: 'var(--sp-1)' }}><IconStar size={14} fill="var(--clr-gold)" strokeWidth={0} /> {doctor.rating} · {doctor.reviews} reviews</p>
               <p style={{ fontSize: 'var(--text-xs)', marginTop: 'var(--sp-2)' }}>Reviews from verified patients will appear here.</p>
             </div>
           </div>
@@ -159,7 +160,7 @@ export default function DoctorProfile() {
           onClick={() => handleBookClick('video')}
           style={{ flex: hasChatEnabled ? 1 : '1 1 100%' }}
         >
-          🎥 Video · {doctor.fee}
+          <IconVideo size={18} /> Video · {doctor.fee}
         </button>
         {hasChatEnabled && (
           <button
@@ -167,7 +168,7 @@ export default function DoctorProfile() {
             onClick={() => handleBookClick('chat')}
             style={{ flex: 1, fontWeight: 700 }}
           >
-            💬 Chat · ₹{chatFeeNum}
+            <IconChat size={18} /> Chat · ₹{chatFeeNum}
           </button>
         )}
       </div>

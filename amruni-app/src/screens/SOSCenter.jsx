@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 import { getAlerts } from '../lib/sosService';
 import { tap } from '../lib/haptics';
+import { IconPhone, IconShield } from '../icons.jsx';
 
 const stagger = {
   hidden: { opacity: 0 },
@@ -60,8 +61,8 @@ export default function SOSCenter() {
         <motion.div variants={fadeUp} style={{ background: 'var(--clr-dark)', borderRadius: 'var(--radius-xl)', padding: 'var(--sp-5)' }}>
           <p style={{ color: 'var(--clr-gold)', fontSize: 'var(--text-xs)', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.1em' }}>Emergency Services</p>
           <p style={{ color: 'var(--clr-ink-on-dark)', fontSize: 'var(--text-md)', fontWeight: 600, margin: 'var(--sp-2) 0 var(--sp-4)' }}>Call 112 — India's unified emergency number</p>
-          <a href="tel:112" onClick={() => tap()} className="btn btn--emergency" style={{ display: 'inline-flex', width: '100%', justifyContent: 'center' }}>
-            📞 Call 112 Now
+          <a href="tel:112" onClick={() => tap()} className="btn btn--emergency" style={{ display: 'inline-flex', width: '100%', justifyContent: 'center', alignItems: 'center', gap: 'var(--sp-2)' }}>
+            <IconPhone size={18} /> Call 112 Now
           </a>
         </motion.div>
 
@@ -102,7 +103,7 @@ export default function SOSCenter() {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
               {contacts.map(c => (
                 <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-lg)', padding: 'var(--sp-3) var(--sp-4)' }}>
-                  <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-full)', background: 'var(--clr-brand-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, flexShrink: 0 }}>🛡️</div>
+                  <div style={{ width: 32, height: 32, borderRadius: 'var(--radius-full)', background: 'var(--clr-brand-soft)', color: 'var(--clr-brand)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><IconShield size={16} /></div>
                   <div>
                     <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)' }}>{c.name}</p>
                     <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>{c.phone}</p>

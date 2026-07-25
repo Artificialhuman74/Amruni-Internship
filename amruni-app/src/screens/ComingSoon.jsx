@@ -1,6 +1,8 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import CamelliaHero from '../components/CamelliaHero';
+import { GOALS } from '../lib/lifeStage';
+import { IconSprout } from '../icons.jsx';
 
 /**
  * Shown after onboarding when the chosen goal's dedicated feature isn't built
@@ -13,7 +15,7 @@ export default function ComingSoon() {
   const navigate = useNavigate();
   const reduce = useReducedMotion();
   const feature = state?.feature || 'This';
-  const icon = state?.icon || '🌱';
+  const ChipIcon = GOALS.find((g) => g.id === state?.goalId)?.Icon || IconSprout;
 
   return (
     <div className="screen screen--soft" style={{ overflow: 'hidden' }}>
@@ -33,7 +35,7 @@ export default function ComingSoon() {
           className="chip chip--sm"
           style={{ marginTop: 'var(--sp-2)', cursor: 'default', background: 'var(--clr-gold-soft)', borderColor: 'transparent', color: 'oklch(0.5 0.1 70)', fontWeight: 700 }}
         >
-          {icon} Coming soon
+          <ChipIcon size={14} /> Coming soon
         </motion.span>
 
         <motion.h1

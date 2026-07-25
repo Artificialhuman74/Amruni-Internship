@@ -4,6 +4,7 @@ import { doctorApi, doctorApiError, getCachedDoctor } from '../../services/docto
 import BottomSheet from '../../components/BottomSheet';
 import { useToast } from '../../components/Toast';
 import { confirm as confirmHaptic } from '../../lib/haptics';
+import { IconClose } from '../../icons.jsx';
 
 const STATUS_DOT = {
   open: 'var(--clr-success)',
@@ -65,7 +66,7 @@ export default function DoctorSchedule() {
       setSheetOpen(false);
       setRefreshKey((k) => k + 1);
       confirmHaptic();
-      toast(res.created > 0 ? `${res.created} slots published` : 'Those times were already published', { icon: '⏰' });
+      toast(res.created > 0 ? `${res.created} slots published` : 'Those times were already published', { icon: 'calendar' });
     } catch (err) {
       setError(doctorApiError(err, 'Could not publish those slots.'));
     } finally {
@@ -78,7 +79,7 @@ export default function DoctorSchedule() {
       await doctorApi.deleteSlot(slot.id);
       setSlots((prev) => prev.filter((s) => s.id !== slot.id));
     } catch (err) {
-      toast(doctorApiError(err, 'Could not remove that slot.'), { icon: '⚠️' });
+      toast(doctorApiError(err, 'Could not remove that slot.'), { icon: 'warning' });
     }
   }
 
@@ -147,9 +148,9 @@ export default function DoctorSchedule() {
                       <button
                         onClick={() => removeSlot(s)}
                         aria-label={`Remove ${s.time} slot on ${dayLabel(day)}`}
-                        style={{ color: 'var(--clr-ink-subtle)', fontSize: 12, lineHeight: 1, padding: 0 }}
+                        style={{ color: 'var(--clr-ink-subtle)', lineHeight: 1, padding: 0, display: 'inline-flex' }}
                       >
-                        ✕
+                        <IconClose size={13} />
                       </button>
                     )}
                   </span>

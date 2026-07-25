@@ -43,7 +43,7 @@ export default function DoctorAccount() {
             ['Chat consultation', `₹${doctor.chatFee}`],
             ['Languages', (doctor.lang || []).join(', ') || '—'],
             ['Registered number', `+91 ${doctor.phone}`],
-            ['Rating', `★ ${doctor.rating} · ${doctor.reviews} reviews`],
+            ['Rating', `${doctor.rating} · ${doctor.reviews} reviews`],
           ].map(([label, value], i) => (
             <div key={label} style={{
               display: 'flex', justifyContent: 'space-between', gap: 'var(--sp-4)',

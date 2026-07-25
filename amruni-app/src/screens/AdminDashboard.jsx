@@ -4,6 +4,12 @@ import { authApi, getAdminToken, setAdminToken, apiError } from '../services/api
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
 import { patientAppHref } from '../lib/siteLinks';
+import {
+  IconSettings, IconAlert, IconPlus, IconTip, IconMobile, IconCheckCircle,
+  IconUser, IconChat, IconClose, IconAppointment,
+} from '../icons.jsx';
+
+const inlineHint = { display: 'inline-flex', alignItems: 'center', gap: 4, verticalAlign: '-2px' };
 
 export default function AdminDashboard() {
   // Auth state — the password is verified server-side (POST /api/admin/login)
@@ -123,7 +129,7 @@ export default function AdminDashboard() {
       phone: docPhone.trim(),
       photo: docPhoto, // Base64 uploaded photo
       lang: langArray,
-      avatar: '🩺', // General icon fallback
+      avatar: null, // avatar rendering uses initials/photo via DoctorAvatar
       rating: parseFloat((4.8 + Math.random() * 0.2).toFixed(1)), // randomized 4.8 - 5.0
       reviews: Math.floor(Math.random() * 150) + 15,
       nextSlot: 'Today, 4:00 PM',
@@ -186,7 +192,7 @@ export default function AdminDashboard() {
           width: '100%'
         }}>
           <div style={{ textAlign: 'center', marginBottom: 'var(--sp-6)' }}>
-            <span style={{ fontSize: 44 }}>⚙️</span>
+            <span style={{ color: 'var(--clr-ink-muted)', display: 'inline-flex' }}><IconSettings size={40} /></span>
             <h1 style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-ink)', marginTop: 'var(--sp-2)' }}>Amruni Admin Portal</h1>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>Secure system console</p>
           </div>
@@ -214,7 +220,7 @@ export default function AdminDashboard() {
             </div>
 
             {loginError && (
-              <p style={{ color: 'var(--clr-brand)', fontSize: 'var(--text-xs)', fontWeight: 600 }}>⚠️ {loginError}</p>
+              <p style={{ color: 'var(--clr-brand)', fontSize: 'var(--text-xs)', fontWeight: 600, ...inlineHint }}><IconAlert size={14} /> {loginError}</p>
             )}
 
             <button type="submit" className="btn btn--primary" style={{ marginTop: 'var(--sp-2)' }}>
@@ -325,7 +331,7 @@ export default function AdminDashboard() {
           border: '1.5px solid var(--clr-border)',
         }}>
           <h2 style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-4)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span>➕</span> Add New Doctor
+            <IconPlus size={18} /> Add New Doctor
           </h2>
 
           <form onSubmit={handleAddDoctor} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
@@ -392,7 +398,7 @@ export default function AdminDashboard() {
                 style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
               />
               <p style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
-                💡 Clicking call in client app will redirect the customer to this Meet link instead of in-app video.
+                <span style={inlineHint}><IconTip size={13} /></span> Clicking call in client app will redirect the customer to this Meet link instead of in-app video.
               </p>
             </div>
 
@@ -406,7 +412,7 @@ export default function AdminDashboard() {
                 style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
               />
               <p style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
-                📱 Used for WhatsApp chat consultations. Chat fee = ⅓ of video fee (auto-calculated).
+                <span style={inlineHint}><IconMobile size={13} /></span> Used for WhatsApp chat consultations. Chat fee = ⅓ of video fee (auto-calculated).
               </p>
             </div>
 
@@ -456,7 +462,7 @@ export default function AdminDashboard() {
                 fontSize: 'var(--text-sm)',
                 fontWeight: 600
               }}>
-                {formMessage.type === 'success' ? '✅' : '⚠️'} {formMessage.text}
+                <span style={inlineHint}>{formMessage.type === 'success' ? <IconCheckCircle size={15} /> : <IconAlert size={15} />}</span> {formMessage.text}
               </p>
             )}
 
@@ -469,7 +475,7 @@ export default function AdminDashboard() {
         {/* Doctor Listing Section */}
         <div>
           <h2 style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-4)' }}>
-            👤 Doctor Directory ({doctors.length})
+            <span style={inlineHint}><IconUser size={18} /></span> Doctor Directory ({doctors.length})
           </h2>
 
           {loading ? (
@@ -497,10 +503,10 @@ export default function AdminDashboard() {
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>{doc.name}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>{doc.specialty} · {doc.exp}</div>
                     <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
-                      ⏰ Next open slot: {doc.nextSlot || 'None published'}
+                      <span style={inlineHint}><IconAppointment size={11} /></span> Next open slot: {doc.nextSlot || 'None published'}
                     </div>
                     <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 2 }}>
-                      📱 Phone: {doc.phone || 'Not set'} · 💬 Chat fee: ₹{doc.chatFee ?? '—'}
+                      <span style={inlineHint}><IconMobile size={11} /></span> Phone: {doc.phone || 'Not set'} · <span style={inlineHint}><IconChat size={11} /></span> Chat fee: ₹{doc.chatFee ?? '—'}
                     </div>
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
@@ -686,9 +692,9 @@ function SlotManager({ doctor }) {
                     <button
                       onClick={() => handleDeleteSlot(s.id)}
                       aria-label={`Remove ${s.time} slot`}
-                      style={{ border: 'none', background: 'none', color: 'var(--clr-ink-subtle)', cursor: 'pointer', padding: 0, fontSize: 11, lineHeight: 1 }}
+                      style={{ border: 'none', background: 'none', color: 'var(--clr-ink-subtle)', cursor: 'pointer', padding: 0, lineHeight: 1, display: 'inline-flex' }}
                     >
-                      ✕
+                      <IconClose size={13} />
                     </button>
                   )}
                 </span>
