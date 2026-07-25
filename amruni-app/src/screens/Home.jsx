@@ -5,7 +5,7 @@ import { useApp, useCycleData, usePregnancyData } from '../context/AppContext';
 import { PHASE_INFO } from '../data/mock';
 import { appointmentApi } from '../services/appointmentApi';
 import DoctorAvatar from '../components/DoctorAvatar';
-import PregnancyMoodCheckIn from '../components/PregnancyMoodCheckIn';
+import DailyMoodCheckIn from '../components/DailyMoodCheckIn';
 import {
   IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
   IconPregnant, IconBaby, IconStar, IconCamellia, IconSprout, IconBlossom,
@@ -141,10 +141,10 @@ export default function Home() {
           </motion.div>
         )}
 
-        {/* Daily mood check-in — self-gating, renders null unless pregnancy
-            mode is on, the due date is known, and today has no entry yet. */}
+        {/* Daily mood check-in — self-gating; shown to every woman at any life
+            stage, and renders null once today has been logged. */}
         <motion.div variants={fadeUp}>
-          <PregnancyMoodCheckIn />
+          <DailyMoodCheckIn />
         </motion.div>
 
         {/* Phase / cycle widget */}

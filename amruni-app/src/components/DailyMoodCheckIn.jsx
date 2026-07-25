@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { useApp, usePregnancyData } from '../context/AppContext';
+import { useApp } from '../context/AppContext';
 import { useToast } from './Toast';
 import { tap, confirm } from '../lib/haptics';
 import MoodFlower, { BANDS } from './MoodFlower';
 import { IconClose, IconCheck } from '../icons.jsx';
 
 /**
- * Daily pregnancy mood check-in, built on the Apple Health "State of Mind"
+ * Daily mood check-in, built on the Apple Health "State of Mind"
  * mechanic: choose a valence, name the feeling, then name what's driving it.
  *
  * Home carries only a quiet invitation. The choosing happens in a full-bleed
@@ -41,15 +41,17 @@ const FACTOR_GROUPS = [
   ['Work', 'Money', 'Appointments', 'Travel', 'Weather'],
 ];
 
-export default function PregnancyMoodCheckIn() {
+export default function DailyMoodCheckIn() {
   const { state, dispatch } = useApp();
-  const pregnancyData = usePregnancyData(state);
   const toast = useToast();
   const reduce = useReducedMotion();
 
   const today = new Date().toISOString().split('T')[0];
   const alreadyLogged = !!state.pregnancy?.loggedDays?.[today]?.mood;
-  const gating = Boolean(state.settings?.pregnancyMode) && Boolean(pregnancyData?.known) && !alreadyLogged;
+  // Every woman gets the check-in, at every life stage — adolescent through
+  // elderly, pregnant or not. The only gate is whether today is already logged.
+  const gating = !alreadyLogged;
+  const pregnancyMode = Boolean(state.settings?.pregnancyMode);
 
   const [dismissed, setDismissed] = useState(false);
   const [open, setOpen] = useState(false);
@@ -140,7 +142,9 @@ export default function PregnancyMoodCheckIn() {
   const visible = gating && !dismissed;
 
   return (
-    <div className="preg-tint">
+    // The rose tint belongs to pregnancy mode; outside it the card keeps the
+    // ordinary brand accent for whatever life stage she's in.
+    <div className={pregnancyMode ? 'preg-tint' : undefined}>
       <AnimatePresence>
         {visible && (
           <motion.button
@@ -173,14 +177,29 @@ export default function PregnancyMoodCheckIn() {
       <AnimatePresence>
         {open && (
           <motion.div
+            key="mood-scrim"
+            className="mood-scrim"
+            aria-hidden="true"
+            onClick={close}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: reduce ? 0.18 : 0.4, ease: EXPO }}
+          />
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {open && (
+          <motion.div
             className="mood-sheet"
             role="dialog"
             aria-modal="true"
             aria-label="Daily mood check-in"
-            initial={reduce ? { opacity: 0 } : { opacity: 0, y: '4%' }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={reduce ? { opacity: 0 } : { opacity: 0, y: '3%' }}
-            transition={{ duration: reduce ? 0.18 : 0.5, ease: EXPO }}
+            initial={reduce ? { opacity: 0 } : { y: '100%' }}
+            animate={reduce ? { opacity: 1 } : { y: 0 }}
+            exit={reduce ? { opacity: 0 } : { y: '100%' }}
+            transition={{ duration: reduce ? 0.18 : 0.54, ease: EXPO }}
             style={{ color: b.ink }}
           >
             {/* The field itself carries the answer — it re-mixes on every change. */}

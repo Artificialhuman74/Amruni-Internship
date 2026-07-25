@@ -1659,16 +1659,28 @@ img, svg { display: block; }
 .mood-entry__chev { flex-shrink: 0; color: var(--clr-ink-subtle); }
 
 /* ── The sheet ── */
-.mood-sheet {
+.mood-scrim {
   position: fixed;
   inset: 0;
-  left: 50%;
-  transform: translateX(-50%);
+  z-index: var(--z-backdrop);
+  background: oklch(0 0 0 / 0.42);
+}
+/* Presents as a bottom sheet: the screen behind stays visible above the
+   rounded lip, so the check-in reads as something you can put back down.
+   Centred with auto margins rather than a translate, leaving `transform`
+   free for the slide-up. */
+.mood-sheet {
+  position: fixed;
+  top: 34px; right: 0; bottom: 0; left: 0;
+  margin: 0 auto;
   width: 100%;
   max-width: 430px;
   z-index: var(--z-modal);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -10px 44px oklch(0 0 0 / 0.26);
   overscroll-behavior: contain;
 }
 .mood-sheet__field { position: absolute; inset: 0; z-index: 0; }
@@ -1680,7 +1692,7 @@ img, svg { display: block; }
   grid-template-columns: 44px 1fr 44px;
   align-items: center;
   gap: var(--sp-2);
-  padding: calc(env(safe-area-inset-top) + var(--sp-3)) var(--sp-5) var(--sp-2);
+  padding: var(--sp-4) var(--sp-5) var(--sp-2);
 }
 .mood-sheet__bar-title {
   text-align: center; font-size: var(--text-base); font-weight: 600;
