@@ -2,6 +2,7 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { VideoProvider } from '../context/VideoContext';
+import { MoodProvider } from '../context/MoodContext';
 
 import AppShell from '../components/AppShell';
 import Splash from '../screens/Splash';
@@ -11,6 +12,7 @@ import PrivacyFirst from '../screens/onboarding/PrivacyFirst';
 import NameStep from '../screens/onboarding/NameStep';
 import DobStep from '../screens/onboarding/DobStep';
 import GoalsStep from '../screens/onboarding/GoalsStep';
+import HealthStep from '../screens/onboarding/HealthStep';
 import Home from '../screens/Home';
 import Telemedicine from '../screens/Telemedicine';
 import MentalHealth from '../screens/MentalHealth';
@@ -21,6 +23,10 @@ import SOSCenter from '../screens/SOSCenter';
 import PcosCheck from '../screens/PcosCheck';
 import ComingSoon from '../screens/ComingSoon';
 import Journal from '../screens/Journal';
+import Medicines from '../screens/Medicines';
+import CareView from '../screens/CareView';
+import JournalComposer from '../screens/JournalComposer';
+import JournalEntry from '../screens/JournalEntry';
 import Community from '../screens/Community';
 import CommunityThread from '../screens/CommunityThread';
 
@@ -45,64 +51,91 @@ export default function PatientApp() {
 
   return (
     <VideoProvider>
-      <AnimatePresence mode="wait" initial={false}>
-        <Routes location={location} key={location.pathname}>
+      <MoodProvider>
+        <AnimatePresence mode="wait" initial={false}>
+          <Routes location={location} key={location.pathname}>
+            {/* A care link is opened by a family member with no account — so it
+              sits outside the auth guard and the tab shell entirely. */}
+          <Route path="/care/:token" element={<CareView />} />
+
           <Route path="/" element={<Splash />} />
-          <Route path="/phone" element={<PhoneEntry />} />
-          <Route path="/otp" element={<OTPVerify />} />
-          {['privacy', 'name', 'dob', 'goals'].map((step, i) => (
+            <Route path="/phone" element={<PhoneEntry />} />
+            <Route path="/otp" element={<OTPVerify />} />
+            {['privacy', 'name', 'dob', 'health', 'goals'].map((step, i) => (
+              <Route
+                key={step}
+                path={`/onboarding/${step}`}
+                element={isAuthenticated
+                  ? [<PrivacyFirst />, <NameStep />, <DobStep />, <HealthStep />, <GoalsStep />][i]
+                  : <Navigate to="/phone" replace />}
+              />
+            ))}
             <Route
-              key={step}
-              path={`/onboarding/${step}`}
-              element={isAuthenticated
-                ? [<PrivacyFirst />, <NameStep />, <DobStep />, <GoalsStep />][i]
+              element={
+                !isAuthenticated
+                  ? <Navigate to="/phone" replace />
+                  : !isOnboarded
+                  ? <Navigate to="/onboarding/privacy" replace />
+                  : <AppShell />
+              }
+            >
+              <Route path="/home" element={<Home />} />
+              <Route path="/consult" element={<Telemedicine />} />
+              <Route path="/help" element={<MentalHealth />} />
+              <Route path="/track" element={<TrackScreen />} />
+              <Route path="/sos" element={<SOSCenter />} />
+              <Route path="/pcos-check" element={<PcosCheck />} />
+              <Route path="/coming-soon" element={<ComingSoon />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/medicines" element={<Medicines />} />
+            <Route path="/journal" element={<Journal />} />
+              <Route path="/community" element={<Community />} />
+              <Route path="/community/:id" element={<CommunityThread />} />
+
+              {/* Booking journey */}
+              <Route path="/doctor/:id" element={<DoctorProfile />} />
+              <Route path="/appointment/:id" element={<BookAppointment />} />
+              <Route path="/waiting/:appointmentId" element={<WaitingRoom />} />
+              <Route path="/consultation/:id" element={<ConsultationSummary />} />
+              <Route path="/doctors" element={<Navigate to="/consult" replace />} />
+            </Route>
+
+            {/* Writing and reading an entry own the whole screen. Outside the
+              shell means no tab bar and no emergency button over the page —
+              the only two things in the app that never step aside otherwise.
+              A journal that is interrupted by its own chrome isn't private. */}
+          {['/journal/new', '/journal/:id/edit'].map((path) => (
+            <Route
+              key={path}
+              path={path}
+              element={isAuthenticated && isOnboarded
+                ? <JournalComposer />
                 : <Navigate to="/phone" replace />}
             />
           ))}
           <Route
-            element={
-              !isAuthenticated
-                ? <Navigate to="/phone" replace />
-                : !isOnboarded
-                ? <Navigate to="/onboarding/privacy" replace />
-                : <AppShell />
-            }
-          >
-            <Route path="/home" element={<Home />} />
-            <Route path="/consult" element={<Telemedicine />} />
-            <Route path="/help" element={<MentalHealth />} />
-            <Route path="/track" element={<TrackScreen />} />
-            <Route path="/sos" element={<SOSCenter />} />
-            <Route path="/pcos-check" element={<PcosCheck />} />
-            <Route path="/coming-soon" element={<ComingSoon />} />
-            <Route path="/settings" element={<Settings />} />
-            <Route path="/journal" element={<Journal />} />
-            <Route path="/community" element={<Community />} />
-            <Route path="/community/:id" element={<CommunityThread />} />
-
-            {/* Booking journey */}
-            <Route path="/doctor/:id" element={<DoctorProfile />} />
-            <Route path="/appointment/:id" element={<BookAppointment />} />
-            <Route path="/waiting/:appointmentId" element={<WaitingRoom />} />
-            <Route path="/consultation/:id" element={<ConsultationSummary />} />
-            <Route path="/doctors" element={<Navigate to="/consult" replace />} />
-          </Route>
+            path="/journal/:id"
+            element={isAuthenticated && isOnboarded
+              ? <JournalEntry />
+              : <Navigate to="/phone" replace />}
+          />
 
           {/* Immersive full-screen consultation, outside the tab shell */}
-          <Route
-            path="/video/:appointmentId"
-            element={isAuthenticated ? <VideoCall /> : <Navigate to="/phone" replace />}
-          />
+            <Route
+              path="/video/:appointmentId"
+              element={isAuthenticated ? <VideoCall /> : <Navigate to="/phone" replace />}
+            />
 
-          {/* Unknown path: a signed-in, onboarded user goes to Home (never
-              replay the marketing splash — that reads as "bounced to the
-              landing page"); everyone else starts at the splash. */}
-          <Route
-            path="*"
-            element={<Navigate to={isAuthenticated && isOnboarded ? '/home' : '/'} replace />}
-          />
-        </Routes>
-      </AnimatePresence>
+            {/* Unknown path: a signed-in, onboarded user goes to Home (never
+                replay the marketing splash — that reads as "bounced to the
+                landing page"); everyone else starts at the splash. */}
+            <Route
+              path="*"
+              element={<Navigate to={isAuthenticated && isOnboarded ? '/home' : '/'} replace />}
+            />
+          </Routes>
+        </AnimatePresence>
+      </MoodProvider>
     </VideoProvider>
   );
 }

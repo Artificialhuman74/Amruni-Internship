@@ -47,30 +47,58 @@
   --font-sans: 'DM Sans', system-ui, -apple-system, sans-serif;
   --font-display: 'Playfair Display', Georgia, serif;
 
+  /* Reading sizes are fixed. Anything a form field can inherit must stay at or
+     above 16px or iOS Safari zooms the page on focus, and a woman filling in
+     her due date should never have to pinch her way back out. */
   --text-xs: 0.75rem;
   --text-sm: 0.875rem;
   --text-base: 1rem;
   --text-md: 1.125rem;
   --text-lg: 1.25rem;
-  --text-xl: 1.5rem;
-  --text-2xl: 1.75rem;
-  --text-3xl: 2rem;
-  --text-4xl: 2.5rem;
+
+  /* Display sizes shrink with the viewport — a 40px headline set on a 320px
+     screen takes the whole line and pushes the content it introduces below
+     the fold. Interpolated 320px → 430px, the app's real device range. */
+  --text-xl: clamp(1.3125rem, 0.767rem + 2.7273vw, 1.5rem);
+  --text-2xl: clamp(1.435rem, 0.5186rem + 4.5818vw, 1.75rem);
+  --text-3xl: clamp(1.56rem, 0.28rem + 6.4vw, 2rem);
+  --text-4xl: clamp(1.875rem, 0.0568rem + 9.0909vw, 2.5rem);
 
   --leading-tight: 1.2;
   --leading-snug: 1.35;
   --leading-base: 1.5;
 
+  /* Small steps stay fixed — fluid 4px is sub-pixel noise. From --sp-4 up the
+     tokens carry real layout weight (screen gutters, card padding, section
+     rhythm) and interpolate to 0.8× at 320px. On a 360px Android — the most
+     common screen this app will meet in India — that returns ~7px of width
+     per side to the content instead of spending it on margin. */
   --sp-1: 0.25rem;
   --sp-2: 0.5rem;
   --sp-3: 0.75rem;
-  --sp-4: 1rem;
-  --sp-5: 1.25rem;
-  --sp-6: 1.5rem;
-  --sp-8: 2rem;
-  --sp-10: 2.5rem;
-  --sp-12: 3rem;
-  --sp-16: 4rem;
+  --sp-4: clamp(0.8rem, 0.2182rem + 2.9091vw, 1rem);
+  --sp-5: clamp(1rem, 0.2727rem + 3.6364vw, 1.25rem);
+  --sp-6: clamp(1.2rem, 0.3273rem + 4.3636vw, 1.5rem);
+  --sp-8: clamp(1.6rem, 0.4364rem + 5.8182vw, 2rem);
+  --sp-10: clamp(2rem, 0.5455rem + 7.2727vw, 2.5rem);
+  --sp-12: clamp(2.4rem, 0.6545rem + 8.7273vw, 3rem);
+  --sp-16: clamp(3.2rem, 0.8727rem + 11.6364vw, 4rem);
+
+  /* The smallest square any finger is asked to hit. PRODUCT.md sets 48px for
+     elderly mode; that's the floor everywhere rather than a mode, because the
+     daughter who set the phone up is not the only one with imprecise aim. */
+  --tap-min: 48px;
+
+  /* The layout cap, referenced by anything that has to position itself
+     relative to the phone column rather than the window. */
+  --app-max-width: 430px;
+
+  /* Inset for a fixed-position control that must hug the column's edge, not
+     the window's. The percentage resolves against the initial containing
+     block, which — unlike `100vw` — excludes a desktop scrollbar, so the
+     button stops drifting under it. On any screen narrower than the cap the
+     max() collapses to the plain gutter. */
+  --col-inset: max(var(--sp-5), calc(50% - var(--app-max-width) / 2 + var(--sp-5)));
 
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -86,6 +114,7 @@
   --z-base: 1;
   --z-sticky: 10;
   --z-nav: 20;
+  --z-sos: 25;          /* above the tab bar, below any sheet or scrim */
   --z-backdrop: 30;
   --z-modal: 40;
   --z-toast: 50;
@@ -103,6 +132,13 @@
   --clr-emergency-on: oklch(0.99 0 0);
 
   --nav-height: 72px;
+
+  /* env() can't be read back off the cascade, so the insets are mirrored onto
+     custom properties that getComputedStyle can resolve. The draggable SOS
+     button needs them in JS to know where the notch and the home indicator
+     are before it decides where it may rest. */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 /* ── Reset ─────────────────────────────────────────────────── */
@@ -122,13 +158,24 @@ body {
   height: 100%;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
+  /* Respect the notch on the sides in landscape; the top and bottom insets are
+     handled per-surface because the nav and each screen header own them. */
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
+/* Percentage height resolves against a viewport iOS Safari measures with its
+   toolbars *retracted*, so the bottom dock spent its life sitting under the
+   URL bar until the user scrolled. `dvh` tracks the toolbar as it moves;
+   `svh` is the safe smallest box for browsers that have one but animate `dvh`
+   badly. The `100%` first line keeps anything without either unit working. */
 #root {
   height: 100%;
+  height: 100svh;
+  height: 100dvh;
   display: flex;
   flex-direction: column;
-  max-width: 430px;
+  max-width: var(--app-max-width);
   margin: 0 auto;
   position: relative;
   overflow: hidden;
@@ -170,14 +217,24 @@ img, svg { display: block; }
   display: flex;
   flex-shrink: 0;
   padding-bottom: env(safe-area-inset-bottom);
+  /* Explicit, and deliberately below --z-modal. The bar is a sibling of the
+     scroll area and paints after it, so without a stated layer it covered the
+     bottom of anything overlaid from inside a screen — which is how the
+     check-in's own Next button ended up behind it. */
+  position: relative;
+  z-index: var(--z-nav);
 }
+:root { --dock-raise: 18px; }
 .bottom-nav__tab {
   flex: 1;
+  min-width: 0;              /* lets a long translated label ellipsize instead of widening its tab */
+  min-height: var(--tap-min);
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: center;
   gap: 3px;
-  padding: var(--sp-3) var(--sp-2);
+  padding: var(--sp-3) var(--sp-1);
   color: var(--clr-ink-subtle);
   transition: color var(--dur-fast) var(--ease-out);
 }
@@ -190,7 +247,17 @@ img, svg { display: block; }
   background: var(--clr-brand);
   border: 1.5px solid var(--clr-surface);
 }
-.bottom-nav__tab-label { font-size: 10px; font-weight: 500; }
+/* Tamil and Kannada set noticeably wider than English at the same size, and
+   these labels have the least room in the app — so they ellipsize rather than
+   wrap a tab to two lines and shove the dock taller. */
+.bottom-nav__tab-label {
+  font-size: 10px;
+  font-weight: 500;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* ── Button ────────────────────────────────────────────────── */
 .btn {
@@ -233,6 +300,10 @@ img, svg { display: block; }
 .chip {
   display: inline-flex; align-items: center; gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
+  /* Symptom and factor grids are the densest tapping in the app and are used
+     one-handed, often in bed. 44px is the floor a thumb needs; the extra
+     height costs a row of scroll and buys every tap landing where she meant. */
+  min-height: 44px;
   border-radius: var(--radius-full);
   font-size: var(--text-sm); font-weight: 500;
   border: 1.5px solid var(--clr-border);
@@ -242,7 +313,9 @@ img, svg { display: block; }
 }
 .chip:active { transform: scale(0.96); }
 .chip--active { border-color: var(--clr-brand); background: var(--clr-brand-soft); color: var(--clr-brand); }
-.chip--sm { padding: var(--sp-1) var(--sp-2); font-size: var(--text-xs); }
+/* The small chip is a label, not a control — it reads a tag back rather than
+   taking a tap, so it keeps its compact height. */
+.chip--sm { padding: var(--sp-1) var(--sp-2); font-size: var(--text-xs); min-height: 0; }
 
 /* ── Bottom Sheet ──────────────────────────────────────────── */
 .sheet-backdrop {
@@ -253,13 +326,16 @@ img, svg { display: block; }
 .sheet {
   position: fixed; bottom: 0;
   left: 0; right: 0; margin: 0 auto;
-  width: 100%; max-width: 430px;
+  width: 100%; max-width: var(--app-max-width);
   background: var(--clr-surface);
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   z-index: var(--z-modal);
   padding: var(--sp-6);
   padding-bottom: calc(var(--sp-8) + env(safe-area-inset-bottom));
-  max-height: 90vh; overflow-y: auto;
+  /* dvh, not vh: with the keyboard up on a log form, `vh` measures the screen
+     the sheet no longer has and its Save button lands under the keys. */
+  max-height: 90dvh; overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .sheet__handle {
   width: 36px; height: 4px;
@@ -481,6 +557,14 @@ img, svg { display: block; }
 
 /* ── Toggle ────────────────────────────────────────────────── */
 .toggle { width: 44px; height: 26px; border-radius: var(--radius-full); background: var(--clr-border); position: relative; cursor: pointer; transition: background var(--dur-base); flex-shrink: 0; border: none; }
+/* A 26px-tall switch is the right size to look at and the wrong size to hit.
+   The pseudo-element grows the hit area to 48px without growing the control —
+   these switches sit alone in a settings row, so nothing is nearby to steal. */
+.toggle::after {
+  content: ''; position: absolute;
+  left: 0; right: 0; top: 50%;
+  height: var(--tap-min); transform: translateY(-50%);
+}
 .toggle--on { background: var(--clr-sage); }
 .toggle__knob { position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: var(--radius-full); background: white; box-shadow: var(--shadow-sm); transition: transform var(--dur-base) var(--ease-expo); }
 .toggle--on .toggle__knob { transform: translateX(18px); }
@@ -502,7 +586,7 @@ img, svg { display: block; }
   left: 0; right: 0; margin: 0 auto;
   bottom: calc(72px + env(safe-area-inset-bottom) + var(--sp-4));
   width: 100%;
-  max-width: 430px;
+  max-width: var(--app-max-width);
   display: flex;
   justify-content: center;
   padding: 0 var(--sp-5);
@@ -604,49 +688,167 @@ img, svg { display: block; }
   100% { opacity: 0; transform: scale(0); }
 }
 
-/* ── SOS Floating Button ──────────────────────────────────────
-   Persistent bottom-right FAB, above the nav. Emergency red with
-   a subtle pulse ring that draws attention without being alarming.
-   Pulse suppressed under prefers-reduced-motion (see global rule). */
-.sos-fab {
-  position: fixed;
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--sp-4));
-  right: max(var(--sp-5), calc((100vw - 430px) / 2 + var(--sp-5)));
-  width: 56px; height: 56px;
+/* ── SOS orb + dock well ──────────────────────────────────────
+   The emergency button. It has two homes — a well in the middle of
+   the tab bar, or either side edge at a height she chose — and it
+   is the same object in both, so it is never re-learned.
+
+   Positioned entirely by transform from the viewport origin (see
+   SOSButton.jsx): the drag gesture and the settle spring write to
+   one pair of motion values, which is why it can be thrown to an
+   edge and caught without ever disagreeing with itself. */
+/* The carrier holds the position; the orb inside holds the behaviour. */
+.sos-orb-carrier { touch-action: none; z-index: var(--z-sos); }
+
+.sos-orb {
+  width: 100%;
+  height: 100%;
   border-radius: var(--radius-full);
   background: var(--clr-emergency);
   color: var(--clr-emergency-on);
-  border: none; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  z-index: var(--z-nav);
-  box-shadow: 0 4px 16px oklch(0.52 0.22 25 / 0.35);
-  animation: sos-pulse 2s ease-out infinite;
+  border: 2.5px solid var(--clr-surface);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+  box-shadow: 0 6px 18px oklch(0.52 0.22 25 / 0.38);
+  animation: sos-pulse 2.6s ease-out infinite;
   user-select: none;
   -webkit-user-select: none;
-  touch-action: manipulation;
+  /* The button owns every pointer gesture on it — without this the
+     page scrolls under the finger instead of the button following it. */
+  touch-action: none;
 }
-.sos-fab:active { background: var(--clr-emergency-hover); }
-.sos-fab--active {
+.sos-orb:active { cursor: grabbing; }
+.sos-orb:focus-visible { outline: 3px solid var(--clr-emergency); outline-offset: 3px; }
+
+/* Seated in the well, the ring reads as the bar closing around it. */
+.sos-orb--docked { border-color: var(--clr-surface); }
+
+/* While it's being carried the pulse stops — the ring would read as a
+   second moving edge and muddy where the button actually is. */
+.sos-orb--dragging {
+  animation: none;
+  cursor: grabbing;
+  box-shadow: 0 16px 34px oklch(0.52 0.22 25 / 0.44);
+}
+
+/* A live alert holds a steady deepened red. The pulse means "ready";
+   leaving it running would say the app is still asking. */
+.sos-orb--active {
   animation: none;
   background: var(--clr-emergency-hover);
 }
-.sos-fab__label {
+
+.sos-orb__label {
   font-size: var(--text-xs);
   font-weight: 800;
   letter-spacing: 0.06em;
-  text-transform: uppercase;
   line-height: 1;
+  pointer-events: none;   /* the label must never swallow the drag */
+}
+
+/* The gap the button sits in. A real flex item, so removing it is what
+   drives the tabs into the space rather than a width animation
+   pretending to. */
+.bottom-nav__well {
+  /* Pure layout: a fixed-width spacer the tabs FLIP around when it leaves.
+     It paints nothing — the socket below does that. */
+  flex: 0 0 68px;
+  align-self: stretch;
+  pointer-events: none;
+}
+
+/* The socket, centred on the bar and outside its flex flow. `--dock-raise`
+   matches DOCK_RAISE in useSosDock.js: the point the docked button centres on,
+   so the seat is drawn exactly where the disc lands. */
+.bottom-nav__socket {
+  position: absolute;
+  left: 50%;
+  top: var(--dock-raise);
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+.bottom-nav__socket-seat,
+.bottom-nav__socket-ring {
+  position: absolute;
+  border-radius: var(--radius-full);
+  will-change: transform, opacity;
+}
+
+/* The seat: a recess the disc settles into. */
+.bottom-nav__socket-seat {
+  left: -29px; top: -29px;
+  width: 58px; height: 58px;
+  background: var(--clr-emergency-soft);
+  box-shadow: inset 0 2px 6px oklch(0.52 0.22 25 / 0.24);
+}
+
+/* The ring: the authored part. Wide and off-axis at rest, square and seated
+   once the button is in range. */
+.bottom-nav__socket-ring {
+  left: -37px; top: -37px;
+  width: 74px; height: 74px;
+  border: 2px dashed var(--clr-emergency);
 }
 
 @keyframes sos-pulse {
-  0%   { box-shadow: 0 0 0 0 oklch(0.52 0.22 25 / 0.5); }
-  70%  { box-shadow: 0 0 0 14px oklch(0.52 0.22 25 / 0); }
-  100% { box-shadow: 0 0 0 0 oklch(0.52 0.22 25 / 0); }
+  0%   { box-shadow: 0 6px 18px oklch(0.52 0.22 25 / 0.38), 0 0 0 0 oklch(0.52 0.22 25 / 0.45); }
+  70%  { box-shadow: 0 6px 18px oklch(0.52 0.22 25 / 0.38), 0 0 0 15px oklch(0.52 0.22 25 / 0); }
+  100% { box-shadow: 0 6px 18px oklch(0.52 0.22 25 / 0.38), 0 0 0 0 oklch(0.52 0.22 25 / 0); }
 }
 
-@media (prefers-reduced-motion: reduce) {
-  @keyframes sos-pulse { 0%, 100% { box-shadow: none; } }
+/* A full-screen surface owns the screen while it is up. The orb steps
+   out of the way rather than covering the very control the surface is
+   asking her to press. */
+body[data-overlay='true'] .sos-orb {
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out);
 }
+
+/* ── SOS countdown ────────────────────────────────────────────
+   Five seconds to take it back, stated plainly. */
+.sos-countdown {
+  position: fixed; inset: 0;
+  background: oklch(0.18 0.06 25 / 0.92);
+  z-index: var(--z-toast);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  padding: var(--sp-6);
+  padding-bottom: calc(var(--sp-6) + var(--safe-bottom));
+}
+.sos-countdown__digit {
+  font-size: var(--text-4xl);
+  font-weight: 800;
+  color: var(--clr-emergency-on);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.sos-countdown__text {
+  margin-top: var(--sp-4);
+  font-size: var(--text-md);
+  font-weight: 500;
+  color: var(--clr-ink-on-dark);
+  text-align: center;
+  text-wrap: balance;
+  max-width: 26ch;
+}
+.sos-countdown__cancel {
+  margin-top: var(--sp-8);
+  min-height: var(--tap-min);
+  min-width: 148px;
+  padding: var(--sp-3) var(--sp-8);
+  border-radius: var(--radius-full);
+  background: var(--clr-surface);
+  color: var(--clr-emergency);
+  font-size: var(--text-base);
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+}
+.sos-countdown__cancel:active { transform: scale(0.97); }
 
 .btn--emergency {
   background: var(--clr-emergency);
@@ -662,51 +864,6 @@ img, svg { display: block; }
 }
 .btn--emergency:hover { background: var(--clr-emergency-hover); }
 .btn--emergency:active { transform: scale(0.97); }
-
-/* ── SOS Countdown Overlay ────────────────────────────────────
-   Full-screen overlay with a centered modal for the 5-4-3-2-1
-   countdown. Dark scrim + glassy card. */
-.sos-countdown-overlay {
-  position: fixed; inset: 0;
-  background: oklch(0 0 0 / 0.70);
-  z-index: var(--z-modal);
-  display: flex; align-items: center; justify-content: center;
-  padding: var(--sp-6);
-}
-.sos-countdown-modal {
-  background: var(--clr-surface);
-  border-radius: var(--radius-xl);
-  padding: var(--sp-8) var(--sp-6);
-  text-align: center;
-  width: 100%;
-  max-width: 320px;
-  box-shadow: var(--shadow-lg);
-}
-.sos-countdown-digit {
-  font-size: 4rem;
-  font-weight: 800;
-  color: var(--clr-emergency);
-  line-height: 1;
-  margin-bottom: var(--sp-4);
-}
-.sos-countdown-text {
-  font-size: var(--text-sm);
-  color: var(--clr-ink-muted);
-  line-height: var(--leading-snug);
-  margin-bottom: var(--sp-6);
-}
-.sos-countdown-cancel {
-  display: inline-flex; align-items: center; justify-content: center;
-  padding: var(--sp-3) var(--sp-6);
-  border-radius: var(--radius-full);
-  background: var(--clr-surface-2);
-  color: var(--clr-ink);
-  font-size: var(--text-base); font-weight: 600;
-  min-height: 48px; min-width: 120px;
-  cursor: pointer; border: none;
-  transition: background var(--dur-fast);
-}
-.sos-countdown-cancel:active { background: var(--clr-border); }
 
 /* ── SOS Banner ───────────────────────────────────────────────
    Top-of-screen persistent bar while an SOS session is active. */
@@ -1027,14 +1184,17 @@ img, svg { display: block; }
   width: 3px;
   background: var(--clr-brand);
   border-radius: var(--radius-full);
-  animation: audio-bounce 1.2s ease-in-out infinite;
+  animation: audio-level 1.2s ease-in-out infinite;
 }
 .audio-wave span:nth-child(1) { height: 8px; animation-delay: 0.1s; }
 .audio-wave span:nth-child(2) { height: 16px; animation-delay: 0.3s; }
 .audio-wave span:nth-child(3) { height: 10px; animation-delay: 0.6s; }
 .audio-wave span:nth-child(4) { height: 18px; animation-delay: 0.2s; }
 .audio-wave span:nth-child(5) { height: 6px; animation-delay: 0.4s; }
-@keyframes audio-bounce {
+/* The speaking indicator: each bar dips and recovers, so the row reads as a
+   voice level. Sinusoidal, not springy — an emergency-adjacent consult screen
+   is the wrong place for playful motion. */
+@keyframes audio-level {
   0%, 100% { transform: scaleY(1); }
   50% { transform: scaleY(0.4); }
 }
@@ -1492,7 +1652,7 @@ img, svg { display: block; }
 /* Record-saved overlay: the one celebration moment */
 .doc-saved-overlay {
   position: fixed; inset: 0;
-  margin: 0 auto; max-width: 430px;
+  margin: 0 auto; max-width: var(--app-max-width);
   background: oklch(1 0 0 / 0.92);
   backdrop-filter: blur(6px);
   z-index: var(--z-modal);
@@ -1616,141 +1776,225 @@ img, svg { display: block; }
   position: fixed;
   inset: 0;
   margin: 0 auto;
-  max-width: 430px;
+  max-width: var(--app-max-width);
   z-index: var(--z-modal);
   overflow: hidden;
   cursor: default;
   contain: layout paint style;
 }
 
-/* ── Pregnancy mood check-in ──────────────────────────────────
-   Daily Home-screen card: drag-to-valence, then pick a word.
-   `.mood-checkin__wash` and the bud petals get their colour from
-   framer-motion values bound directly in the component, driven live
-   by drag position — this stylesheet only owns layout and static
-   presentation, per the app's inline-style/CSS-class split. ── */
-.mood-checkin {
-  position: relative;
-  overflow: hidden;
+/* ── Daily mood check-in ──────────────────────────────────────
+   Home shows only `.mood-entry`, a quiet invitation. Choosing happens in
+   `.mood-sheet`, a full-bleed surface whose field, bloom, ink and button are
+   all mixed from the chosen valence — those colour values are bound live in
+   the component, so this stylesheet owns layout and static presentation only,
+   per the app's inline-style/CSS-class split. ── */
+.mood-entry {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  width: 100%;
+  text-align: left;
+  padding: var(--sp-4) var(--sp-5);
   border-radius: var(--radius-xl);
   border: 1px solid var(--clr-border);
   background: var(--clr-surface);
-  box-shadow: var(--shadow-md);
-  padding: var(--sp-6);
+  box-shadow: var(--shadow-sm);
+  cursor: pointer;
+  transition: box-shadow var(--dur-base) var(--ease-expo), transform var(--dur-fast) var(--ease-expo);
 }
-.mood-checkin__wash {
-  position: absolute;
+.mood-entry:hover { box-shadow: var(--shadow-md); }
+.mood-entry:active { transform: scale(0.985); }
+.mood-entry:focus-visible { outline: 2px solid var(--clr-brand); outline-offset: 3px; }
+.mood-entry__bloom { flex-shrink: 0; display: flex; margin: -8px 0; }
+.mood-entry__text { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.mood-entry__eyebrow {
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.03em; color: var(--clr-brand);
+}
+.mood-entry__title {
+  font-family: var(--font-display); font-size: var(--text-md); font-weight: 600;
+  color: var(--clr-ink); text-wrap: balance;
+}
+.mood-entry__hint { font-size: var(--text-xs); color: var(--clr-ink-subtle); }
+.mood-entry__chev { flex-shrink: 0; color: var(--clr-ink-subtle); }
+
+/* ── The sheet ── */
+.mood-scrim {
+  position: fixed;
   inset: 0;
-  opacity: 0.12;
-  pointer-events: none;
+  z-index: var(--z-backdrop);
+  background: oklch(0 0 0 / 0.42);
 }
-.mood-checkin__content { position: relative; z-index: 1; }
-
-.mood-checkin__eyebrow {
-  font-size: var(--text-xs);
-  font-weight: 600;
-  letter-spacing: 0.03em;
-  color: var(--clr-brand);
-}
-.mood-checkin__title {
-  font-family: var(--font-display);
-  font-size: var(--text-lg);
-  font-weight: 600;
-  color: var(--clr-ink);
-  margin-top: 2px;
-  text-wrap: balance;
-}
-.mood-checkin__hint {
-  font-size: var(--text-xs);
-  color: var(--clr-ink-subtle);
-  text-align: center;
-}
-
-.mood-checkin__stage {
+/* Presents as a bottom sheet: the screen behind stays visible above the
+   rounded lip, so the check-in reads as something you can put back down.
+   Centred with auto margins rather than a translate, leaving `transform`
+   free for the slide-up. */
+.mood-sheet {
+  position: fixed;
+  top: 34px; right: 0; bottom: 0; left: 0;
+  margin: 0 auto;
+  width: 100%;
+  max-width: var(--app-max-width);
+  z-index: var(--z-modal);
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: var(--sp-3);
-  margin-top: var(--sp-6);
+  overflow: hidden;
+  border-radius: 22px 22px 0 0;
+  box-shadow: 0 -10px 44px oklch(0 0 0 / 0.26);
+  overscroll-behavior: contain;
 }
-.mood-checkin__live-label {
+.mood-sheet__field { position: absolute; inset: 0; z-index: 0; }
+
+.mood-sheet__bar {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: 44px 1fr 44px;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-5) var(--sp-2);
+}
+.mood-sheet__bar-title {
+  text-align: center; font-size: var(--text-base); font-weight: 600;
+  color: currentColor; opacity: 0.9;
+}
+.mood-sheet__circle {
+  width: 34px; height: 34px; border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  background: oklch(1 0 0 / 0.55);
+  color: currentColor;
+  border: none; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-expo);
+}
+.mood-sheet__circle:hover { background: oklch(1 0 0 / 0.78); }
+.mood-sheet__circle:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.mood-sheet__circle--ghost { background: none; pointer-events: none; }
+
+.mood-sheet__body {
+  position: relative; z-index: 1;
+  flex: 1; min-height: 0; overflow-y: auto;
+  padding: 0 var(--sp-6);
+  -webkit-overflow-scrolling: touch;
+}
+.mood-step { display: flex; flex-direction: column; padding-bottom: var(--sp-6); }
+/* The choosing step is vertically composed: headline, bloom, verdict, slider. */
+.mood-step--feel { min-height: 100%; }
+.mood-step__stage {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 210px;
+  margin: var(--sp-2) 0;
+}
+.mood-step__crown {
+  display: flex; flex-direction: column; align-items: center;
+  padding-top: var(--sp-2); margin-bottom: var(--sp-5);
+}
+
+.mood-sheet__headline {
+  margin-top: var(--sp-5);
+  font-size: 1.75rem;
+  font-weight: 700;
+  line-height: 1.16;
+  letter-spacing: -0.022em;
+  text-align: center;
+  text-wrap: balance;
+  color: currentColor;
+}
+.mood-sheet__verdict {
+  font-size: 1.6rem; font-weight: 700; letter-spacing: -0.02em;
+  text-align: center; color: currentColor; text-wrap: balance;
+}
+.mood-sheet__verdict--sm { font-size: var(--text-lg); margin-top: var(--sp-2); }
+.mood-sheet__question {
+  font-size: var(--text-md); font-weight: 700; letter-spacing: -0.01em;
+  color: currentColor; margin-bottom: var(--sp-4); text-wrap: balance;
+}
+.mood-sheet__optional {
+  margin-top: var(--sp-4); font-size: var(--text-xs);
+  color: currentColor; opacity: 0.62; text-align: center;
+}
+
+/* ── Valence slider ── */
+.mood-slider { margin-top: var(--sp-6); }
+.mood-slider__track {
+  position: relative;
+  height: 52px;
+  border-radius: var(--radius-full);
+  background: oklch(1 0 0 / 0.42);
+  cursor: grab;
+  touch-action: none;
+}
+.mood-slider__track:active { cursor: grabbing; }
+.mood-slider__track:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
+/* Inset by half a thumb so travel ends flush with the track, never overhanging. */
+.mood-slider__rail { position: absolute; top: 0; bottom: 0; left: 26px; right: 26px; }
+.mood-slider__thumb {
+  position: absolute;
+  top: 50%;
+  width: 44px; height: 44px;
+  margin-top: -22px;
+  transform: translateX(-50%);
+  border-radius: var(--radius-full);
+  background: #fff;
+  box-shadow: 0 2px 8px oklch(0 0 0 / 0.22);
+  pointer-events: none;
+}
+.mood-slider__ends {
+  display: flex; justify-content: space-between; gap: var(--sp-4);
+  margin-top: var(--sp-3);
+  font-size: var(--text-xs); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.06em;
+  color: currentColor; opacity: 0.6;
+}
+
+/* ── Chips ── */
+.mood-chips {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
+}
+.mood-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  min-height: 44px;
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: oklch(1 0 0 / 0.6);
+  color: currentColor;
+  font-size: var(--text-sm); font-weight: 500;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-expo), transform var(--dur-fast) var(--ease-expo);
+}
+.mood-chip:hover { background: oklch(1 0 0 / 0.85); }
+.mood-chip:active { transform: scale(0.96); }
+.mood-chip:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
+.mood-chip--on { color: #fff; font-weight: 600; }
+.mood-chip--on:hover { filter: brightness(1.06); }
+
+/* ── Footer ── */
+.mood-sheet__foot {
+  position: relative; z-index: 1;
+  padding: var(--sp-3) var(--sp-6) calc(env(safe-area-inset-bottom) + var(--sp-5));
+}
+.mood-sheet__cta {
+  width: 100%;
+  min-height: 54px;
+  border-radius: var(--radius-full);
+  border: none;
+  color: #fff;
   font-size: var(--text-md);
   font-weight: 600;
-  color: var(--clr-ink);
-  min-height: 1.4em;
-  text-align: center;
+  letter-spacing: -0.01em;
+  cursor: pointer;
+  box-shadow: 0 6px 18px oklch(0 0 0 / 0.16);
+  transition: transform var(--dur-fast) var(--ease-expo), opacity var(--dur-fast) var(--ease-expo);
 }
-.mood-checkin__track {
-  position: relative;
-  width: 100%;
-  height: 64px;
-  border-radius: var(--radius-full);
-  background: var(--clr-surface-2);
-  border: 1px solid var(--clr-border);
-  cursor: grab;
-}
-.mood-checkin__track:active { cursor: grabbing; }
-.mood-checkin__track:focus-visible { outline: 2px solid var(--clr-brand); outline-offset: 3px; }
-.mood-checkin__track-fill {
-  position: absolute;
-  left: var(--sp-5);
-  right: var(--sp-5);
-  top: 50%;
-  height: 6px;
-  margin-top: -3px;
-  border-radius: var(--radius-full);
-  background: linear-gradient(90deg, #59507c, #7c8ca8 50%, #c9a868);
-  opacity: 0.32;
-}
-.mood-checkin__bud {
-  position: absolute;
-  top: 50%;
-  width: 44px;
-  height: 44px;
-  margin-top: -22px;
-  margin-left: -22px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  pointer-events: none;
-  filter: drop-shadow(0 2px 4px oklch(0.3 0.05 300 / 0.18));
-}
+.mood-sheet__cta:active { transform: scale(0.985); }
+.mood-sheet__cta:disabled { opacity: 0.45; cursor: not-allowed; }
+.mood-sheet__cta:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 
-.mood-checkin__back {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-height: 44px;
-  padding: var(--sp-2) 0;
-  font-size: var(--text-sm);
-  font-weight: 500;
-  color: var(--clr-ink-muted);
-  transition: color var(--dur-fast) var(--ease-expo);
+@media (prefers-reduced-motion: reduce) {
+  .mood-entry, .mood-chip, .mood-sheet__cta { transition: none; }
 }
-.mood-checkin__back:hover { color: var(--clr-brand); }
-.mood-checkin__back:focus-visible { outline: 2px solid var(--clr-brand); outline-offset: 2px; border-radius: var(--radius-sm); }
-
-.mood-checkin__word-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: var(--sp-3);
-  margin-top: var(--sp-5);
-}
-.mood-checkin__word {
-  min-height: 44px;
-  padding: var(--sp-3) var(--sp-4);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--clr-border);
-  background: var(--clr-surface);
-  font-size: var(--text-sm);
-  font-weight: 600;
-  color: var(--clr-ink);
-  text-align: center;
-  transition: background var(--dur-fast) var(--ease-expo), border-color var(--dur-fast) var(--ease-expo), transform var(--dur-fast) var(--ease-expo);
-}
-.mood-checkin__word:hover { border-color: var(--clr-brand); background: var(--clr-brand-soft); }
-.mood-checkin__word:active { transform: scale(0.97); }
-.mood-checkin__word:focus-visible { outline: 2px solid var(--clr-brand); outline-offset: 2px; }
 
 /* ── Community post card ──────────────────────────────────── */
 .post-card {
@@ -1794,3 +2038,1714 @@ img, svg { display: block; }
   display: flex; justify-content: space-between; gap: var(--sp-3);
   font-size: var(--text-sm); font-weight: 500; color: var(--clr-ink);
 }
+
+/* ── Adaptation ───────────────────────────────────────────────
+   The app is one 430px column on every device, so this is not a
+   desktop layout folding down. What varies is how much room the
+   column actually gets, and these rules cover the cases a fluid
+   scale alone can't reach.
+
+   Ordered narrow → wide, then by height, then by input. */
+
+/* Very small phones. 320–360px is a real and common floor here —
+   budget Androids and the SE — where the three-up quick actions
+   and the five-slot dock run out of horizontal room first. */
+@media (max-width: 360px) {
+  /* Two lines of label at this width is better than three columns
+     of truncation. */
+  .quick-action { padding: var(--sp-4) var(--sp-2); }
+  .quick-action__icon { width: 40px; height: 40px; }
+
+  /* The dock keeps its 48px touch height; only the gutters give. */
+  .bottom-nav__tab { padding-left: 2px; padding-right: 2px; }
+  .bottom-nav__tab-label { font-size: 9px; letter-spacing: -0.01em; }
+
+  /* A three-word button ("Share to community") is the first thing
+     to overflow once labels are translated. Let it wrap rather
+     than push the sheet horizontally. */
+  .btn { white-space: normal; text-wrap: balance; }
+}
+
+/* Short viewports: landscape phones, small tablets in split view,
+   and — the common one — any portrait screen with the keyboard up.
+   The check-in is the surface that suffers, because it composes a
+   headline, a 250px bloom, a verdict and a slider in one column. */
+@media (max-height: 700px) {
+  .mood-sheet { top: 0; border-radius: 0; }
+  .mood-sheet__headline { margin-top: var(--sp-3); font-size: var(--text-xl); }
+  .mood-step__stage { min-height: 150px; }
+  .mood-sheet__verdict { font-size: var(--text-xl); }
+  .mood-slider { margin-top: var(--sp-4); }
+}
+
+@media (max-height: 560px) {
+  /* Below this the bloom stops being the subject and starts being
+     the reason the slider is off-screen. It shrinks; it never goes
+     away — it is the thing that answers before the label does. */
+  .mood-step__stage { min-height: 96px; }
+  .mood-sheet__bar { padding-top: var(--sp-2); }
+  .mood-sheet__headline { font-size: var(--text-md); }
+  .mood-sheet__foot { padding-top: var(--sp-2); }
+  .sheet { max-height: 96dvh; }
+}
+
+/* Landscape on a phone. Not a supported reading posture for this
+   app, but she will rotate by accident mid-check-in and it must
+   not strand her. */
+@media (orientation: landscape) and (max-height: 500px) {
+  .mood-step--feel { min-height: 0; }
+  .mood-step__stage { min-height: 80px; }
+  .mood-sheet__body { padding-bottom: var(--sp-4); }
+}
+
+/* Coarse pointers: touch and stylus. Hover styling that only ever
+   fires as a stuck highlight after a tap is worse than none. */
+@media (pointer: coarse) {
+  .chip:hover, .quick-action:hover, .mood-chip:hover,
+  .mood-sheet__circle:hover, .post-card__action:hover { background: inherit; }
+  .mood-entry:hover { box-shadow: var(--shadow-sm); }
+}
+
+/* Wide screens. The column is the design; the space around it is
+   not a layout to fill, so it gets a quiet field and an edge that
+   tells you where the app stops. */
+@media (min-width: 600px) {
+  body { background: var(--clr-surface-2); }
+  #root {
+    box-shadow: 0 0 0 1px var(--clr-border), var(--shadow-lg);
+    background: var(--clr-bg);
+  }
+}
+
+/* ── Mood recap (Home, once today has something on it) ────────
+   The check-in card's second state. Same footprint and same first
+   glance as the invitation it replaces, so Home doesn't reflow
+   under her the moment she logs. */
+.mood-recap {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+}
+.mood-recap__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-4) var(--sp-5);
+  background: none;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+.mood-recap__bloom { flex-shrink: 0; display: flex; margin: -6px 0; }
+.mood-recap__actions {
+  display: flex;
+  border-top: 1px solid var(--clr-border);
+}
+.mood-recap__action {
+  flex: 1;
+  min-height: var(--tap-min);
+  padding: var(--sp-3) var(--sp-2);
+  background: none;
+  border: none;
+  color: var(--clr-brand);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-out);
+}
+.mood-recap__action + .mood-recap__action { border-left: 1px solid var(--clr-border); }
+.mood-recap__action:active { background: var(--clr-brand-soft); }
+
+/* ── Utilities ────────────────────────────────────────────────
+   Present to assistive technology, absent from the page. Used where
+   the visible element is decorative motion and the meaning has to
+   reach a screen reader some other way (the SOS countdown). */
+.sr-only {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Windows high-contrast and forced-colour modes flatten backgrounds, which
+   would leave the emergency button as an unmarked circle. The border is
+   redrawn from the system palette so it stays findable. */
+@media (forced-colors: active) {
+  .sos-orb {
+    border: 2px solid ButtonText;
+    background: ButtonFace;
+    color: ButtonText;
+    forced-color-adjust: none;
+  }
+  .bottom-nav__socket-ring { border-color: ButtonText; }
+  .sos-countdown { background: Canvas; }
+  .sos-countdown__digit, .sos-countdown__text { color: CanvasText; }
+}
+
+/* ══ Journal ══════════════════════════════════════════════════
+   The one part of the app that is not a health tool. Writing gets
+   a serif, a wide leading and a page that holds nothing else —
+   the register of a notebook rather than a form. Georgia is used
+   deliberately over the brand sans: it ships everywhere, costs no
+   bytes, and is the difference between writing and filling in. */
+:root {
+  --font-journal: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+}
+
+/* ── Composer ── */
+.jc {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  background: var(--clr-bg);
+  color: var(--clr-ink);
+}
+.jc__bar {
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: calc(var(--safe-top) + var(--sp-3)) var(--sp-4) var(--sp-2);
+}
+.jc__circle {
+  width: 40px; height: 40px;
+  border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  color: var(--clr-ink-muted);
+  cursor: pointer;
+}
+.jc__circle--ghost { background: none; border: none; pointer-events: none; }
+.jc__date {
+  text-align: center;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clr-ink-subtle);
+}
+.jc__body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: var(--sp-4) var(--sp-6) var(--sp-8);
+}
+.jc__body--feel { display: flex; flex-direction: column; gap: var(--sp-5); }
+
+/* No border, no fill, no visible field. The page is the page. */
+.jc__text {
+  width: 100%;
+  min-height: 40vh;
+  border: none;
+  outline: none;
+  background: none;
+  resize: none;
+  overflow: hidden;
+  color: var(--clr-ink);
+  font-family: var(--font-journal);
+  font-size: 1.0625rem;
+  line-height: 1.75;
+  letter-spacing: 0.003em;
+}
+.jc__text::placeholder { color: var(--clr-ink-subtle); font-style: italic; }
+
+.jc__prompts { margin-top: var(--sp-6); display: flex; flex-direction: column; gap: var(--sp-2); }
+.jc__prompts-label {
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--clr-ink-subtle); margin-bottom: var(--sp-1);
+}
+.jc__prompt {
+  text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  min-height: var(--tap-min);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  color: var(--clr-ink-muted);
+  font-family: var(--font-journal);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), color var(--dur-fast);
+}
+.jc__prompt:active { border-color: var(--clr-brand-muted); color: var(--clr-ink); }
+
+.jc__heading { font-size: var(--text-xl); font-weight: 700; letter-spacing: -0.015em; text-wrap: balance; }
+.jc__sub { font-size: var(--text-sm); color: var(--clr-ink-muted); line-height: var(--leading-snug); margin-top: -12px; text-wrap: pretty; }
+
+.jc__daymood {
+  display: flex; align-items: center; gap: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--clr-surface); border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.jc__daymood-label { font-size: var(--text-xs); color: var(--clr-ink-subtle); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+.jc__daymood-word { font-size: var(--text-base); font-weight: 600; color: var(--clr-ink); margin-top: 1px; }
+
+.jc__attach {
+  display: flex; align-items: center; gap: var(--sp-4);
+  width: 100%; min-height: var(--tap-min);
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1.5px dashed var(--clr-brand-muted);
+  background: var(--clr-surface);
+  text-align: left; cursor: pointer;
+}
+.jc__attach-title { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--clr-ink); }
+.jc__attach-hint { display: block; font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 1px; }
+
+.jc__attached {
+  display: flex; flex-direction: column; align-items: center; gap: var(--sp-1);
+  padding: var(--sp-5);
+  background: var(--clr-surface); border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+}
+.jc__attached-word { font-size: var(--text-lg); font-weight: 700; color: var(--clr-ink); margin-top: var(--sp-2); }
+.jc__attached-factors { font-size: var(--text-xs); color: var(--clr-ink-muted); text-align: center; text-wrap: pretty; }
+.jc__link {
+  margin-top: var(--sp-2); min-height: 36px;
+  background: none; border: none; cursor: pointer;
+  color: var(--clr-brand); font-size: var(--text-sm); font-weight: 600;
+}
+
+.jc__tags-label, .jc__tags .jc__tags-label {
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.06em;
+  text-transform: uppercase; color: var(--clr-ink-subtle); margin-bottom: var(--sp-2);
+}
+.jc__tag-row { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.jc__flag {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  width: 100%; padding: var(--sp-4);
+  min-height: var(--tap-min);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  text-align: left; cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.jc__flag--on { border-color: var(--clr-sage); background: var(--clr-sage-soft); }
+.jc__flag-box {
+  flex-shrink: 0; width: 20px; height: 20px; margin-top: 1px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--clr-border);
+  background: var(--clr-surface);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--clr-sage);
+}
+.jc__flag--on .jc__flag-box { border-color: var(--clr-sage); }
+.jc__flag-title { display: block; font-size: var(--text-sm); font-weight: 600; color: var(--clr-ink); }
+.jc__flag-hint { display: block; font-size: var(--text-xs); color: var(--clr-ink-muted); margin-top: 2px; line-height: var(--leading-snug); }
+
+.jc__error { font-size: var(--text-sm); color: var(--clr-emergency); line-height: var(--leading-snug); }
+
+.jc__foot {
+  flex-shrink: 0;
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-6) calc(var(--safe-bottom) + var(--sp-5));
+  background: linear-gradient(to top, var(--clr-bg) 62%, transparent);
+}
+.jc__count { font-size: var(--text-xs); color: var(--clr-ink-subtle); font-variant-numeric: tabular-nums; }
+.jc__cta {
+  flex: 1;
+  min-height: 54px;
+  border-radius: var(--radius-full);
+  border: none;
+  background: var(--clr-brand);
+  color: #fff;
+  font-size: var(--text-md); font-weight: 600;
+  cursor: pointer;
+  box-shadow: var(--shadow-brand);
+  transition: transform var(--dur-fast) var(--ease-expo), opacity var(--dur-fast);
+}
+.jc__cta:active:not(:disabled) { transform: scale(0.985); }
+.jc__cta:disabled { opacity: 0.4; cursor: not-allowed; box-shadow: none; }
+
+/* ── Entry, read back ── */
+.je {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  color: var(--clr-ink);
+}
+/* The field carries the entry's mood colour behind everything. */
+.je__field { position: absolute; inset: 0; z-index: 0; }
+
+/* Over a sky, the flat mood field steps aside — the sheet carries the colour
+   instead, and two washes would fight. */
+.je--sky .je__field { display: none; }
+
+.je__bar {
+  position: relative; z-index: 1;
+  flex-shrink: 0;
+  display: grid;
+  grid-template-columns: 40px 1fr 40px;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: calc(var(--safe-top) + var(--sp-3)) var(--sp-4) var(--sp-2);
+}
+.je__circle {
+  width: 40px; height: 40px;
+  border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  background: oklch(1 0 0 / 0.55);
+  color: currentColor;
+  border: none; cursor: pointer;
+  transition: background var(--dur-fast) var(--ease-expo);
+}
+.je__circle:active { background: oklch(1 0 0 / 0.8); }
+.je__bar-date {
+  text-align: center;
+  font-size: var(--text-xs); font-weight: 600;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  opacity: 0.7;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.je__scroll {
+  position: relative; z-index: 1;
+  flex: 1; min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  /* No horizontal padding here — the sheet below owns it, so the sheet's
+     surface can run edge to edge while its content stays inset. */
+  padding: 0;
+}
+
+/* The sky. Sits behind the scroller and stays put while the page rides up
+   over it, which is what gives the parallax without a scroll listener. */
+.je__scene {
+  position: absolute;
+  inset: 0;
+  height: 74dvh;
+  z-index: 0;
+  transform-origin: 50% 30%;
+  will-change: transform, opacity;
+}
+
+/* The sheet. Everything she wrote, on one surface in the colour of the mood
+   she chose. Its top edge fades up from nothing rather than starting at a
+   line, so the sky doesn't end — it becomes the page. */
+.je__sheet {
+  position: relative;
+  z-index: 1;
+  padding: var(--sp-6) var(--sp-6) calc(var(--safe-bottom) + var(--sp-10));
+  background: var(--clr-bg);
+}
+.je__sheet--overSky {
+  margin-top: -14dvh;
+  padding-top: 22dvh;
+  border-radius: 30px 30px 0 0;
+  background:
+    linear-gradient(
+      180deg,
+      transparent 0%,
+      color-mix(in oklab, var(--sheet-wash2, var(--clr-bg)) 55%, transparent) 12%,
+      var(--sheet-wash2, var(--clr-bg)) 26%,
+      var(--sheet-wash, var(--clr-bg)) 100%
+    );
+  /* The mood colour has to carry all the way down past the last section, so
+     the page ends in her colour rather than in grey. */
+  min-height: 78dvh;
+}
+
+.je__crown {
+  display: flex; flex-direction: column; align-items: center;
+  padding-bottom: var(--sp-6);
+}
+.je__crown-word {
+  margin-top: var(--sp-3);
+  font-size: var(--text-2xl); font-weight: 700;
+  letter-spacing: -0.02em; text-align: center; text-wrap: balance;
+}
+.je__crown-meta { margin-top: 2px; font-size: var(--text-xs); opacity: 0.66; }
+
+/* The writing. The only thing on this page she actually wrote. */
+.je__prose {
+  font-family: var(--font-journal);
+  font-size: 1.0625rem;
+  line-height: 1.78;
+  letter-spacing: 0.003em;
+  text-wrap: pretty;
+}
+.je__prose p + p { margin-top: 1.1em; }
+
+.je__section {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-5);
+  border-top: 1px solid oklch(0 0 0 / 0.10);
+}
+/* The bar over a sky is white type on the scene, so it needs no surface of
+   its own — and a card behind it would cut the sky in half. */
+.je--sky .je__bar { color: #fff; }
+.je--sky .je__circle { background: oklch(1 0 0 / 0.22); backdrop-filter: blur(8px); }
+.je--sky .je__circle:active { background: oklch(1 0 0 / 0.4); }
+.je--sky .je__bar-date { opacity: 0.85; }
+.je__section-title {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  opacity: 0.6; margin-bottom: var(--sp-3);
+}
+.je__chips { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.je__chips--quiet { margin-top: var(--sp-3); opacity: 0.78; }
+.je__chip {
+  display: inline-flex; align-items: center;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-full);
+  background: oklch(1 0 0 / 0.55);
+  font-size: var(--text-sm); font-weight: 500;
+}
+
+.je__facts { display: flex; flex-direction: column; gap: var(--sp-2); }
+.je__fact { display: flex; justify-content: space-between; gap: var(--sp-4); }
+.je__fact dt { font-size: var(--text-sm); opacity: 0.68; }
+.je__fact dd { font-size: var(--text-sm); font-weight: 600; text-align: right; }
+
+.je__actions {
+  margin-top: var(--sp-8);
+  padding-top: var(--sp-5);
+  border-top: 1px solid oklch(0 0 0 / 0.10);
+  display: flex; flex-direction: column; gap: var(--sp-3);
+}
+.je__flag {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  width: 100%; min-height: var(--tap-min);
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+  border: 1px solid oklch(0 0 0 / 0.12);
+  background: oklch(1 0 0 / 0.45);
+  text-align: left; cursor: pointer; color: inherit;
+}
+.je__flag--on { background: oklch(1 0 0 / 0.75); border-color: oklch(0 0 0 / 0.2); }
+.je__flag-box {
+  flex-shrink: 0; width: 20px; height: 20px; margin-top: 1px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid currentColor;
+  display: flex; align-items: center; justify-content: center;
+  opacity: 0.75;
+}
+.je__flag-text { font-size: var(--text-sm); font-weight: 600; line-height: var(--leading-snug); }
+
+.je__ghost, .je__delete {
+  min-height: var(--tap-min);
+  border-radius: var(--radius-full);
+  border: none; cursor: pointer;
+  font-size: var(--text-sm); font-weight: 600;
+}
+.je__ghost { background: oklch(1 0 0 / 0.55); color: inherit; }
+.je__delete { background: none; color: var(--clr-emergency); }
+
+.je__skeleton {
+  margin: calc(var(--safe-top) + var(--sp-10)) var(--sp-6);
+  height: 220px; border-radius: var(--radius-xl);
+  background: var(--clr-surface-2);
+}
+.je__missing {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: var(--sp-3);
+  padding: var(--sp-8) var(--sp-6);
+  text-align: center;
+}
+.je__missing-title { font-size: var(--text-lg); font-weight: 700; }
+.je__missing-body { font-size: var(--text-sm); color: var(--clr-ink-muted); margin-bottom: var(--sp-4); }
+
+/* ── Journal index ── */
+.jl {
+  padding: calc(var(--safe-top) + var(--sp-5)) var(--sp-6) var(--sp-10);
+  display: flex; flex-direction: column; gap: var(--sp-6);
+}
+.jl__title { font-size: var(--text-xl); font-weight: 700; color: var(--clr-ink); }
+.jl__sub { font-size: var(--text-sm); color: var(--clr-ink-muted); margin-top: 2px; text-wrap: pretty; }
+
+.jl__month + .jl__month { margin-top: var(--sp-4); }
+.jl__month-label {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--clr-ink-subtle); margin-bottom: var(--sp-3);
+}
+.jl__list { display: flex; flex-direction: column; gap: var(--sp-2); }
+
+.jl__row {
+  display: flex; gap: var(--sp-4);
+  width: 100%; text-align: left;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--dur-fast);
+}
+.jl__row:active { border-color: var(--clr-brand-muted); }
+
+/* The ribbon. Read as a column, the dots are the months themselves. */
+.jl__dot {
+  flex-shrink: 0;
+  width: 10px; height: 10px;
+  margin-top: 5px;
+  border-radius: var(--radius-full);
+  background: var(--clr-ink-subtle);
+}
+.jl__dot--none { background: none; border: 1.5px solid var(--clr-border); }
+
+.jl__row-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: var(--sp-2); }
+.jl__row-head { display: flex; align-items: center; flex-wrap: wrap; gap: var(--sp-2); }
+.jl__row-date {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--clr-ink-muted);
+}
+.jl__row-word { font-size: var(--text-xs); font-weight: 600; color: var(--clr-ink); }
+.jl__row-flag, .jl__row-shared {
+  font-size: 10px; font-weight: 700;
+  padding: 2px var(--sp-2); border-radius: var(--radius-full);
+}
+.jl__row-flag { background: var(--clr-sky-soft); color: var(--clr-sky); }
+.jl__row-shared { background: var(--clr-sage-soft); color: var(--clr-sage); }
+.jl__row-text {
+  font-family: var(--font-journal);
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--clr-ink);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.jl__row-tags { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+
+.jl__skeleton { height: 84px; border-radius: var(--radius-lg); background: var(--clr-surface-2); border: 1px solid var(--clr-border); }
+
+.jl__empty {
+  text-align: center;
+  padding: var(--sp-10) var(--sp-6);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+}
+.jl__empty-mark { color: var(--clr-brand); display: flex; justify-content: center; margin-bottom: var(--sp-4); }
+.jl__empty-title { font-size: var(--text-lg); font-weight: 700; color: var(--clr-ink); margin-bottom: var(--sp-2); }
+.jl__empty-body {
+  font-size: var(--text-sm); color: var(--clr-ink-muted);
+  line-height: var(--leading-snug); margin-bottom: var(--sp-6); text-wrap: pretty;
+}
+
+/* ── Mood log (Track) ─────────────────────────────────────────
+   Thirty days as thirty columns. Valence is carried twice, in
+   height and in colour, so the shape survives a dim screen and
+   the colour survives colour-blindness. */
+.ml { display: flex; flex-direction: column; gap: var(--sp-4); }
+.ml__head { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-3); }
+.ml__count { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 2px; }
+
+.ml__actions { display: flex; gap: var(--sp-3); }
+.ml__action {
+  flex: 1;
+  display: flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  min-height: var(--tap-min);
+  padding: var(--sp-3);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  color: var(--clr-ink);
+  font-size: var(--text-sm); font-weight: 600;
+  cursor: pointer;
+  transition: border-color var(--dur-fast);
+}
+.ml__action:active { border-color: var(--clr-brand-muted); }
+.ml__action--done { color: var(--clr-ink-muted); }
+
+.ml__ribbon {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 96px;
+  padding: var(--sp-3) var(--sp-2);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.ml__col {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+.ml__col:disabled { cursor: default; }
+.ml__col-track { position: relative; display: block; width: 100%; height: 100%; }
+.ml__col-bar {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  border-radius: var(--radius-full);
+  min-height: 3px;
+}
+/* A day with no log keeps its column — the gap is information too. */
+.ml__col--empty .ml__col-track::after {
+  content: '';
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 3px; border-radius: var(--radius-full);
+  background: var(--clr-border);
+}
+.ml__col-tick {
+  position: absolute;
+  left: 0; right: 0;
+  height: 2px;
+  border-radius: var(--radius-full);
+}
+.ml__col:focus-visible { outline: 2px solid var(--clr-brand); outline-offset: 2px; }
+
+.ml__scale {
+  display: flex; justify-content: space-between;
+  font-size: var(--text-xs); color: var(--clr-ink-subtle);
+  margin-top: calc(var(--sp-3) * -1);
+}
+
+.ml__empty {
+  font-size: var(--text-sm); color: var(--clr-ink-muted);
+  line-height: var(--leading-base); text-wrap: pretty;
+  padding: var(--sp-5);
+  background: var(--clr-surface); border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+
+.ml__insight {
+  display: flex; gap: var(--sp-3); align-items: flex-start;
+  padding: var(--sp-4);
+  background: var(--clr-surface); border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.ml__insight-mark { color: var(--clr-brand); display: flex; flex-shrink: 0; margin-top: 1px; }
+.ml__insight-text { font-size: var(--text-sm); color: var(--clr-ink); line-height: var(--leading-base); text-wrap: pretty; }
+.ml__insight-meta { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: var(--sp-1); }
+
+/* Not styled as an alarm. She already knows it has been a hard week; the app
+   saying so loudly would be one more thing pressing on her. */
+.ml__support {
+  display: flex; gap: var(--sp-3); align-items: center;
+  width: 100%; text-align: left;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--clr-mauve-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+}
+.ml__support-mark { color: var(--clr-mauve); display: flex; flex-shrink: 0; }
+.ml__support-body { flex: 1; min-width: 0; }
+.ml__support-title { display: block; font-size: var(--text-sm); font-weight: 700; color: var(--clr-mauve); }
+.ml__support-text {
+  display: block; font-size: var(--text-xs); color: var(--clr-ink-muted);
+  margin-top: 2px; line-height: var(--leading-base); text-wrap: pretty;
+}
+.ml__support-go { color: var(--clr-mauve); flex-shrink: 0; font-size: var(--text-lg); }
+
+.ml__day { display: flex; flex-direction: column; gap: var(--sp-4); }
+.ml__day-row { display: flex; gap: var(--sp-4); align-items: flex-start; }
+.ml__day-body { flex: 1; min-width: 0; }
+.ml__day-word { font-size: var(--text-base); font-weight: 700; color: var(--clr-ink); }
+.ml__day-meta { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 1px; }
+.ml__day-factors { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+
+/* ── Journal prompts ──────────────────────────────────────────
+   A prompt is a heading she is answering, not text inside her
+   entry. It sits beside the writing so it can be swapped or
+   dropped at any point without her having to delete the app's
+   words out of her own. */
+.jc__chosen {
+  margin-bottom: var(--sp-4);
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+}
+.jc__chosen-text {
+  font-family: var(--font-journal);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: var(--leading-snug);
+  color: var(--clr-ink-muted);
+  text-wrap: pretty;
+}
+.jc__chosen-actions { display: flex; gap: var(--sp-4); margin-top: var(--sp-2); }
+.jc__chosen-btn {
+  background: none; border: none; cursor: pointer;
+  min-height: 36px; padding: 0;
+  color: var(--clr-brand);
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.jc__prompts-head { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); }
+.jc__prompts-nav {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: var(--sp-3); margin-top: var(--sp-1);
+}
+.jc__prompts-count {
+  font-size: var(--text-xs); color: var(--clr-ink-subtle);
+  font-variant-numeric: tabular-nums;
+}
+.jc__prompt--on { border-color: var(--clr-brand); color: var(--clr-ink); }
+
+.jc__reopen {
+  align-self: flex-start;
+  margin-top: var(--sp-5);
+  min-height: 40px;
+  padding: 0;
+  background: none; border: none; cursor: pointer;
+  color: var(--clr-ink-subtle);
+  font-size: var(--text-sm); font-weight: 600;
+}
+.jc__reopen:active { color: var(--clr-brand); }
+
+/* The prompt an entry was written against, shown above the prose. */
+.je__prompt {
+  font-family: var(--font-journal);
+  font-size: var(--text-sm);
+  font-style: italic;
+  line-height: var(--leading-snug);
+  opacity: 0.7;
+  padding-left: var(--sp-4);
+  border-left: 2px solid currentColor;
+  margin-bottom: var(--sp-5);
+  text-wrap: pretty;
+}
+
+/* ── Mood chart, full screen ──────────────────────────────────
+   Columns from a zero baseline; mood on Y, day on X. Gridlines
+   and axes stay recessive so the data is the only thing with
+   weight on the page. */
+.mc {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-modal);
+  display: flex;
+  flex-direction: column;
+  background: var(--clr-bg);
+  padding: calc(var(--safe-top) + var(--sp-4)) var(--sp-5) calc(var(--safe-bottom) + var(--sp-4));
+  overflow: hidden;
+}
+.mc__bar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--sp-4); }
+.mc__title { font-size: var(--text-xl); font-weight: 700; color: var(--clr-ink); }
+.mc__sub { font-size: var(--text-sm); color: var(--clr-ink-muted); margin-top: 2px; }
+.mc__circle {
+  flex-shrink: 0;
+  width: 40px; height: 40px;
+  border-radius: var(--radius-full);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  color: var(--clr-ink-muted);
+  cursor: pointer;
+}
+
+.mc__ranges { display: flex; gap: var(--sp-2); margin: var(--sp-5) 0 var(--sp-6); }
+.mc__range {
+  flex: 1;
+  min-height: 40px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  color: var(--clr-ink-muted);
+  font-size: var(--text-sm); font-weight: 600;
+  cursor: pointer;
+  transition: background var(--dur-fast), color var(--dur-fast), border-color var(--dur-fast);
+}
+.mc__range--on { background: var(--clr-brand); border-color: var(--clr-brand); color: #fff; }
+
+.mc__plotwrap { flex: 1; min-height: 0; display: flex; gap: var(--sp-2); }
+
+/* Axis labels sit in ink tokens, never in a series colour. */
+.mc__yaxis {
+  position: relative;
+  flex-shrink: 0;
+  width: 74px;
+}
+.mc__ytick {
+  position: absolute;
+  right: 0;
+  transform: translateY(50%);
+  font-size: 10px;
+  line-height: 1.1;
+  color: var(--clr-ink-subtle);
+  text-align: right;
+  max-width: 74px;
+}
+.mc__ytick--zero { color: var(--clr-ink-subtle); opacity: 0.7; }
+
+.mc__plot { position: relative; flex: 1; min-width: 0; }
+.mc__grid { position: absolute; inset: 0; pointer-events: none; }
+.mc__gridline {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1px;
+  background: var(--clr-border);
+  opacity: 0.7;
+}
+
+/* The plot is a stretched 0–100 viewBox: no measuring in JS, and the line
+   reflows with the phone. Strokes use vector-effect so they stay 2px under
+   that non-uniform scale instead of being stretched into wedges. */
+.mc__svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  border-bottom: 1.5px solid var(--clr-border);
+}
+
+/* Markers live outside the SVG precisely because the SVG is non-uniformly
+   scaled — a circle in there would render as an ellipse. */
+.mc__points { position: absolute; inset: 0; }
+.mc__point-hit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  /* A wide, invisible column per day: the dot is 10px but the target is a
+     finger. */
+  width: 32px;
+  margin-left: -16px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+.mc__point-hit:disabled { cursor: default; }
+.mc__point-hit:focus-visible { outline: 2px solid var(--clr-brand); outline-offset: 2px; border-radius: var(--radius-sm); }
+.mc__point {
+  position: absolute;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  margin: 0 0 -5px -5px;
+  border-radius: var(--radius-full);
+  /* A ring in the surface colour so a point never merges into the line or
+     into the point beside it on a dense 90-day range. */
+  box-shadow: 0 0 0 2px var(--clr-bg);
+}
+.mc__point--on {
+  width: 16px; height: 16px;
+  margin: 0 0 -8px -8px;
+  box-shadow: 0 0 0 2px var(--clr-bg), 0 0 0 4px var(--clr-ink);
+}
+
+.mc__xaxis { display: flex; gap: 2px; margin-top: var(--sp-2); padding-left: calc(74px + var(--sp-2)); }
+.mc__xtick {
+  flex: 1;
+  min-width: 0;
+  font-size: 10px;
+  color: var(--clr-ink-subtle);
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.mc__axis-name {
+  padding-left: calc(74px + var(--sp-2));
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clr-ink-subtle);
+  text-align: center;
+}
+
+.mc__detail {
+  flex-shrink: 0;
+  margin-top: var(--sp-5);
+  max-height: 34dvh;
+  overflow-y: auto;
+  padding: var(--sp-4);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.mc__detail-hint { font-size: var(--text-sm); color: var(--clr-ink-subtle); text-align: center; }
+.mc__detail-date { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); margin-bottom: var(--sp-3); }
+.mc__detail-row { display: flex; gap: var(--sp-3); align-items: flex-start; }
+.mc__detail-row + .mc__detail-row { margin-top: var(--sp-4); }
+.mc__detail-word { font-size: var(--text-base); font-weight: 700; color: var(--clr-ink); }
+.mc__detail-meta { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 1px; }
+.mc__detail-factors { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-2); }
+
+/* Short screens: the plot gives up height before the detail panel does. */
+@media (max-height: 700px) {
+  .mc__ranges { margin: var(--sp-4) 0; }
+  .mc__detail { max-height: 28dvh; }
+}
+
+/* The ribbon is now the way into the full chart. */
+.ml__expand {
+  flex-shrink: 0;
+  min-height: 36px;
+  padding: 0 var(--sp-2);
+  background: none; border: none; cursor: pointer;
+  color: var(--clr-brand);
+  font-size: var(--text-sm); font-weight: 600;
+}
+button.ml__ribbon { width: 100%; cursor: pointer; }
+button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
+
+/* ── Doctor: notes the patient chose to share ─────────────────
+   Journal entries she flagged for this appointment. Styled as a
+   quotation rather than a clinical record, because that is what
+   it is — her words, not an observation about her. */
+.doc-shared {
+  padding: var(--sp-4);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.doc-shared__head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: var(--sp-3); margin-bottom: var(--sp-2); flex-wrap: wrap;
+}
+.doc-shared__date {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--clr-ink-muted);
+}
+.doc-shared__mood { font-size: var(--text-xs); font-weight: 600; color: var(--clr-ink); }
+.doc-shared__scale { font-weight: 400; color: var(--clr-ink-subtle); }
+.doc-shared__text {
+  font-size: var(--text-sm);
+  line-height: var(--leading-base);
+  color: var(--clr-ink);
+  white-space: pre-wrap;
+  text-wrap: pretty;
+}
+.doc-shared__meta {
+  margin-top: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--clr-ink-subtle);
+}
+
+/* ── Condition picker ─────────────────────────────────────────
+   Search first, browse second. The list is long by necessity —
+   a health history that omits her condition is worse than none —
+   so nothing is ever presented as one ninety-item scroll. */
+.cp { display: flex; flex-direction: column; gap: var(--sp-4); min-height: 0; flex: 1; }
+
+.cp__search {
+  display: flex; align-items: center; gap: var(--sp-3);
+  padding: 0 var(--sp-4);
+  min-height: 52px;
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--clr-border);
+  background: var(--clr-surface);
+  color: var(--clr-ink-subtle);
+  flex-shrink: 0;
+}
+.cp__search:focus-within { border-color: var(--clr-brand); color: var(--clr-brand); }
+.cp__input {
+  flex: 1; min-width: 0;
+  border: none; outline: none; background: none;
+  /* 16px floor: anything smaller and iOS zooms the page on focus. */
+  font-size: var(--text-base);
+  color: var(--clr-ink);
+}
+.cp__input::-webkit-search-cancel-button { display: none; }
+.cp__clear {
+  flex-shrink: 0;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--radius-full);
+  background: var(--clr-surface-2);
+  border: none; cursor: pointer;
+  color: var(--clr-ink-muted);
+}
+
+/* What she's picked stays on screen through any search. */
+.cp__selected { display: flex; flex-wrap: wrap; gap: var(--sp-2); flex-shrink: 0; }
+.cp__pill {
+  display: inline-flex; align-items: center; gap: var(--sp-2);
+  min-height: 36px;
+  padding: var(--sp-1) var(--sp-3);
+  border-radius: var(--radius-full);
+  background: var(--clr-brand);
+  color: #fff;
+  border: none; cursor: pointer;
+  font-size: var(--text-sm); font-weight: 600;
+  text-align: left;
+}
+
+.cp__results { display: flex; flex-direction: column; }
+.cp__row {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left;
+  min-height: var(--tap-min);
+  padding: var(--sp-3) var(--sp-1);
+  background: none; border: none; cursor: pointer;
+  border-bottom: 1px solid var(--clr-border);
+}
+.cp__row:last-child { border-bottom: none; }
+.cp__box {
+  flex-shrink: 0;
+  width: 22px; height: 22px;
+  border-radius: var(--radius-sm);
+  border: 1.5px solid var(--clr-border);
+  background: var(--clr-surface);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.cp__row--on .cp__box { background: var(--clr-brand); border-color: var(--clr-brand); }
+.cp__row-text { flex: 1; min-width: 0; }
+.cp__row-label { display: block; font-size: var(--text-sm); font-weight: 500; color: var(--clr-ink); text-wrap: pretty; }
+.cp__row-group { display: block; font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 1px; }
+
+.cp__groups { display: flex; flex-direction: column; overflow-y: auto; min-height: 0; flex: 1; }
+.cp__group { border-bottom: 1px solid var(--clr-border); }
+.cp__group-head {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left;
+  min-height: var(--tap-min);
+  padding: var(--sp-3) var(--sp-1);
+  background: none; border: none; cursor: pointer;
+  color: var(--clr-ink);
+}
+.cp__group-label { flex: 1; font-size: var(--text-sm); font-weight: 600; }
+.cp__group-count {
+  min-width: 22px; height: 22px;
+  padding: 0 6px;
+  border-radius: var(--radius-full);
+  background: var(--clr-brand-soft);
+  color: var(--clr-brand);
+  font-size: var(--text-xs); font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.cp__none {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+  padding: var(--sp-4) 0;
+}
+
+/* A quiet line telling her what her answer will actually change. */
+.onb-note {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  background: var(--clr-brand-soft);
+  color: var(--clr-brand);
+  font-size: var(--text-xs);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+
+/* ── Crisis response ──────────────────────────────────────────
+   Shown when a screening's self-harm item is answered above zero,
+   whatever the total score. Deliberately not styled as an alarm:
+   red borders and warning icons read as the app recoiling from
+   her answer. Warm surface, plain words, one obvious action. */
+.crisis-card {
+  margin-top: var(--sp-5);
+  padding: var(--sp-5);
+  background: var(--clr-mauve-soft);
+  border-radius: var(--radius-xl);
+}
+.crisis-card__title {
+  font-size: var(--text-base);
+  font-weight: 700;
+  color: var(--clr-ink);
+  line-height: var(--leading-snug);
+  text-wrap: pretty;
+}
+.crisis-card__body {
+  margin-top: var(--sp-2);
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.crisis-card__call {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+  min-height: 52px;
+  border-radius: var(--radius-full);
+  background: var(--clr-mauve);
+  color: #fff;
+  font-size: var(--text-base);
+  font-weight: 700;
+  text-decoration: none;
+}
+.crisis-card__call:active { transform: scale(0.98); }
+.crisis-card__note {
+  margin-top: var(--sp-2);
+  font-size: var(--text-xs);
+  color: var(--clr-ink-muted);
+  text-align: center;
+  text-wrap: pretty;
+}
+
+/* ── Onboarding ───────────────────────────────────────────────
+   Every step used `flex: 1` for its page wrapper, which carries
+   `flex-basis: 0` — so the wrapper measured the viewport rather
+   than its own content, and anything taller than the screen was
+   clipped instead of scrolling. On a 320–360px phone that is most
+   of these steps: a hero, a heading, a list and two buttons do not
+   fit in 568px of height.
+
+   `min-height: 100%` instead: short content still fills the screen
+   so the vertical centring holds, tall content grows and the
+   screen scrolls. */
+.onb-page {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: calc(var(--safe-top) + var(--sp-5)) var(--sp-6) calc(var(--safe-bottom) + var(--sp-6));
+}
+
+/* The middle band. It centres when there is room and gives up the
+   centring when there isn't, rather than pushing content off both
+   ends of a short screen. */
+.onb-body {
+  flex: 1 0 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+  padding: var(--sp-6) 0;
+}
+
+/* Actions stay at the foot and never shrink — the button is the
+   only way forward and must never be the thing that gets cut. */
+.onb-actions {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  padding-top: var(--sp-4);
+}
+
+/* Short screens: the decorative hero yields first, then the
+   generous vertical padding. Nothing functional gives way. */
+@media (max-height: 720px) {
+  .onb-body { padding: var(--sp-3) 0; }
+  .onb-hero { transform: scale(0.82); transform-origin: center; margin: calc(var(--sp-4) * -1) 0; }
+}
+@media (max-height: 600px) {
+  .onb-body { justify-content: flex-start; }
+  .onb-hero { transform: scale(0.62); margin: calc(var(--sp-8) * -1) 0; }
+  .onboard-name-input { margin-top: var(--sp-4); }
+}
+
+/* One step differs: the condition picker scrolls internally, so its page is a
+   fixed-height column — the search field has to stay put while results move
+   under it, rather than the whole page scrolling and taking the field away. */
+.onb-page--fixed { height: 100%; min-height: 0; }
+.onb-page--fixed .onb-body { flex: 1 1 auto; }
+
+/* ── Medicines ────────────────────────────────────────────────
+   Today's doses first, because they are the only part she acts
+   on; the medicine list is reference and sits under them. */
+.mx {
+  padding: calc(var(--safe-top) + var(--sp-5)) var(--sp-6) var(--sp-10);
+  display: flex; flex-direction: column; gap: var(--sp-6);
+}
+.mx__title { font-size: var(--text-xl); font-weight: 700; color: var(--clr-ink); }
+.mx__sub { font-size: var(--text-sm); color: var(--clr-ink-muted); margin-top: 2px; text-wrap: pretty; }
+
+.mx__error {
+  display: flex; flex-direction: column; align-items: flex-start; gap: var(--sp-2);
+  padding: var(--sp-4); border-radius: var(--radius-lg);
+  background: var(--clr-warning-soft);
+  font-size: var(--text-sm); color: var(--clr-ink);
+}
+
+.mx__today { display: flex; flex-direction: column; gap: var(--sp-5); }
+.mx__group { display: flex; flex-direction: column; gap: var(--sp-2); }
+.mx__group-title {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--clr-ink-subtle); margin-bottom: var(--sp-1);
+}
+
+/* The whole row is the target. A 20px checkbox is the wrong thing to ask
+   someone to hit while holding a baby. */
+.mx__dose {
+  display: flex; align-items: center; gap: var(--sp-4);
+  width: 100%; text-align: left;
+  min-height: 64px;
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background var(--dur-fast), border-color var(--dur-fast);
+}
+.mx__dose--done { background: var(--clr-sage-soft); border-color: transparent; }
+.mx__dose--done .mx__dose-name { color: var(--clr-ink-muted); text-decoration: line-through; }
+.mx__check {
+  flex-shrink: 0;
+  width: 26px; height: 26px;
+  border-radius: var(--radius-full);
+  border: 1.5px solid var(--clr-border);
+  background: var(--clr-surface);
+  display: flex; align-items: center; justify-content: center;
+  color: #fff;
+  transition: background var(--dur-fast) var(--ease-expo), border-color var(--dur-fast);
+}
+.mx__dose--done .mx__check { background: var(--clr-sage); border-color: var(--clr-sage); }
+.mx__dose-body { flex: 1; min-width: 0; }
+.mx__dose-name { display: block; font-size: var(--text-base); font-weight: 600; color: var(--clr-ink); }
+.mx__dose-meta { display: block; font-size: var(--text-xs); color: var(--clr-ink-muted); margin-top: 1px; }
+
+/* A count, not a grade. No percentage, no colour scale — she is not being
+   marked, and a red 62% is how this screen would stop being opened. */
+.mx__adherence {
+  font-size: var(--text-sm); color: var(--clr-ink-muted);
+  line-height: var(--leading-base); text-wrap: pretty;
+}
+
+.mx__list { display: flex; flex-direction: column; gap: var(--sp-2); }
+.mx__med {
+  display: flex; align-items: flex-start; gap: var(--sp-3);
+  padding: var(--sp-4);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.mx__med--past { opacity: 0.6; }
+.mx__med-mark { flex-shrink: 0; color: var(--clr-brand); display: flex; margin-top: 1px; }
+.mx__med-body { flex: 1; min-width: 0; }
+.mx__med-name { font-size: var(--text-base); font-weight: 600; color: var(--clr-ink); }
+.mx__med-meta { font-size: var(--text-sm); color: var(--clr-ink-muted); margin-top: 1px; }
+.mx__med-from {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: var(--text-xs); color: var(--clr-sky); margin-top: var(--sp-2);
+}
+.mx__stop {
+  flex-shrink: 0; min-height: 36px; padding: 0 var(--sp-2);
+  background: none; border: none; cursor: pointer;
+  color: var(--clr-ink-subtle); font-size: var(--text-xs); font-weight: 700;
+}
+
+.mx__empty {
+  text-align: center; padding: var(--sp-10) var(--sp-6);
+  background: var(--clr-surface); border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+}
+.mx__empty-mark { color: var(--clr-brand); display: flex; justify-content: center; margin-bottom: var(--sp-4); }
+.mx__empty-title { font-size: var(--text-lg); font-weight: 700; color: var(--clr-ink); margin-bottom: var(--sp-2); }
+.mx__empty-body { font-size: var(--text-sm); color: var(--clr-ink-muted); line-height: var(--leading-snug); text-wrap: pretty; }
+
+/* ── Medicines card (Home) ── */
+.med-card {
+  display: flex; align-items: center; gap: var(--sp-4);
+  width: 100%; text-align: left;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+}
+.med-card--done { background: var(--clr-sage-soft); border-color: transparent; }
+.med-card__mark {
+  flex-shrink: 0; width: 44px; height: 44px;
+  border-radius: var(--radius-md);
+  background: var(--clr-brand-soft); color: var(--clr-brand);
+  display: flex; align-items: center; justify-content: center;
+}
+.med-card--done .med-card__mark { background: oklch(1 0 0 / 0.6); color: var(--clr-sage); }
+.med-card__body { flex: 1; min-width: 0; }
+.med-card__title { display: block; font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); }
+.med-card__meta {
+  display: block; font-size: var(--text-xs); color: var(--clr-ink-muted); margin-top: 2px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.med-card__count {
+  flex-shrink: 0; font-size: var(--text-sm); font-weight: 700;
+  color: var(--clr-ink-muted); font-variant-numeric: tabular-nums;
+}
+
+.jc__weather { font-size: var(--text-xs); color: var(--clr-ink-subtle); }
+.jc__weather-add {
+  align-self: flex-start;
+  min-height: 40px;
+  padding: 0;
+  background: none; border: none; cursor: pointer;
+  color: var(--clr-brand);
+  font-size: var(--text-sm); font-weight: 600;
+}
+.jc__weather-add:disabled { color: var(--clr-ink-subtle); cursor: default; }
+
+/* ── Weather scene ────────────────────────────────────────────
+   The sky an entry was written under, drawn rather than
+   downloaded: gradients, SVG and blur only. Zero bytes over the
+   wire, which is the whole reason it can exist in an app built
+   for patchy Indian mobile data.
+
+   It is a scene and not an icon on purpose — the job is to put
+   her back in that afternoon, and the light in the room does
+   that where a small cloud glyph never would. */
+.ws {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.ws__sky { position: absolute; inset: 0; }
+
+.ws__stars, .ws__rain {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Sun and moon. A soft disc with its own halo, sitting off-centre so it never
+   collides with the mood word in the middle. */
+.ws__body {
+  position: absolute;
+  top: 8%;
+  right: 12%;
+  width: 82px;
+  height: 82px;
+  border-radius: var(--radius-full);
+}
+.ws__body--sun {
+  background: radial-gradient(circle at 42% 38%, #FFF6D8, #FFD980 58%, #FFC24A 100%);
+  box-shadow: 0 0 70px 26px oklch(0.92 0.14 85 / 0.42);
+}
+.ws__body--moon {
+  background: radial-gradient(circle at 38% 34%, #F4F6FF, #C9D2E8 62%, #9FA9C4 100%);
+  box-shadow: 0 0 58px 20px oklch(0.85 0.03 265 / 0.28);
+}
+
+/* Three cloud banks at different depths. Blurred ellipses rather than drawn
+   shapes: real cloud has no edge, and a hard-edged cloud reads as a sticker. */
+.ws__clouds { position: absolute; inset: 0; }
+.ws__cloud {
+  position: absolute;
+  left: -20%;
+  width: 140%;
+  border-radius: var(--radius-full);
+  filter: blur(26px);
+  will-change: transform;
+}
+.ws__cloud--0 { top: 2%;  height: 34%; opacity: 0.55; }
+.ws__cloud--1 { top: 20%; height: 40%; opacity: 0.42; filter: blur(34px); }
+.ws__cloud--2 { top: 44%; height: 46%; opacity: 0.3;  filter: blur(44px); }
+
+.ws__cloud--bright { background: radial-gradient(60% 100% at 30% 50%, oklch(1 0 0 / 0.6), transparent 70%); }
+.ws__cloud--grey   { background: radial-gradient(70% 100% at 40% 50%, oklch(0.95 0.005 250 / 0.6), transparent 72%); }
+.ws__cloud--wet    { background: radial-gradient(75% 100% at 45% 50%, oklch(0.82 0.01 250 / 0.55), transparent 74%); }
+.ws__cloud--storm  { background: radial-gradient(80% 100% at 50% 50%, oklch(0.62 0.02 265 / 0.6), transparent 76%); }
+.ws__cloud--cold   { background: radial-gradient(70% 100% at 40% 50%, oklch(0.98 0.005 230 / 0.62), transparent 72%); }
+
+/* Guarantees the mood on top clears AA whatever the sky is doing, and lands
+   the scene into the page instead of stopping at a hard line. */
+.ws__scrim {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, oklch(0 0 0 / 0.22) 0%, transparent 26%),
+    linear-gradient(180deg, transparent 40%, oklch(0.15 0.01 265 / 0.35) 78%, var(--clr-bg) 100%);
+}
+
+/* Motion here is ambient and endless, so it is the first thing to go. */
+@media (prefers-reduced-motion: reduce) {
+  .ws__cloud { animation: none; }
+}
+
+/* ── Entry hero ───────────────────────────────────────────────
+   Composed like a weather screen: the time, then the one big
+   thing, then what it was. The big thing is the feeling. */
+.je__scene { position: absolute; inset: 0; height: 62dvh; }
+
+.je__hero {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--sp-8) var(--sp-6);
+  /* One screenful of sky before the page begins. Sized off the sky's height
+     so the mood sits at its optical centre rather than the viewport's. */
+  min-height: 56dvh;
+  will-change: transform, opacity;
+}
+/* Over a sky, the hero commits to white — the palettes are all deep enough
+   to carry it, and half-transparent ink over cloud is unreadable.
+   Two shadows, not one: a tight dark shadow gives the glyph edges something
+   to sit against on a busy cloud, and a wide soft one lifts the whole block
+   off the photograph. A single blurred shadow does neither job well. */
+.je__hero--sky {
+  color: #fff;
+  text-shadow: 0 1px 2px oklch(0 0 0 / 0.4), 0 2px 34px oklch(0 0 0 / 0.5);
+}
+
+.je__hero-when {
+  font-size: var(--text-md);
+  font-weight: 500;
+  opacity: 0.95;
+  letter-spacing: 0.01em;
+}
+/* The "29°". Weight 300 at display size, the way a temperature is set —
+   a heavy weight here would shout a feeling that may be a quiet one. */
+.je__hero-word {
+  font-size: clamp(2.9rem, 1.2rem + 8.4vw, 4.25rem);
+  /* 300 was right for a temperature and too frail for a word. 350 keeps the
+     airiness of the Weather composition while giving the strokes enough body
+     to hold against cloud. */
+  font-weight: 350;
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  margin-top: var(--sp-1);
+  text-wrap: balance;
+}
+.je__hero-sub { font-size: var(--text-lg); font-weight: 500; opacity: 0.95; margin-top: var(--sp-1); }
+.je__hero-weather { font-size: var(--text-sm); opacity: 0.8; margin-top: var(--sp-1); }
+
+/* The bloom was the weak part: a small translucent flower on a dark cloud read
+   as a smudge. It is larger now and sits in its own light — a soft radial
+   halo behind it separates it from whatever the sky is doing, so it reads as
+   an object in the scene rather than a sticker on a photograph. */
+.je__hero-bloom {
+  position: relative;
+  display: flex;
+  margin-top: var(--sp-6);
+  filter: drop-shadow(0 6px 26px oklch(0 0 0 / 0.4));
+}
+.je__hero--sky .je__hero-bloom::before {
+  content: '';
+  position: absolute;
+  left: 50%; top: 50%;
+  width: 168%; height: 168%;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-full);
+  background: radial-gradient(circle, oklch(1 0 0 / 0.16) 0%, transparent 62%);
+  pointer-events: none;
+}
+
+/* Over a sky, the entry's own content sits on a raised surface so the writing
+   is read on paper rather than through cloud. */
+.je__hero--sky ~ * { position: relative; }
+
+/* ── Care view (what a family member opens) ───────────────────
+   No account, no app, often a phone that has never seen Amruni.
+   So: plain, legible, and offering nothing but the information
+   it was shared to give. */
+.cv {
+  min-height: 100dvh;
+  background: var(--clr-bg);
+  padding: calc(var(--safe-top) + var(--sp-6)) var(--sp-6) calc(var(--safe-bottom) + var(--sp-10));
+  display: flex; flex-direction: column; gap: var(--sp-4);
+  max-width: var(--app-max-width); margin: 0 auto;
+}
+.cv__center { align-items: center; justify-content: center; text-align: center; }
+.cv__skeleton { height: 180px; border-radius: var(--radius-xl); background: var(--clr-surface-2); }
+.cv__gone-title { font-size: var(--text-lg); font-weight: 700; color: var(--clr-ink); }
+.cv__gone-body {
+  font-size: var(--text-sm); color: var(--clr-ink-muted);
+  line-height: var(--leading-base); max-width: 32ch; text-wrap: pretty;
+}
+
+.cv__head { margin-bottom: var(--sp-2); }
+.cv__eyebrow {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.08em; text-transform: uppercase; color: var(--clr-ink-subtle);
+}
+.cv__name {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl); font-weight: 600; color: var(--clr-ink); margin-top: 2px;
+}
+.cv__note { font-size: var(--text-sm); color: var(--clr-ink-muted); margin-top: var(--sp-2); text-wrap: pretty; }
+
+.cv__card {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+  padding: var(--sp-5);
+}
+/* The emergency block is the one thing a stranger may need in a hurry, so it
+   is visually first and warmer than the rest. */
+.cv__card--urgent { background: var(--clr-emergency-soft); border-color: transparent; }
+.cv__card-title {
+  display: flex; align-items: center; gap: var(--sp-2);
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--clr-ink-muted); margin-bottom: var(--sp-3);
+}
+.cv__facts { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cv__facts div { display: flex; justify-content: space-between; gap: var(--sp-4); }
+.cv__facts dt { font-size: var(--text-sm); color: var(--clr-ink-muted); }
+.cv__facts dd { font-size: var(--text-sm); font-weight: 600; color: var(--clr-ink); text-align: right; }
+
+.cv__list { display: flex; flex-direction: column; gap: var(--sp-3); }
+.cv__row { display: flex; flex-direction: column; gap: 2px; }
+.cv__row-main { font-size: var(--text-base); font-weight: 600; color: var(--clr-ink); }
+.cv__link { color: var(--clr-brand); text-decoration: none; min-height: 32px; display: inline-flex; align-items: center; }
+.cv__row-meta { font-size: var(--text-sm); color: var(--clr-ink-muted); }
+.cv__empty { font-size: var(--text-sm); color: var(--clr-ink-subtle); }
+.cv__foot {
+  font-size: var(--text-xs); color: var(--clr-ink-subtle);
+  text-align: center; margin-top: var(--sp-4); line-height: var(--leading-base); text-wrap: pretty;
+}
+
+/* ── Care share management (her side) ── */
+.cs { display: flex; flex-direction: column; gap: var(--sp-4); }
+.cs__share {
+  padding: var(--sp-4);
+  background: var(--clr-surface-2);
+  border-radius: var(--radius-lg);
+}
+.cs__share--off { opacity: 0.55; }
+.cs__share-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--sp-3); }
+.cs__share-label { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); }
+.cs__share-meta { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 2px; }
+.cs__share-scopes { display: flex; flex-wrap: wrap; gap: var(--sp-2); margin-top: var(--sp-3); }
+.cs__share-actions { display: flex; gap: var(--sp-3); margin-top: var(--sp-3); }
+.cs__act {
+  min-height: 40px; padding: 0 var(--sp-2);
+  background: none; border: none; cursor: pointer;
+  font-size: var(--text-sm); font-weight: 700;
+}
+.cs__act--copy { color: var(--clr-brand); }
+.cs__act--revoke { color: var(--clr-emergency); }
+
+/* The photographic sky, when one exists for this condition. Sits over the
+   drawn gradient and under the scrim, so the type contrast the scrim
+   guarantees holds whether the photo loaded or not. */
+.ws__photo {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center 30%;
+  background-repeat: no-repeat;
+}
+
+/* ── The care ledger ──────────────────────────────────────────
+   One thread, read by both people. A vertical rail with a node
+   per action — the patient's own on the left in muted ink, a
+   caretaker's marked in brand colour, so the two voices are
+   distinguishable at a glance without anything being labelled
+   "them". */
+.cl { list-style: none; display: flex; flex-direction: column; margin: 0; padding: 0; }
+.cl__empty { font-size: var(--text-sm); color: var(--clr-ink-subtle); line-height: var(--leading-base); text-wrap: pretty; }
+
+.cl__item { display: flex; gap: var(--sp-4); padding-bottom: var(--sp-5); }
+.cl__item:last-child { padding-bottom: 0; }
+
+/* The rail is drawn on the rail element, not with borders on the item, so the
+   line runs continuously behind the nodes rather than breaking at each row. */
+.cl__rail {
+  position: relative;
+  flex-shrink: 0;
+  width: 12px;
+  display: flex;
+  justify-content: center;
+}
+.cl__rail::before {
+  content: '';
+  position: absolute;
+  top: 14px; bottom: -8px; left: 50%;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: var(--clr-border);
+}
+.cl__item:last-child .cl__rail::before { display: none; }
+.cl__node {
+  position: relative;
+  z-index: 1;
+  width: 10px; height: 10px;
+  margin-top: 5px;
+  border-radius: var(--radius-full);
+  background: var(--clr-border);
+  box-shadow: 0 0 0 3px var(--clr-surface);
+}
+.cl__node--them { background: var(--clr-brand); }
+
+.cl__body { flex: 1; min-width: 0; }
+.cl__summary { font-size: var(--text-sm); color: var(--clr-ink); line-height: var(--leading-snug); text-wrap: pretty; }
+.cl__item--them .cl__summary { font-weight: 600; }
+.cl__meta { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 2px; }
+
+/* The notification, shown as a consequence hanging off the action rather than
+   as a separate line item — it belongs to the thing that caused it. */
+.cl__trace {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  font-size: var(--text-xs);
+  font-weight: 600;
+  color: var(--clr-sage);
+}
+.cl__trace-hook {
+  width: 14px; height: 8px;
+  border-left: 1.5px solid var(--clr-sage);
+  border-bottom: 1.5px solid var(--clr-sage);
+  border-bottom-left-radius: 5px;
+  margin-top: -6px;
+  opacity: 0.6;
+}
+
+/* Booking, on the caretaker's page. */
+.cv__slots { display: flex; flex-direction: column; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.cv__slot {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left;
+  min-height: var(--tap-min);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--clr-surface-2);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+}
+.cv__slot:disabled { opacity: 0.5; cursor: default; }
+.cv__slot-doc { flex: 1; min-width: 0; font-size: var(--text-sm); font-weight: 600; color: var(--clr-ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv__slot-when { font-size: var(--text-xs); color: var(--clr-ink-muted); flex-shrink: 0; }
+.cv__slot-fee { font-size: var(--text-sm); font-weight: 700; color: var(--clr-brand); flex-shrink: 0; }
+.cv__hint {
+  font-size: var(--text-xs); color: var(--clr-ink-muted);
+  line-height: var(--leading-base); margin-top: var(--sp-3); text-wrap: pretty;
+}
+.cv__error { font-size: var(--text-sm); color: var(--clr-emergency); margin-top: var(--sp-3); }
+
+/* ── Care activity (her side) ─────────────────────────────────
+   Worded and coloured as help received, not as a security alert.
+   A daughter booking her mother's appointment is a kindness; an
+   amber warning banner would teach her to fear the feature. */
+.ca-card {
+  display: flex; align-items: center; gap: var(--sp-4);
+  width: 100%; text-align: left;
+  padding: var(--sp-4) var(--sp-5);
+  background: var(--clr-sage-soft);
+  border: 1px solid transparent;
+  border-radius: var(--radius-xl);
+  cursor: pointer;
+}
+.ca-card__mark {
+  flex-shrink: 0; width: 40px; height: 40px;
+  border-radius: var(--radius-md);
+  background: oklch(1 0 0 / 0.6); color: var(--clr-sage);
+  display: flex; align-items: center; justify-content: center;
+}
+.ca-card__body { flex: 1; min-width: 0; }
+.ca-card__title { display: block; font-size: var(--text-sm); font-weight: 700; color: var(--clr-sage); }
+.ca-card__text {
+  display: block; font-size: var(--text-xs); color: var(--clr-ink-muted);
+  margin-top: 2px; line-height: var(--leading-snug);
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+}
+.ca-card__go { flex-shrink: 0; color: var(--clr-sage); font-size: var(--text-lg); }

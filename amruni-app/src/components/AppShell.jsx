@@ -1,8 +1,10 @@
+import { useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import BottomNav from './BottomNav';
 import SOSButton from './SOSButton';
 import SOSBanner from './SOSBanner';
 import { useApp } from '../context/AppContext';
+import { useSosDock } from '../lib/useSosDock';
 
 export default function AppShell() {
   const location = useLocation();
@@ -10,8 +12,20 @@ export default function AppShell() {
   const { state } = useApp();
   const { lifeStage } = state.user;
 
-  // SOS lives on the floating red button (single tap opens /sos); Profile is
-  // reached from the avatar in the top-right of Home — so neither needs a tab.
+  const { dockState, place } = useSosDock();
+  // Both lifted, because the bar has to react while the button is still in
+  // the air: mid-drag the well follows the button's proximity, so the tabs
+  // close the gap as she carries it clear and part again as she brings it
+  // back. At rest it simply follows where the button lives.
+  const [nearDock, setNearDock] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const wellOpen = dragging ? nearDock : dockState.docked;
+  const columnRef = useRef(null);
+  const navRef = useRef(null);
+  const wellRef = useRef(null);
+
+  // SOS has its own seat in the middle of the bar, so it needs no tab; Profile
+  // is reached from the avatar in the top-right of Home.
   const tabs = [
     { path: '/home', label: 'Home', icon: HomeIcon },
     { path: '/consult', label: 'Consult', icon: ConsultIcon },
@@ -19,16 +33,41 @@ export default function AppShell() {
     { path: '/help', label: 'Help', icon: HelpIcon },
   ];
 
-  const activeTab = tabs.find(t => location.pathname.startsWith(t.path))?.path ?? '/home';
+  // No fallback to Home. Community, Journal, Settings and the SOS centre are
+  // all reached from inside other screens, and defaulting to Home lit the Home
+  // tab while she was demonstrably not on Home — a selected tab that isn't
+  // where you are is worse than none being selected.
+  const activeTab = tabs.find(t => location.pathname.startsWith(t.path))?.path ?? null;
 
   return (
-    <div className="app-shell">
+    <div className="app-shell" ref={columnRef}>
       <SOSBanner />
       <div className="app-shell__content">
         <Outlet />
       </div>
-      <SOSButton />
-      <BottomNav tabs={tabs} active={activeTab} onTab={navigate} lifeStage={lifeStage} />
+
+      <BottomNav
+        ref={navRef}
+        tabs={tabs}
+        active={activeTab}
+        onTab={navigate}
+        lifeStage={lifeStage}
+        showWell={wellOpen}
+        wellRef={wellRef}
+        wellArmed={dragging && nearDock}
+      />
+
+      {/* After the bar, deliberately: layout effects run in tree order, so a
+          button mounted first would measure a nav ref that isn't attached yet
+          and start life at the screen edge instead of in its well. */}
+      <SOSButton
+        dockState={dockState}
+        place={place}
+        columnRef={columnRef}
+        navRef={navRef}
+        onNearDock={setNearDock}
+        onDragging={setDragging}
+      />
     </div>
   );
 }
@@ -52,7 +91,6 @@ function ConsultIcon({ active }) {
   );
 }
 
-
 function TrackIcon({ active }) {
   const w = active ? 2.2 : 1.8;
   return (
@@ -74,4 +112,3 @@ function HelpIcon({ active }) {
     </svg>
   );
 }
-

@@ -4,6 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { useApp, useCycleData } from '../context/AppContext';
 import { meApi } from '../services/api';
 import CycleCalendar from '../components/CycleCalendar';
+import MoodLogSection from '../components/MoodLogSection';
 import BottomSheet from '../components/BottomSheet';
 import { useToast } from '../components/Toast';
 import { tap, confirm } from '../lib/haptics';
@@ -165,6 +166,14 @@ export default function CycleTracker() {
             </div>
           </motion.div>
         )}
+
+        {/* Your moods. Placed above the calendar deliberately: the question a
+            woman opens Track with is more often "how have I been" than "when
+            is it due", and the mood log is also what feeds the cycle
+            correlation shown inside it. */}
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.35, delay: 0.08 }}>
+          <MoodLogSection />
+        </motion.div>
 
         {/* Flo-style calendar — predicted/fertile days come from the ML model
             once it's ready, falling back to local cycle math */}

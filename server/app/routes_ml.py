@@ -79,7 +79,24 @@ def cycle_predictions(user: dict = Depends(current_user)):
         chart = db.execute("SELECT conditions FROM patient_charts WHERE user_id = ?", (user["id"],)).fetchone()
 
     conditions = json.loads(chart["conditions"]) if chart and chart["conditions"] else []
-    has_pcos = any("pcos" in c.lower() or "polycystic" in c.lower() for c in conditions)
+    # Conditions arrive two ways: structured ids she picked herself during
+    # onboarding, and free text a doctor typed into her chart. Both are matched,
+    # so a clinician writing "polycystic ovaries" counts the same as her tapping
+    # PCOS.
+    lowered = [c.lower() for c in conditions]
+    has_pcos = "pcos" in conditions or any("pcos" in c or "polycystic" in c for c in lowered)
+
+    # Other conditions with an established effect on menstrual regularity.
+    # These widen the window too — less than PCOS, but a thyroid disorder or
+    # significant anaemia genuinely makes a body less predictable, and a
+    # confident date we can't stand behind is worse than an honest range.
+    OTHER_IRREGULAR = {
+        "hypothyroid", "hyperthyroid", "endometriosis", "fibroids", "amenorrhea",
+        "menorrhagia", "pmdd", "ovarian_cyst", "prediabetes", "diabetes_t2",
+        "obesity", "underweight", "eating_disorder", "anaemia", "lupus",
+        "bleeding_disorder",
+    }
+    other_irregular = sorted(OTHER_IRREGULAR.intersection(conditions))
 
     logs = {
         r["date"]: {"flow": r["flow"], "symptoms": json.loads(r["symptoms"] or "[]")}
@@ -112,6 +129,13 @@ def cycle_predictions(user: dict = Depends(current_user)):
         pred["lo"] = min(pred["lo"], mid - max(5.0, (mid - pred["lo"]) * 1.8))
         pred["hi"] = max(pred["hi"], mid + max(7.0, (pred["hi"] - mid) * 1.8))
         pred["confidence"] = "low" if pred["confidence"] == "high" else pred["confidence"]
+    elif other_irregular:
+        # A gentler widening than PCOS, and it caps confidence at medium
+        # rather than dropping it to low.
+        mid = pred["mid"]
+        pred["lo"] = min(pred["lo"], mid - max(3.0, (mid - pred["lo"]) * 1.35))
+        pred["hi"] = max(pred["hi"], mid + max(4.0, (pred["hi"] - mid) * 1.35))
+        pred["confidence"] = "medium" if pred["confidence"] == "high" else pred["confidence"]
 
     anchor = date.fromisoformat(starts[-1])
     next_mid = anchor + timedelta(days=round(pred["mid"]))
@@ -204,5 +228,6 @@ def cycle_predictions(user: dict = Depends(current_user)):
         "symptomForecast": forecast,
         "insights": insights[:4],
         "hasPcos": has_pcos,
+        "irregularConditions": other_irregular,
         "pcosSignal": pcos_signal,
     }

@@ -1,6 +1,7 @@
 import { useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { mapsLink, smsBod, waLink, fireSmsBurst, watchLocation } from './sos';
+import { conditionLabel } from '../data/conditions';
 import { saveAlert } from './sosService';
 import { warn } from './haptics';
 import { useToast } from '../components/Toast';
@@ -10,23 +11,38 @@ export function useSOSActivation() {
   const stopWatch = useRef(null);
   const toast = useToast();
 
-  async function activateSOS() {
+  /**
+   * `test` sends the same message, marked plainly as a drill, and never opens a
+   * session or calls the backend alert path. An emergency button nobody has
+   * ever pressed is a button nobody trusts — and the first press should not be
+   * during the emergency.
+   */
+  async function activateSOS({ test = false } = {}) {
     const userName = state.user.name || "Someone";
     const contacts = state.sos.contacts || [];
+    // What a responder asks for first. Already on her chart; it just wasn't
+    // being carried.
+    const medical = {
+      bloodGroup: state.health?.bloodGroup ?? null,
+      allergies: state.health?.allergies ?? [],
+      conditions: state.health?.conditions ?? [],
+    };
 
-    // 1. Dispatch activate IMMEDIATELY so the UI reflects the SOS state
-    const startedAt = new Date().toISOString();
-    dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt, coords: null } });
+    if (!test) {
+      // 1. Dispatch activate IMMEDIATELY so the UI reflects the SOS state
+      const startedAt = new Date().toISOString();
+      dispatch({ type: 'SOS_ACTIVATE', payload: { startedAt, coords: null } });
 
-    // 2. Haptic
-    warn();
+      // 2. Haptic
+      warn();
 
-    // 3. Auto-cancel after 30 minutes
-    setTimeout(() => cancelSOS(), 30 * 60 * 1000);
+      // 3. Auto-cancel after 30 minutes
+      setTimeout(() => cancelSOS(), 30 * 60 * 1000);
+    }
 
     // Helper to run the rest of the flow with or without coords
     const proceedWithCoords = async (coords) => {
-      if (coords) {
+      if (coords && !test) {
         dispatch({ type: 'SOS_UPDATE_COORDS', payload: coords });
         // Start live watch
         stopWatch.current = watchLocation(
@@ -39,10 +55,18 @@ export function useSOSActivation() {
 
       // Fire SMS burst (deep links) - note: might be blocked by mobile popup blockers if not triggered by direct click
       try {
-        fireSmsBurst(contacts, smsBod(userName, link));
-        setTimeout(() => window.open(waLink(userName, link), '_blank'), 600);
+        fireSmsBurst(contacts, smsBod(userName, link, medical, { test }));
+        setTimeout(() => window.open(waLink(userName, link, medical, { test }), '_blank'), 600);
       } catch (e) {
         console.warn('Fallback deep-links blocked by browser:', e);
+      }
+
+      // A drill stops here: the deep links have already shown her contacts the
+      // message. Nothing calls the emergency backend and nothing is recorded as
+      // a real alert.
+      if (test) {
+        toast('Test alert sent. Ask your contacts if it arrived.', { icon: 'check' });
+        return;
       }
 
       // Backend Twilio call
@@ -50,11 +74,14 @@ export function useSOSActivation() {
         await fetch('/api/sos/alert', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            contacts, 
-            userName, 
-            lat: coords ? coords.lat : null, 
-            lng: coords ? coords.lng : null 
+          body: JSON.stringify({
+            contacts,
+            userName,
+            // Labels, not ids — the SMS backend has no condition catalogue and
+            // would otherwise text a stranger the word "hypothyroid" as "hypothyroid".
+            medical: { ...medical, conditions: medical.conditions.map(conditionLabel) },
+            lat: coords ? coords.lat : null,
+            lng: coords ? coords.lng : null,
           }),
         });
       } catch (e) {
@@ -66,17 +93,25 @@ export function useSOSActivation() {
         await saveAlert({
           message: `SOS triggered by ${userName}. Location: ${link}`,
           sentTo: contacts.map(c => c.phone),
-        }, state.auth.phone);
+        });
       } catch (e) {
         console.error("Save alert failed", e);
       }
     };
 
-    // Try to get location, but don't block the SOS sequence on it
-    if (navigator.geolocation) {
+    // Try to get location, but don't block the SOS sequence on it.
+    //
+    // Outside a secure context the browser disables geolocation outright, so
+    // an alert sent from a LAN dev address carries no coordinates. That is the
+    // single most important thing in this message, so it is named rather than
+    // reported as a generic GPS failure.
+    if (typeof window !== 'undefined' && window.isSecureContext === false) {
+      toast('No location: this address is not secure (https). Sending the alert without it.', { icon: 'warning' });
+      proceedWithCoords(null);
+    } else if (navigator.geolocation) {
       navigator.geolocation.getCurrentPosition(
         (pos) => proceedWithCoords({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-        (err) => {
+        () => {
           toast('Could not get precise location (GPS blocked). Sending SOS anyway.', { icon: 'warning' });
           proceedWithCoords(null);
         },

@@ -21,6 +21,9 @@ const initialState = {
     weightLogs: [],             // [{ date, weightKg }]
     kickCounts: {},             // { 'YYYY-MM-DD': count }
   },
+  // Her declared health background. Mirrors the server's `patient_charts`
+  // row — the same record her doctor reads, not a second copy of it.
+  health: { conditions: [], allergies: [], bloodGroup: null },
   settings: {
     notifications: true,
     anonymousMode: false,
@@ -51,6 +54,7 @@ export function stateFromServer(payload, phone, prev = {}) {
     },
     cycle: payload.cycle,
     pregnancy: payload.pregnancy,
+    health: payload.health ?? prev.health ?? { conditions: [], allergies: [], bloodGroup: null },
     settings: { pregnancyMode: prev.settings?.pregnancyMode ?? false, ...payload.settings },
   };
 }
@@ -101,6 +105,8 @@ function reducer(state, action) {
           },
         },
       };
+    case 'SET_HEALTH':
+      return { ...state, health: { ...state.health, ...action.payload } };
     case 'SET_SETTINGS':
       return { ...state, settings: { ...state.settings, ...action.payload } };
     case 'SET_SOS_CONTACTS':
@@ -148,6 +154,7 @@ export function AppProvider({ children }) {
         ...init,
         ...parsed,
         pregnancy: { ...init.pregnancy, ...parsed.pregnancy },
+        health: { ...init.health, ...parsed.health },
         settings: { ...init.settings, ...parsed.settings },
         sos: parsed.sos || init.sos,
       };

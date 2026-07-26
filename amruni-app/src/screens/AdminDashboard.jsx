@@ -180,7 +180,7 @@ export default function AdminDashboard() {
   // If not authenticated, show login form
   if (!isAuthenticated) {
     return (
-      <div className="screen screen--light" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 var(--sp-6)', minHeight: '100vh' }}>
+      <div className="screen screen--light" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'center', padding: '0 var(--sp-6)', minHeight: '100dvh' }}>
         <div style={{
           background: 'var(--clr-surface)',
           padding: 'var(--sp-6)',
@@ -248,7 +248,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="screen screen--light" style={{ paddingBottom: 'var(--sp-12)', minHeight: '100vh', overflowY: 'auto' }}>
+    <div className="screen screen--light" style={{ paddingBottom: 'var(--sp-12)', minHeight: '100dvh', overflowY: 'auto' }}>
       {/* Header */}
       <div style={{
         padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-4)',

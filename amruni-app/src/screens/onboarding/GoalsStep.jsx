@@ -44,8 +44,8 @@ export default function GoalsStep() {
 
   return (
     <div className="screen screen--light">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-6)' }}>
-        <OnboardHeader step={3} onBack={() => navigate('/onboarding/dob')} />
+      <div className="onb-page">
+        <OnboardHeader step={4} onBack={() => navigate('/onboarding/health')} />
 
         <motion.div
           initial={{ opacity: 0, y: 16 }}

@@ -19,15 +19,15 @@ export default function DobStep() {
   function next() {
     if (!valid) return;
     dispatch({ type: 'SET_USER', payload: { dob, lifeStage: stage } });
-    navigate('/onboarding/goals');
+    navigate('/onboarding/health');
   }
 
   return (
     <div className="screen screen--light">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-6)' }}>
+      <div className="onb-page">
         <OnboardHeader step={2} onBack={() => navigate('/onboarding/name')} />
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="onb-body">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}

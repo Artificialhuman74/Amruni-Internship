@@ -1,82 +1,58 @@
-import { 
-  collection, 
-  addDoc, 
-  getDocs, 
-  query, 
-  where, 
-  orderBy,
-  deleteDoc,
-  doc
-} from 'firebase/firestore';
-import { db } from './firebase';
+import { api } from '../services/api';
+import { queueMutation } from './offline';
 
-function handleFirestoreError(error, operationType, path) {
-  const errInfo = {
-    error: error instanceof Error ? error.message : String(error),
-    operationType,
-    path
+/**
+ * Emergency contacts and alert history.
+ *
+ * These used to live in Firestore — the only part of the product on a second
+ * backend — behind credentials that were never set in production. Adding a
+ * contact threw, and the list the SOS button depends on stayed empty. They are
+ * on the main API now: one database, one auth path, one failure mode.
+ *
+ * Writes go through the outbox, so naming someone on a train works and syncs
+ * when the signal returns. The one thing a woman must be able to do the moment
+ * she thinks of it is say who should be called.
+ */
+
+export async function getContacts() {
+  const { data } = await api.get('/me/sos/contacts');
+  return data ?? [];
+}
+
+export async function addContact(contact) {
+  const body = {
+    name: contact.name,
+    phone: contact.phone,
+    relation: contact.relation ?? null,
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
-  throw new Error(JSON.stringify(errInfo));
-}
-
-// Emergency Contacts
-export async function addContact(contact, userId) {
-  const path = 'contacts';
-  try {
-    const docRef = await addDoc(collection(db, path), {
-      ...contact,
-      userId,
-      createdAt: new Date().toISOString()
-    });
-    return docRef.id;
-  } catch (e) {
-    handleFirestoreError(e, 'write', path);
-  }
-}
-
-export async function getContacts(userId) {
-  const path = 'contacts';
-  try {
-    const q = query(collection(db, path), where('userId', '==', userId));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (e) {
-    handleFirestoreError(e, 'list', path);
-  }
+  return queueMutation({
+    method: 'post',
+    url: '/me/sos/contacts',
+    body,
+    // Stands in for the row until the real one arrives, so she sees the person
+    // she just added rather than an empty list.
+    optimistic: { id: `pending_${Date.now()}`, ...body, pending: true },
+  });
 }
 
 export async function deleteContact(contactId) {
-  const path = 'contacts';
-  try {
-    await deleteDoc(doc(db, path, contactId));
-  } catch (e) {
-    handleFirestoreError(e, 'delete', path);
-  }
+  return queueMutation({
+    method: 'delete',
+    url: `/me/sos/contacts/${contactId}`,
+    optimistic: { id: contactId, deleted: true },
+  });
 }
 
-// Alerts History
-export async function saveAlert(alert, userId) {
-  const path = 'alerts';
-  try {
-    const docRef = await addDoc(collection(db, path), {
-      ...alert,
-      userId,
-      timestamp: new Date().toISOString()
-    });
-    return docRef.id;
-  } catch (e) {
-    handleFirestoreError(e, 'write', path);
-  }
+export async function getAlerts() {
+  const { data } = await api.get('/me/sos/alerts');
+  return data ?? [];
 }
 
-export async function getAlerts(userId) {
-  const path = 'alerts';
-  try {
-    const q = query(collection(db, path), where('userId', '==', userId), orderBy('timestamp', 'desc'));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  } catch (e) {
-    handleFirestoreError(e, 'list', path);
-  }
+export async function saveAlert(alert) {
+  return queueMutation({
+    method: 'post',
+    url: '/me/sos/alerts',
+    body: { message: alert.message, sentTo: alert.sentTo ?? [], isTest: Boolean(alert.isTest) },
+    optimistic: { id: `pending_${Date.now()}`, ...alert, pending: true },
+  });
 }

@@ -30,7 +30,7 @@ app.use(express.json());
 
 app.post("/api/sos/alert", async (req, res) => {
   try {
-    const { contacts, userName, lat, lng } = req.body;
+    const { contacts, userName, lat, lng, medical } = req.body;
     
     if (!contacts || !Array.isArray(contacts)) {
       return res.status(400).json({ error: "Invalid contacts array" });
@@ -44,11 +44,28 @@ app.post("/api/sos/alert", async (req, res) => {
     const errors = [];
     
     if (client && from) {
-      const messageBody = `🚨 URGENT: ${userName} has sent an SOS alert. Live location: https://maps.google.com/?q=${lat},${lng} — Please respond immediately.`;
-      
+      // What a responder asks for first, carried on the SMS. The voice call
+      // deliberately stays short — a spoken list of conditions is not retained
+      // by someone who has just answered an emergency call, and the SMS on the
+      // same phone has it in writing.
+      const med = medical || {};
+      const medLines = [
+        med.bloodGroup ? `Blood group: ${med.bloodGroup}` : null,
+        med.allergies?.length ? `Allergies: ${med.allergies.join(", ")}` : null,
+        med.conditions?.length ? `Conditions: ${med.conditions.slice(0, 4).join(", ")}` : null,
+      ].filter(Boolean);
+
+      const messageBody = [
+        `URGENT: ${userName} has sent an SOS alert.`,
+        `Location: https://maps.google.com/?q=${lat},${lng}`,
+        ...medLines,
+        `Please respond immediately.`,
+      ].join("\n");
+
       const twimlVoice = `<Response>
         <Say voice="alice" language="en-IN">
           URGENT: ${userName} has sent an SOS alert. Please respond immediately.
+          Check your messages for her location and medical details.
         </Say>
       </Response>`;
 

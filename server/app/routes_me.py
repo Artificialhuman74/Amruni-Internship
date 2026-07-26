@@ -16,7 +16,11 @@ def me_payload(user_id: int) -> dict:
         cycle = db.execute("SELECT * FROM cycle_state WHERE user_id = ?", (user_id,)).fetchone()
         logs = db.execute("SELECT date, flow, symptoms FROM cycle_logs WHERE user_id = ?", (user_id,)).fetchall()
         preg = db.execute("SELECT * FROM pregnancy_state WHERE user_id = ?", (user_id,)).fetchone()
+        preg_logs = db.execute(
+            "SELECT date, mood, valence, symptoms FROM pregnancy_logs WHERE user_id = ?", (user_id,)
+        ).fetchall()
         settings = db.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,)).fetchone()
+        chart = db.execute("SELECT * FROM patient_charts WHERE user_id = ?", (user_id,)).fetchone()
 
     return {
         "user": {
@@ -36,13 +40,35 @@ def me_payload(user_id: int) -> dict:
             },
         },
         "pregnancy": {
-            "weeksPregnant": preg["weeks_pregnant"] if preg else 16,
-            "dueDate": preg["due_date"] if preg else None,
+            "lastPeriodStart": preg["last_period_start"] if preg else None,
+            "dueDateOverride": preg["due_date_override"] if preg else None,
+            "prePregnancyWeightKg": preg["pre_pregnancy_weight_kg"] if preg else None,
+            "heightCm": preg["height_cm"] if preg else None,
             "trustedContacts": json.loads(preg["trusted_contacts"] or "[]") if preg else [],
+            "weightLogs": json.loads(preg["weight_logs"] or "[]") if preg else [],
+            "kickCounts": json.loads(preg["kick_counts"] or "{}") if preg else {},
+            "loggedDays": {
+                log["date"]: {
+                    "mood": log["mood"],
+                    "valence": log["valence"],
+                    "symptoms": json.loads(log["symptoms"] or "[]"),
+                }
+                for log in preg_logs
+            },
+        },
+        # Her own health background. Stored in `patient_charts` rather than a
+        # parallel table: it is the same fact her doctor reads, and two copies
+        # of "does she have PCOS" is exactly the kind of split that ends with
+        # the chart and the app disagreeing.
+        "health": {
+            "conditions": json.loads(chart["conditions"]) if chart and chart["conditions"] else [],
+            "allergies": json.loads(chart["allergies"]) if chart and chart["allergies"] else [],
+            "bloodGroup": chart["blood_group"] if chart else None,
         },
         "settings": {
             "notifications": bool(settings["notifications"]) if settings else True,
             "anonymousMode": bool(settings["anonymous_mode"]) if settings else False,
+            "identityWarningSeen": settings["identity_warning_seen"] if settings else 0,
         },
     }
 
@@ -69,14 +95,20 @@ class CycleSlice(BaseModel):
 
 
 class PregnancySlice(BaseModel):
-    weeksPregnant: int = 16
-    dueDate: str | None = None
+    lastPeriodStart: str | None = None
+    dueDateOverride: str | None = None
+    prePregnancyWeightKg: float | None = None
+    heightCm: float | None = None
     trustedContacts: list = []
+    weightLogs: list = []
+    kickCounts: dict[str, int] = {}
+    loggedDays: dict[str, dict] = {}
 
 
 class SettingsSlice(BaseModel):
     notifications: bool = True
     anonymousMode: bool = False
+    identityWarningSeen: int = 0
 
 
 class StateBody(BaseModel):
@@ -86,10 +118,39 @@ class StateBody(BaseModel):
     settings: SettingsSlice = SettingsSlice()
 
 
+class HealthBody(BaseModel):
+    conditions: list[str] = []
+    allergies: list[str] = []
+    bloodGroup: str | None = None
+
+
 class ScreeningBody(BaseModel):
     tool: str
     score: int
     answers: list = []
+
+
+@router.put("/me/health")
+def put_health(body: HealthBody, user: dict = Depends(current_user)):
+    """She declares her own conditions, allergies and blood group.
+
+    Writes the same `patient_charts` row her doctor reads and edits — one
+    record, not a patient copy and a clinical copy that drift apart. The
+    cycle model reads it too, which is why declaring PCOS or a thyroid
+    condition immediately widens her prediction window (see routes_ml).
+    """
+    with get_db() as db:
+        db.execute(
+            """INSERT INTO patient_charts (user_id, conditions, allergies, blood_group, updated_at)
+               VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+               ON CONFLICT(user_id) DO UPDATE SET
+                 conditions = excluded.conditions,
+                 allergies = excluded.allergies,
+                 blood_group = excluded.blood_group,
+                 updated_at = excluded.updated_at""",
+            (user["id"], json.dumps(body.conditions), json.dumps(body.allergies), body.bloodGroup),
+        )
+    return me_payload(user["id"])
 
 
 @router.get("/me")
@@ -147,20 +208,37 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
                     (user["id"], day, data.get("flow"), json.dumps(data.get("symptoms") or [])),
                 )
         db.execute(
-            """INSERT INTO pregnancy_state (user_id, weeks_pregnant, due_date, trusted_contacts)
-               VALUES (?, ?, ?, ?)
+            """INSERT INTO pregnancy_state
+                 (user_id, last_period_start, due_date_override, pre_pregnancy_weight_kg,
+                  height_cm, trusted_contacts, weight_logs, kick_counts)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET
-                 weeks_pregnant = excluded.weeks_pregnant,
-                 due_date = excluded.due_date,
-                 trusted_contacts = excluded.trusted_contacts""",
-            (user["id"], body.pregnancy.weeksPregnant, body.pregnancy.dueDate,
-             json.dumps(body.pregnancy.trustedContacts)),
+                 last_period_start = excluded.last_period_start,
+                 due_date_override = excluded.due_date_override,
+                 pre_pregnancy_weight_kg = excluded.pre_pregnancy_weight_kg,
+                 height_cm = excluded.height_cm,
+                 trusted_contacts = excluded.trusted_contacts,
+                 weight_logs = excluded.weight_logs,
+                 kick_counts = excluded.kick_counts""",
+            (user["id"], body.pregnancy.lastPeriodStart, body.pregnancy.dueDateOverride,
+             body.pregnancy.prePregnancyWeightKg, body.pregnancy.heightCm,
+             json.dumps(body.pregnancy.trustedContacts), json.dumps(body.pregnancy.weightLogs),
+             json.dumps(body.pregnancy.kickCounts)),
         )
+        for day, data in body.pregnancy.loggedDays.items():
+            if len(day) == 10 and day[4] == "-" and day[7] == "-":
+                db.execute(
+                    """INSERT INTO pregnancy_logs (user_id, date, mood, valence, symptoms) VALUES (?, ?, ?, ?, ?)
+                       ON CONFLICT(user_id, date) DO UPDATE SET
+                         mood = excluded.mood, valence = excluded.valence, symptoms = excluded.symptoms""",
+                    (user["id"], day, data.get("mood"), data.get("valence"), json.dumps(data.get("symptoms") or [])),
+                )
         db.execute(
-            """INSERT INTO user_settings (user_id, notifications, anonymous_mode) VALUES (?, ?, ?)
+            """INSERT INTO user_settings (user_id, notifications, anonymous_mode, identity_warning_seen) VALUES (?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET
-                 notifications = excluded.notifications, anonymous_mode = excluded.anonymous_mode""",
-            (user["id"], int(body.settings.notifications), int(body.settings.anonymousMode)),
+                 notifications = excluded.notifications, anonymous_mode = excluded.anonymous_mode,
+                 identity_warning_seen = excluded.identity_warning_seen""",
+            (user["id"], int(body.settings.notifications), int(body.settings.anonymousMode), body.settings.identityWarningSeen),
         )
     return {"success": True}
 
