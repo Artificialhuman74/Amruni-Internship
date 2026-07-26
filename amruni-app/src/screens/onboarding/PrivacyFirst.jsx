@@ -27,11 +27,12 @@ export default function PrivacyFirst() {
 
   return (
     <div className="screen screen--soft">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 'calc(env(safe-area-inset-top) + var(--sp-6)) var(--sp-6) var(--sp-6)' }}>
+      <div className="onb-page">
         <motion.div
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ duration: 0.5, ease: [0.16, 1, 0.3, 1] }}
+          className="onb-hero"
           style={{ marginTop: 'var(--sp-4)' }}
         >
           <CamelliaHero size={220} />

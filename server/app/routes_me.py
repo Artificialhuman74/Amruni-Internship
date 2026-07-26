@@ -20,6 +20,7 @@ def me_payload(user_id: int) -> dict:
             "SELECT date, mood, valence, symptoms FROM pregnancy_logs WHERE user_id = ?", (user_id,)
         ).fetchall()
         settings = db.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,)).fetchone()
+        chart = db.execute("SELECT * FROM patient_charts WHERE user_id = ?", (user_id,)).fetchone()
 
     return {
         "user": {
@@ -54,6 +55,15 @@ def me_payload(user_id: int) -> dict:
                 }
                 for log in preg_logs
             },
+        },
+        # Her own health background. Stored in `patient_charts` rather than a
+        # parallel table: it is the same fact her doctor reads, and two copies
+        # of "does she have PCOS" is exactly the kind of split that ends with
+        # the chart and the app disagreeing.
+        "health": {
+            "conditions": json.loads(chart["conditions"]) if chart and chart["conditions"] else [],
+            "allergies": json.loads(chart["allergies"]) if chart and chart["allergies"] else [],
+            "bloodGroup": chart["blood_group"] if chart else None,
         },
         "settings": {
             "notifications": bool(settings["notifications"]) if settings else True,
@@ -108,10 +118,39 @@ class StateBody(BaseModel):
     settings: SettingsSlice = SettingsSlice()
 
 
+class HealthBody(BaseModel):
+    conditions: list[str] = []
+    allergies: list[str] = []
+    bloodGroup: str | None = None
+
+
 class ScreeningBody(BaseModel):
     tool: str
     score: int
     answers: list = []
+
+
+@router.put("/me/health")
+def put_health(body: HealthBody, user: dict = Depends(current_user)):
+    """She declares her own conditions, allergies and blood group.
+
+    Writes the same `patient_charts` row her doctor reads and edits — one
+    record, not a patient copy and a clinical copy that drift apart. The
+    cycle model reads it too, which is why declaring PCOS or a thyroid
+    condition immediately widens her prediction window (see routes_ml).
+    """
+    with get_db() as db:
+        db.execute(
+            """INSERT INTO patient_charts (user_id, conditions, allergies, blood_group, updated_at)
+               VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+               ON CONFLICT(user_id) DO UPDATE SET
+                 conditions = excluded.conditions,
+                 allergies = excluded.allergies,
+                 blood_group = excluded.blood_group,
+                 updated_at = excluded.updated_at""",
+            (user["id"], json.dumps(body.conditions), json.dumps(body.allergies), body.bloodGroup),
+        )
+    return me_payload(user["id"])
 
 
 @router.get("/me")

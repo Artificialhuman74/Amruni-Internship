@@ -7,9 +7,11 @@ import PregnancyDueDateForm from '../components/PregnancyDueDateForm';
 import PregnancySymptoms from '../components/PregnancySymptoms';
 import PregnancyKickCounter from '../components/PregnancyKickCounter';
 import PregnancyWeightTracker from '../components/PregnancyWeightTracker';
+import MoodLogSection from '../components/MoodLogSection';
 import { useToast } from '../components/Toast';
 import { confirm, warn } from '../lib/haptics';
 import { appointmentApi } from '../services/appointmentApi';
+import { addContact as saveContact, getContacts } from '../lib/sosService';
 import { IconStar, IconLink, IconCheck, IconPill, IconAppointment, IconMood } from '../icons.jsx';
 
 const BABY_SIZE = ['Poppy seed','Sesame','Blueberry','Raspberry','Green olive','Prune','Lime','Lemon','Peach','Apple','Avocado','Turnip','Bell pepper','Tomato','Onion','Sweet potato','Mango','Banana','Papaya','Carrot','Corn','Spaghetti squash','Rutabaga','Eggplant','Acorn squash','Butternut squash','Cauliflower','Cabbage','Pineapple','Coconut','Jicama','Bok choy','Celery root','Honeydew melon','Cantaloupe','Romaine lettuce','Swiss chard','Watermelon','Pumpkin','Mini watermelon'];
@@ -31,7 +33,11 @@ export default function Pregnancy() {
   const toast = useToast();
   const reduce = useReducedMotion();
   const pregnancyData = usePregnancyData(state);
-  const contacts = state.pregnancy.trustedContacts;
+  // One circle, not two. "Trusted contacts" here and "emergency contacts" in
+  // Settings were separate lists in separate stores, so the people she'd told
+  // the app to call in a pregnancy emergency were not the people the SOS
+  // button actually called. They are now the same list.
+  const contacts = state.sos.contacts;
 
   const [panicState, setPanicState] = useState('idle'); // idle | confirm | triggered
   const [shareSheet, setShareSheet] = useState(false);
@@ -40,6 +46,23 @@ export default function Pregnancy() {
   const [contactPhone, setContactPhone] = useState('');
   const [editDateSheet, setEditDateSheet] = useState(false);
   const [pregDoctorId, setPregDoctorId] = useState(null);
+
+  // Anything still in the old pregnancy-only list is folded into the shared
+  // one and cleared, so nobody she already trusted is silently dropped.
+  useEffect(() => {
+    const legacy = state.pregnancy.trustedContacts;
+    if (!legacy?.length) return;
+    const known = new Set(state.sos.contacts.map((c) => c.phone));
+    const missing = legacy.filter((c) => !known.has(c.phone));
+    Promise.all(missing.map((c) => saveContact({ name: c.name, phone: c.phone, relation: 'Trusted' }, state.auth.phone)))
+      .then(() => getContacts())
+      .then((fetched) => {
+        dispatch({ type: 'SET_SOS_CONTACTS', payload: fetched || [] });
+        dispatch({ type: 'SET_PREGNANCY', payload: { trustedContacts: [] } });
+      })
+      .catch(() => { /* keep the legacy list until it can be moved safely */ });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.pregnancy.trustedContacts?.length]);
 
   // Same specialty-matching Home.jsx uses for its recommended-doctors list —
   // one doctor list, not a second one invented for this CTA.
@@ -102,15 +125,22 @@ export default function Pregnancy() {
     }
   }
 
-  function addContact() {
+  async function addContact() {
     if (!contactName.trim() || !contactPhone.trim()) return;
     const name = contactName.trim();
-    dispatch({ type: 'SET_PREGNANCY', payload: { trustedContacts: [...contacts, { name, phone: contactPhone.trim() }] } });
-    setContactName('');
-    setContactPhone('');
-    setContactSheet(false);
-    confirm();
-    toast(`${name} is now in your circle`, { icon: 'heart' });
+    const phone = contactPhone.trim();
+    try {
+      await saveContact({ name, phone, relation: 'Trusted' });
+      const fetched = await getContacts();
+      dispatch({ type: 'SET_SOS_CONTACTS', payload: fetched || [] });
+      setContactName('');
+      setContactPhone('');
+      setContactSheet(false);
+      confirm();
+      toast(`${name} is now in your circle, and on your SOS list`, { icon: 'heart' });
+    } catch {
+      toast('Could not add that contact. Check your connection and try again.', { icon: 'warning' });
+    }
   }
 
   if (!pregnancyData.known) {
@@ -185,6 +215,11 @@ export default function Pregnancy() {
           </div>
         </motion.div>
 
+        {/* Your moods — the same log Track shows outside pregnancy mode, so
+            the record is continuous across the whole journey rather than
+            restarting when pregnancy mode goes on or off. */}
+        <MoodLogSection />
+
         {/* Today's check-in — mood read-back + physical symptom chips */}
         <PregnancySymptoms />
 
@@ -247,13 +282,14 @@ export default function Pregnancy() {
             </button>
           </div>
           {contacts.length === 0 ? (
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)', fontStyle: 'italic' }}>
-              No contacts yet. Add a partner or family member to keep them in the loop.
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
+              No one here yet. Add a partner or family member to keep them in the loop —
+              they&rsquo;ll also be who your SOS button reaches.
             </p>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
               {contacts.map((c, i) => (
-                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-md)' }}>
+                <div key={c.id ?? i} style={{ display: 'flex', alignItems: 'center', gap: 'var(--sp-3)', padding: 'var(--sp-3) var(--sp-4)', background: 'var(--clr-surface)', border: '1px solid var(--clr-border)', borderRadius: 'var(--radius-md)' }}>
                   <div style={{ width: 36, height: 36, borderRadius: 'var(--radius-full)', background: 'var(--clr-brand-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 700, color: 'var(--clr-brand)', flexShrink: 0 }}>
                     {c.name[0].toUpperCase()}
                   </div>

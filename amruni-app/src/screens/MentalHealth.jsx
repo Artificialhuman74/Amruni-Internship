@@ -3,12 +3,15 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { meApi } from '../services/api';
 import BottomSheet from '../components/BottomSheet';
-import { PHQ9_QUESTIONS, PHQ9_OPTIONS, GAD7_QUESTIONS } from '../data/mock';
+import { TOOLS, optionsFor, bandFor, hasRiskFlag } from '../data/screening';
 import { IconBrain, IconMind, IconHospital, IconLock, IconUser, IconPhone } from '../icons.jsx';
+import { tap } from '../lib/haptics';
 
 export default function MentalHealth() {
   const { state, dispatch } = useApp();
   const anonymous = state.settings.anonymousMode;
+  // Pregnancy counts too — EPDS is validated antenatally as well as after birth.
+  const postnatal = state.user.lifeStage === 'postpartum' || state.settings.pregnancyMode;
 
   const [view, setView] = useState('home'); // home | phq9 | gad7 | result
   const [tool, setTool] = useState(null);
@@ -17,15 +20,20 @@ export default function MentalHealth() {
   const [score, setScore] = useState(null);
   const [nimhansOpen, setNimhansOpen] = useState(false);
   const [helpPressed, setHelpPressed] = useState(false);
+  // Tracked apart from the score: a non-zero answer to the self-harm item
+  // matters even when the total lands in a mild band.
+  const [riskFlag, setRiskFlag] = useState(false);
 
-  const questions = tool === 'phq9' ? PHQ9_QUESTIONS : GAD7_QUESTIONS;
-  const toolLabel = tool === 'phq9' ? 'PHQ-9' : 'GAD-7';
+  const spec = tool ? TOOLS[tool] : null;
+  const questions = spec?.questions ?? [];
+  const toolLabel = spec?.short ?? '';
 
   function startTool(t) {
     setTool(t);
     setAnswers({});
     setCurrentQ(0);
     setScore(null);
+    setRiskFlag(false);
     setView('quiz');
   }
 
@@ -35,8 +43,10 @@ export default function MentalHealth() {
     if (currentQ < questions.length - 1) {
       setTimeout(() => setCurrentQ(q => q + 1), 280);
     } else {
-      const total = Object.values(next).reduce((a, b) => a + b, 0);
+      const ordered = questions.map((_, i) => next[i] ?? 0);
+      const total = ordered.reduce((a, b) => a + b, 0);
       setScore(total);
+      setRiskFlag(hasRiskFlag(spec, ordered));
       setView('result');
       // Anonymous mode keeps screening results off the account entirely.
       if (!anonymous) {
@@ -48,17 +58,7 @@ export default function MentalHealth() {
   }
 
   function getResult(s, t) {
-    if (t === 'phq9') {
-      if (s <= 4) return { level: 'Minimal', cls: 'minimal', msg: 'Your responses suggest minimal depression symptoms. Keep checking in with yourself regularly.' };
-      if (s <= 9) return { level: 'Mild', cls: 'mild', msg: 'Mild symptoms detected. Talking to someone you trust or a counsellor can help.' };
-      if (s <= 14) return { level: 'Moderate', cls: 'moderate', msg: 'Moderate symptoms. We recommend speaking with a mental health professional.' };
-      return { level: 'Severe', cls: 'severe', msg: 'Your responses indicate severe symptoms. Please reach out to a professional — support is available now.' };
-    } else {
-      if (s <= 4) return { level: 'Minimal', cls: 'minimal', msg: 'Minimal anxiety. Your responses suggest you are managing well.' };
-      if (s <= 9) return { level: 'Mild', cls: 'mild', msg: 'Mild anxiety. Breathing exercises and regular sleep can make a real difference.' };
-      if (s <= 14) return { level: 'Moderate', cls: 'moderate', msg: 'Moderate anxiety. Consider speaking with a counsellor for practical coping strategies.' };
-      return { level: 'Severe', cls: 'severe', msg: 'Severe anxiety detected. Please connect with a professional — this is what they are here for.' };
-    }
+    return bandFor(TOOLS[t], s);
   }
 
   if (view === 'quiz') {
@@ -96,15 +96,15 @@ export default function MentalHealth() {
               transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
               style={{ flex: 1 }}
             >
-              <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--clr-brand)', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 'var(--sp-4)' }}>
-                In the last 2 weeks, how often have you been bothered by:
+              <p style={{ fontSize: 'var(--text-xs)', fontWeight: 600, color: 'var(--clr-brand)', letterSpacing: '0.04em', marginBottom: 'var(--sp-4)', textWrap: 'pretty' }}>
+                {spec.intro}
               </p>
               <h2 style={{ fontSize: 'var(--text-lg)', fontWeight: 600, color: 'var(--clr-ink)', lineHeight: 'var(--leading-snug)', marginBottom: 'var(--sp-8)', textWrap: 'pretty' }}>
                 {questions[currentQ]}
               </h2>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-                {PHQ9_OPTIONS.map(opt => (
+                {optionsFor(spec, currentQ).map(opt => (
                   <button
                     key={opt.value}
                     className={`phq-option${answers[currentQ] === opt.value ? ' phq-option--active' : ''}`}
@@ -149,6 +149,30 @@ export default function MentalHealth() {
               </div>
               <p className="score-desc">{result.msg}</p>
             </div>
+
+            {/* Answered above zero on the self-harm item. Shown whatever the
+                total, because both instruments can sum into a mild band while
+                that one answer is not mild — and "mild symptoms, try a walk"
+                is the wrong reply to it. Placed above everything else on the
+                page and phrased without alarm. */}
+            {riskFlag && (
+              <div className="crisis-card" role="alert">
+                <p className="crisis-card__title">
+                  You said thoughts of harming yourself have been there.
+                </p>
+                <p className="crisis-card__body">
+                  Thank you for answering honestly — that is hard to put down. You do not have
+                  to work out what to do next on your own, and you do not have to be in crisis
+                  to call. Someone will pick up.
+                </p>
+                <a href="tel:14416" className="crisis-card__call" onClick={() => tap()}>
+                  <IconPhone size={18} /> Call Tele-MANAS · 14416
+                </a>
+                <p className="crisis-card__note">
+                  Free, 24×7, in your language. Run by NIMHANS for the Government of India.
+                </p>
+              </div>
+            )}
           </motion.div>
 
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', lineHeight: 1.6, textWrap: 'pretty' }}>
@@ -224,8 +248,14 @@ export default function MentalHealth() {
           <p className="section-title">Screening tools</p>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
             {[
+              // Shown to post-partum and pregnant women, and first, because
+              // PHQ-9's sleep/appetite/energy items are answered "yes" by
+              // almost anyone with a newborn — inflating a score for reasons
+              // that are not depression. EPDS was designed around that.
+              ...(postnatal ? [{ key: 'epds', Icon: IconBrain, iconColor: 'var(--clr-preg)', label: 'Post-natal check (EPDS)', desc: '10 questions · ~3 minutes · made for after birth', color: 'var(--clr-preg-soft)' }] : []),
               { key: 'phq9', Icon: IconBrain, iconColor: 'var(--clr-brand)', label: 'Depression check (PHQ-9)', desc: '9 questions · ~3 minutes', color: 'var(--clr-brand-soft)' },
               { key: 'gad7', Icon: IconMind, iconColor: 'var(--clr-fertile)', label: 'Anxiety check (GAD-7)', desc: '7 questions · ~2 minutes', color: 'var(--clr-fertile-soft)' },
+              ...(postnatal ? [] : [{ key: 'epds', Icon: IconBrain, iconColor: 'var(--clr-preg)', label: 'Post-natal check (EPDS)', desc: '10 questions · for during or after pregnancy', color: 'var(--clr-preg-soft)' }]),
             ].map(t => (
               <button
                 key={t.key}

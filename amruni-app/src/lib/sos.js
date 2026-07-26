@@ -1,13 +1,51 @@
+import { conditionLabel } from '../data/conditions';
+
 export function mapsLink({ lat, lng }) {
   return `https://maps.google.com/?q=${lat},${lng}`;
 }
 
-export function smsBod(userName, link) {
-  return `🚨 URGENT: ${userName || 'Someone you know'} has sent an SOS alert.\nLive location: ${link}\nPlease respond immediately.`;
+/**
+ * The alert her contacts receive.
+ *
+ * It used to carry her name and a map pin and nothing else. The things a
+ * paramedic or an emergency room asks for first — blood group, allergies,
+ * existing conditions — were already sitting in her chart and were being left
+ * behind. They travel now, because the person reading this message may be the
+ * one who has to answer those questions on her behalf.
+ *
+ * Ordered by what matters in the first ten seconds: who, where, then what a
+ * responder needs before treating her. Kept terse so it survives as a single
+ * SMS on a poor network.
+ */
+export function smsBod(userName, link, medical = {}, { test = false } = {}) {
+  const who = userName || 'Someone you know';
+  const lines = test
+    ? ['TEST — this is not an emergency.', `${who} is checking that her SOS alert reaches you.`]
+    : [`URGENT: ${who} has sent an SOS alert.`];
+
+  lines.push(`Location: ${link}`);
+  lines.push(...medicalSummary(medical));
+  lines.push(test ? 'No action needed.' : 'Please respond immediately.');
+  return lines.join('\n');
 }
 
-export function waLink(userName, link) {
-  return `https://wa.me/?text=${encodeURIComponent(smsBod(userName, link))}`;
+/** The clinical lines. Returns nothing at all when there's nothing true to say. */
+export function medicalSummary({ bloodGroup, allergies = [], conditions = [] } = {}) {
+  const out = [];
+  if (bloodGroup) out.push(`Blood group: ${bloodGroup}`);
+  if (allergies.length) out.push(`Allergies: ${allergies.join(', ')}`);
+  if (conditions.length) {
+    // Structured ids become their readable labels; a doctor's free text passes
+    // through as written. Capped so the message stays sendable as one SMS.
+    const named = conditions.slice(0, 4).map(conditionLabel);
+    const more = conditions.length - named.length;
+    out.push(`Conditions: ${named.join(', ')}${more > 0 ? ` +${more} more` : ''}`);
+  }
+  return out;
+}
+
+export function waLink(userName, link, medical, opts) {
+  return `https://wa.me/?text=${encodeURIComponent(smsBod(userName, link, medical, opts))}`;
 }
 
 // Deep-link SMS to each contact (browser-only fallback, no backend)

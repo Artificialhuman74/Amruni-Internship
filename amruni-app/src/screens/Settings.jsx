@@ -4,16 +4,20 @@ import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { LIFE_STAGES } from '../data/mock';
 import BottomSheet from '../components/BottomSheet';
+import ConditionPicker from '../components/ConditionPicker';
+import CareShares from '../components/CareShares';
 import PregnancyBloom from '../components/PregnancyBloom';
 import { AnimatePresence } from 'framer-motion';
 import { useToast } from '../components/Toast';
 import { confirm } from '../lib/haptics';
 import { getContacts, addContact, deleteContact } from '../lib/sosService';
+import { meApi } from '../services/api';
+import { permissionState, requestPermission, notificationsSupported } from '../lib/reminders';
 import { useEffect } from 'react';
 import {
   IconUser, IconSprout, IconRecords, IconHospital, IconBell, IconLock,
   IconShield, IconPregnant, IconHome, IconPlus, IconClose, IconSettings,
-  IconStar, IconSend, IconLogout, FlagIN,
+  IconStar, IconSend, IconLogout, FlagIN, IconStethoscope,
 } from '../icons.jsx';
 
 export default function Settings() {
@@ -39,6 +43,10 @@ export default function Settings() {
   const [caretakerSheet, setCaretakerSheet] = useState(false);
   const [logoutSheet, setLogoutSheet] = useState(false);
   const [selectedStage, setSelectedStage] = useState(lifeStage);
+  const [careSheet, setCareSheet] = useState(false);
+  const [healthSheet, setHealthSheet] = useState(false);
+  const [conditions, setConditions] = useState(state.health?.conditions ?? []);
+  const [savingHealth, setSavingHealth] = useState(false);
   const [contactSheet, setContactSheet] = useState(false);
   const [contactName, setContactName] = useState('');
   const [contactPhone, setContactPhone] = useState('');
@@ -52,7 +60,7 @@ export default function Settings() {
     async function loadContacts() {
       if (!phoneId) return;
       try {
-        const fetched = await getContacts(phoneId);
+        const fetched = await getContacts();
         dispatch({ type: 'SET_SOS_CONTACTS', payload: fetched || [] });
       } catch (e) {
         console.error("Failed to load contacts:", e);
@@ -164,11 +172,33 @@ export default function Settings() {
               <div className="settings-item__icon"><IconBell size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Push notifications</div>
-                <div className="settings-item__desc">Appointments, reminders, cycle alerts</div>
+                <div className="settings-item__desc">
+                  {permissionState() === 'denied'
+                    ? 'Blocked in your browser settings for this site'
+                    : notificationsSupported()
+                      ? 'Medicine doses, appointments and follow-ups'
+                      : 'Not supported by this browser'}
+                </div>
               </div>
               <button
                 className={`toggle${notifications ? ' toggle--on' : ''}`}
-                onClick={() => dispatch({ type: 'SET_SETTINGS', payload: { notifications: !notifications } })}
+                onClick={async () => {
+                  if (notifications) {
+                    dispatch({ type: 'SET_SETTINGS', payload: { notifications: false } });
+                    return;
+                  }
+                  // Ask only here — a permission prompt on app open, before the
+                  // app has done anything for her, earns a permanent block.
+                  const result = await requestPermission();
+                  if (result === 'granted') {
+                    dispatch({ type: 'SET_SETTINGS', payload: { notifications: true } });
+                    confirm();
+                  } else if (result === 'denied') {
+                    toast('Notifications are blocked in your browser settings for this site.', { icon: 'warning' });
+                  } else if (result === 'unsupported') {
+                    toast('This browser cannot show reminders.', { icon: 'warning' });
+                  }
+                }}
                 aria-pressed={notifications}
                 aria-label="Toggle notifications"
               >
@@ -207,6 +237,24 @@ export default function Settings() {
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.12, ease: [0.16, 1, 0.3, 1] }}>
           <div className="settings-group">
             <div className="settings-group__title">Your experience</div>
+            <div
+              className="settings-item"
+              onClick={() => { setConditions(state.health?.conditions ?? []); setHealthSheet(true); }}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setHealthSheet(true)}
+            >
+              <div className="settings-item__icon" style={{ background: 'var(--clr-sky-soft)', color: 'var(--clr-sky)' }}><IconStethoscope size={20} /></div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label">Health background</div>
+                <div className="settings-item__desc">
+                  {state.health?.conditions?.length
+                    ? `${state.health.conditions.length} condition${state.health.conditions.length === 1 ? '' : 's'} — your doctor sees these`
+                    : 'Conditions you live with, shared with your doctor'}
+                </div>
+              </div>
+              <ChevronRight />
+            </div>
             <div className="settings-item">
               <div className="settings-item__icon" style={{ background: 'var(--clr-preg-soft)' }}><IconPregnant size={20} /></div>
               <div style={{ flex: 1 }}>
@@ -229,6 +277,20 @@ export default function Settings() {
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.14, ease: [0.16, 1, 0.3, 1] }}>
           <div className="settings-group">
             <div className="settings-group__title">Caretaker</div>
+            <div
+              className="settings-item"
+              onClick={() => setCareSheet(true)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && setCareSheet(true)}
+            >
+              <div className="settings-item__icon" style={{ background: 'var(--clr-sage-soft)', color: 'var(--clr-sage)' }}><IconSend size={20} /></div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label">Share with family</div>
+                <div className="settings-item__desc">A link for a daughter or caretaker — no app needed</div>
+              </div>
+              <ChevronRight />
+            </div>
             <div className="settings-item" onClick={() => setCaretakerSheet(true)} role="button" tabIndex={0}>
               <div className="settings-item__icon"><IconHome size={20} /></div>
               <div style={{ flex: 1 }}>
@@ -368,6 +430,44 @@ export default function Settings() {
       </div>
 
       {/* Life stage sheet */}
+      <BottomSheet open={careSheet} onClose={() => setCareSheet(false)} title="Share with family">
+        <CareShares />
+      </BottomSheet>
+
+      <BottomSheet open={healthSheet} onClose={() => !savingHealth && setHealthSheet(false)} title="Health background">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', minHeight: '52dvh' }}>
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', lineHeight: 'var(--leading-snug)', textWrap: 'pretty' }}>
+            Conditions you already live with. Your doctor sees these on your chart, and your
+            period predictions widen to match anything that affects your cycle.
+          </p>
+          <ConditionPicker selected={conditions} onChange={setConditions} />
+          <button
+            className="btn btn--primary"
+            disabled={savingHealth}
+            onClick={async () => {
+              setSavingHealth(true);
+              dispatch({ type: 'SET_HEALTH', payload: { conditions } });
+              try {
+                await meApi.putHealth({
+                  conditions,
+                  allergies: state.health?.allergies ?? [],
+                  bloodGroup: state.health?.bloodGroup ?? null,
+                });
+                confirm();
+                toast('Health background updated', { icon: 'check' });
+                setHealthSheet(false);
+              } catch {
+                toast('Could not save that. Check your connection and try again.', { icon: 'warning' });
+              } finally {
+                setSavingHealth(false);
+              }
+            }}
+          >
+            {savingHealth ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </BottomSheet>
+
       <BottomSheet open={stageSheet} onClose={() => setStageSheet(false)} title="Change life stage">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
           {LIFE_STAGES.map(stage => (
@@ -480,7 +580,7 @@ export default function Settings() {
                   phone: contactPhone.trim(),
                   relation: contactRelation.trim(),
                 };
-                const newId = await addContact(newContact, phoneId);
+                const newId = await addContact(newContact);
                 const updated = [...sosContacts, { ...newContact, id: newId, userId: phoneId }];
                 dispatch({ type: 'SET_SOS_CONTACTS', payload: updated });
                 setContactSheet(false);

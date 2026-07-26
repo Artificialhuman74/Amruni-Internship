@@ -172,17 +172,51 @@ class JournalBody(BaseModel):
     date: str
     text: str
     tags: list[str] = []
+    # The mood captured on the entry's second step, and the cycle/pregnancy
+    # context the app derived at the time of writing. Context is snapshotted
+    # rather than recomputed on read: "week 22" has to still say week 22 when
+    # she reads the entry back in a year.
+    moodLogId: str | None = None
+    context: dict = {}
+    bringToAppointment: bool = False
 
 
-def _journal_json(row) -> dict:
+def _journal_json(row, mood: dict | None = None) -> dict:
     return {
         "id": row["id"],
         "date": row["date"],
         "text": row["text"],
         "tags": json.loads(row["tags"] or "[]"),
         "sharedAsPostId": row["shared_as_post_id"],
+        "moodLogId": row["mood_log_id"],
+        "mood": mood,
+        "context": json.loads(row["context"] or "{}"),
+        "bringToAppointment": bool(row["bring_to_appointment"]),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
+    }
+
+
+def _moods_for(db, rows) -> dict[str, dict]:
+    """Fetches the mood attached to each entry in one query, so a list of N
+    entries doesn't become N+1 round trips."""
+    ids = [r["mood_log_id"] for r in rows if r["mood_log_id"]]
+    if not ids:
+        return {}
+    placeholders = ",".join("?" * len(ids))
+    moods = db.execute(
+        f"SELECT * FROM mood_logs WHERE id IN ({placeholders})", ids
+    ).fetchall()
+    return {
+        m["id"]: {
+            "id": m["id"],
+            "valence": m["valence"],
+            "word": m["word"],
+            "factors": json.loads(m["factors"] or "[]"),
+            "scope": m["scope"],
+            "loggedAt": m["logged_at"],
+        }
+        for m in moods
     }
 
 
@@ -192,7 +226,8 @@ def list_journal(user: dict = Depends(current_user)):
         rows = db.execute(
             "SELECT * FROM journal_entries WHERE user_id = ? ORDER BY date DESC, created_at DESC", (user["id"],)
         ).fetchall()
-    return [_journal_json(r) for r in rows]
+        moods = _moods_for(db, rows)
+    return [_journal_json(r, moods.get(r["mood_log_id"])) for r in rows]
 
 
 @router.post("/journal", status_code=201)
@@ -202,11 +237,21 @@ def create_journal(body: JournalBody, user: dict = Depends(current_user)):
     with get_db() as db:
         validate_tags(body.tags, user["life_stage"])
         db.execute(
-            "INSERT INTO journal_entries (id, user_id, date, text, tags, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
-            (entry_id, user["id"], body.date, body.text, json.dumps(body.tags), now, now),
+            """INSERT INTO journal_entries
+                 (id, user_id, date, text, tags, mood_log_id, context, bring_to_appointment, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (entry_id, user["id"], body.date, body.text, json.dumps(body.tags),
+             body.moodLogId, json.dumps(body.context), int(body.bringToAppointment), now, now),
         )
+        # Back-link the mood so deleting the entry can take its mood with it.
+        if body.moodLogId:
+            db.execute(
+                "UPDATE mood_logs SET journal_id = ? WHERE id = ? AND user_id = ?",
+                (entry_id, body.moodLogId, user["id"]),
+            )
         row = db.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,)).fetchone()
-    return _journal_json(row)
+        moods = _moods_for(db, [row])
+    return _journal_json(row, moods.get(row["mood_log_id"]))
 
 
 @router.patch("/journal/{entry_id}")
@@ -219,21 +264,40 @@ def update_journal(entry_id: str, body: JournalBody, user: dict = Depends(curren
             raise HTTPException(404, "Journal entry not found.")
         validate_tags(body.tags, user["life_stage"])
         db.execute(
-            "UPDATE journal_entries SET date = ?, text = ?, tags = ?, updated_at = ? WHERE id = ?",
-            (body.date, body.text, json.dumps(body.tags), utcnow_iso(), entry_id),
+            """UPDATE journal_entries
+                 SET date = ?, text = ?, tags = ?, mood_log_id = ?, context = ?,
+                     bring_to_appointment = ?, updated_at = ?
+               WHERE id = ?""",
+            (body.date, body.text, json.dumps(body.tags), body.moodLogId,
+             json.dumps(body.context) if body.context else existing["context"],
+             int(body.bringToAppointment), utcnow_iso(), entry_id),
         )
+        if body.moodLogId:
+            db.execute(
+                "UPDATE mood_logs SET journal_id = ? WHERE id = ? AND user_id = ?",
+                (entry_id, body.moodLogId, user["id"]),
+            )
         row = db.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,)).fetchone()
-    return _journal_json(row)
+        moods = _moods_for(db, [row])
+    return _journal_json(row, moods.get(row["mood_log_id"]))
 
 
 @router.delete("/journal/{entry_id}")
 def delete_journal(entry_id: str, user: dict = Depends(current_user)):
     with get_db() as db:
         existing = db.execute(
-            "SELECT id FROM journal_entries WHERE id = ? AND user_id = ?", (entry_id, user["id"])
+            "SELECT * FROM journal_entries WHERE id = ? AND user_id = ?", (entry_id, user["id"])
         ).fetchone()
         if not existing:
             raise HTTPException(404, "Journal entry not found.")
+        # A moment logged *from* this entry belongs to it and goes with it. A
+        # day-scope mood is the day's own record and survives — she summarised
+        # her day, she didn't only do it because she was writing.
+        if existing["mood_log_id"]:
+            db.execute(
+                "DELETE FROM mood_logs WHERE id = ? AND user_id = ? AND source = 'journal' AND scope = 'moment'",
+                (existing["mood_log_id"], user["id"]),
+            )
         db.execute("DELETE FROM journal_entries WHERE id = ?", (entry_id,))
     return {"success": True}
 

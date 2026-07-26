@@ -107,7 +107,7 @@ export default function Telemedicine() {
         </p>
 
         {/* Specialty filter */}
-        <div style={{ display: 'flex', gap: 'var(--sp-2)', overflowX: 'auto', marginTop: 'var(--sp-4)', paddingBottom: 2, scrollbarWidth: 'none' }}>
+        <div style={{ display: 'flex', flexShrink: 0, gap: 'var(--sp-2)', overflowX: 'auto', marginTop: 'var(--sp-4)', paddingBottom: 2, scrollbarWidth: 'none' }}>
           {SPECIALTIES.map(s => (
             <button
               key={s}

@@ -197,8 +197,143 @@ CREATE TABLE IF NOT EXISTS journal_entries (
 );
 CREATE INDEX IF NOT EXISTS idx_journal_user ON journal_entries(user_id, date);
 
+-- State of Mind, modelled on the Apple Health split the check-in already
+-- borrows its mechanic from: a `day` entry summarises the whole day (one per
+-- date, upserted), while `moment` entries capture how she felt at a point in
+-- time (unlimited). `pregnancy_logs.mood` is kept as a mirror of the day-scope
+-- entry so the existing cycle/ML readers keep working unchanged.
+CREATE TABLE IF NOT EXISTS mood_logs (
+  id         TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  date       TEXT NOT NULL,                     -- YYYY-MM-DD, the user's local day
+  logged_at  TEXT NOT NULL,                     -- full local ISO timestamp
+  scope      TEXT NOT NULL DEFAULT 'moment',    -- moment | day
+  valence    INTEGER NOT NULL,                  -- -3..3
+  word       TEXT,
+  factors    TEXT NOT NULL DEFAULT '[]',
+  source     TEXT NOT NULL DEFAULT 'checkin',   -- checkin | journal | track
+  journal_id TEXT REFERENCES journal_entries(id) ON DELETE SET NULL,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_mood_user_date ON mood_logs(user_id, date);
+-- At most one day-scope entry per date; a re-log overwrites it (see routes_mood).
+CREATE UNIQUE INDEX IF NOT EXISTS idx_mood_user_day
+  ON mood_logs(user_id, date) WHERE scope = 'day';
+
 -- Stable per-user anonymous handle for the community, e.g. "VioletHarbor192".
 -- Allocated lazily on first community interaction, not at signup.
+-- Medicines she is actually on, and whether she is actually taking them.
+--
+-- A prescription written into a consultation record used to be the end of the
+-- line: she could read it inside that past appointment and nowhere else. These
+-- two tables are what turn it into something that follows her — a list, a
+-- schedule, and a record of what was taken.
+--
+-- `source` distinguishes a doctor's prescription from something she added
+-- herself (an iron tablet, a supplement). Prescribed rows carry `record_id` so
+-- a doctor editing the prescription updates her list instead of duplicating it.
+CREATE TABLE IF NOT EXISTS medications (
+  id          TEXT PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name        TEXT NOT NULL,
+  dose        TEXT,
+  frequency   TEXT,                              -- as written: "twice daily"
+  times       TEXT NOT NULL DEFAULT '[]',        -- ["08:00","20:00"] — the schedule
+  started_on  TEXT,
+  ends_on     TEXT,
+  source      TEXT NOT NULL DEFAULT 'self',      -- prescription | self
+  record_id   INTEGER REFERENCES consultation_records(id) ON DELETE SET NULL,
+  doctor_name TEXT,
+  active      INTEGER NOT NULL DEFAULT 1,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_meds_user ON medications(user_id, active);
+-- One row per prescribed medicine per record, so re-saving a record updates.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_meds_from_record
+  ON medications(user_id, record_id, name) WHERE record_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS medication_doses (
+  user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  medication_id TEXT NOT NULL REFERENCES medications(id) ON DELETE CASCADE,
+  date          TEXT NOT NULL,      -- YYYY-MM-DD, local
+  slot          TEXT NOT NULL,      -- the scheduled "HH:MM" this satisfies
+  taken_at      TEXT NOT NULL,
+  PRIMARY KEY (user_id, medication_id, date, slot)
+);
+CREATE INDEX IF NOT EXISTS idx_doses_user_date ON medication_doses(user_id, date);
+
+-- Emergency contacts and the alerts sent to them.
+--
+-- These lived in Firestore — the only feature in the product on a second
+-- backend, and one whose keys were never set in production, so adding a
+-- contact failed silently. The list the SOS button depends on is not somewhere
+-- to have a second database and a second failure mode.
+CREATE TABLE IF NOT EXISTS sos_contacts (
+  id         TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name       TEXT NOT NULL,
+  phone      TEXT NOT NULL,
+  relation   TEXT,
+  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sos_contacts_user ON sos_contacts(user_id);
+
+CREATE TABLE IF NOT EXISTS sos_alerts (
+  id         TEXT PRIMARY KEY,
+  user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  message    TEXT NOT NULL,
+  sent_to    TEXT NOT NULL DEFAULT '[]',
+  is_test    INTEGER NOT NULL DEFAULT 0,
+  timestamp  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_sos_alerts_user ON sos_alerts(user_id, timestamp);
+
+-- Care shares: a link a family member or caretaker can open.
+--
+-- The link carries an opaque random token, never the patient id. A URL with a
+-- row id in it is enumerable — /care/1, /care/2 — which would turn a
+-- convenience feature into a way to read strangers' medical records. The token
+-- resolves to `user_id` server-side and the id is never rendered anywhere.
+--
+-- Every share is scoped, expiring and revocable, because the thing being
+-- handed out is a key to someone's health record and none of those three are
+-- optional for that.
+CREATE TABLE IF NOT EXISTS care_shares (
+  token        TEXT PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  label        TEXT,                              -- "For my daughter"
+  scopes       TEXT NOT NULL DEFAULT '[]',        -- ["appointments","medicines"]
+  expires_at   TEXT,                              -- ISO; null = no expiry
+  revoked      INTEGER NOT NULL DEFAULT 0,
+  view_count   INTEGER NOT NULL DEFAULT 0,
+  last_viewed  TEXT,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_care_shares_user ON care_shares(user_id);
+
+-- The care ledger.
+--
+-- One chronological spine of everything anyone did to this health record —
+-- the patient and any caretaker holding a link, in the same thread, visible to
+-- both. That symmetry is the safety property: handing someone a key to your
+-- health record is only reasonable if you can see every door they opened.
+--
+-- It doubles as her notification feed. Events with actor='caretaker' and no
+-- read_at are what she has not yet been told about.
+CREATE TABLE IF NOT EXISTS care_events (
+  id           TEXT PRIMARY KEY,
+  user_id      INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  actor        TEXT NOT NULL,                     -- patient | caretaker
+  actor_label  TEXT,                              -- the share's label, e.g. "Priya"
+  share_token  TEXT REFERENCES care_shares(token) ON DELETE SET NULL,
+  kind         TEXT NOT NULL,                     -- booked | viewed | ...
+  summary      TEXT NOT NULL,
+  meta         TEXT NOT NULL DEFAULT '{}',
+  read_at      TEXT,
+  created_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_care_events_user ON care_events(user_id, created_at);
+
 CREATE TABLE IF NOT EXISTS anon_handles (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   handle  TEXT NOT NULL UNIQUE
@@ -339,6 +474,11 @@ def init_db():
         db.executescript(SCHEMA)
         _finish_pregnancy_state_migration(db)
         _ensure_column(db, "user_settings", "identity_warning_seen", "INTEGER NOT NULL DEFAULT 0")
+        # Journal entries gained a mood, an auto-captured body/cycle context and
+        # a "bring this to my next appointment" flag after the table shipped.
+        _ensure_column(db, "journal_entries", "mood_log_id", "TEXT")
+        _ensure_column(db, "journal_entries", "context", "TEXT NOT NULL DEFAULT '{}'")
+        _ensure_column(db, "journal_entries", "bring_to_appointment", "INTEGER NOT NULL DEFAULT 0")
         if db.execute("SELECT COUNT(*) AS n FROM doctors").fetchone()["n"] == 0:
             for d in SEED_DOCTORS:
                 db.execute(

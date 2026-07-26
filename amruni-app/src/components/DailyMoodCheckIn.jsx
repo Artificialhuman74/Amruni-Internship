@@ -1,159 +1,86 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
+import { useMood } from '../context/MoodContext';
 import { useToast } from './Toast';
-import { tap, confirm } from '../lib/haptics';
+import { tap } from '../lib/haptics';
 import MoodFlower, { BANDS } from './MoodFlower';
-import { IconClose, IconCheck } from '../icons.jsx';
+import MoodSheet from './MoodSheet';
 
 /**
- * Daily mood check-in, built on the Apple Health "State of Mind"
- * mechanic: choose a valence, name the feeling, then name what's driving it.
+ * The check-in on Home.
  *
- * Home carries only a quiet invitation. The choosing happens in a full-bleed
- * surface whose entire field — background, bloom, type colour, button — is
- * mixed from the valence, so the screen answers before the label does. That
- * whole-field response is the point of the reference, and it cannot be done
- * inside a card.
+ * It used to vanish for the rest of the day the moment she logged once, which
+ * quietly said a day holds one feeling. It doesn't. Now the card keeps its
+ * place and changes its offer: an invitation while the day is unlogged, a
+ * short account of the day so far once it isn't — with the way back in still
+ * on it.
  *
- * What's logged stays what the product already stores: a word, a valence, and
- * the factors behind it (persisted in the day's existing `symptoms` list).
+ * From late afternoon the primary action becomes summing the day up rather
+ * than catching a moment, because by then there is a day to have an opinion
+ * about.
  */
 
 const EXPO = [0.16, 1, 0.3, 1];
-const ORDER = [-3, -2, -1, 0, 1, 2, 3];
+const EVENING_HOUR = 17;
 
-const WORD_BANDS = {
-  '-3': ['Anxious about baby', 'Overwhelmed', 'Exhausted', 'Nauseous', 'Scared', 'Alone'],
-  '-2': ['Uncomfortable', 'Irritable', 'Drained', 'Achy', 'Worried', 'Restless'],
-  '-1': ['Tired', 'Uneasy', 'Sensitive', 'Low', 'Distracted', 'Impatient'],
-  '0': ['Calm', 'Steady', 'Quiet', 'Reflective', 'Unsure', 'Waiting'],
-  '1': ['Content', 'Hopeful', 'Relieved', 'Comfortable', 'Grateful', 'Rested'],
-  '2': ['Peaceful', 'Joyful', 'Connected', 'Energised', 'Glowing', 'Confident'],
-  '3': ['Radiant', 'Elated', 'Blessed', 'Amazed', 'Overjoyed', 'Powerful'],
-};
-
-// Grouped the way the reference groups them — body, people, life — so the eye
-// lands on a short list rather than one long wall of chips.
-const FACTOR_GROUPS = [
-  ['Health', 'Sleep', 'Energy', 'Body changes', 'Nausea', 'Pain'],
-  ['Baby', 'Partner', 'Family', 'Friends'],
-  ['Work', 'Money', 'Appointments', 'Travel', 'Weather'],
-];
+function timeLabel(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '';
+  return d.toLocaleTimeString('en-IN', { hour: 'numeric', minute: '2-digit' });
+}
 
 export default function DailyMoodCheckIn() {
-  const { state, dispatch } = useApp();
+  const { state } = useApp();
+  const { log, todaysDay, todaysMoments } = useMood();
   const toast = useToast();
+  const navigate = useNavigate();
   const reduce = useReducedMotion();
 
-  const today = new Date().toISOString().split('T')[0];
-  const alreadyLogged = !!state.pregnancy?.loggedDays?.[today]?.mood;
-  // Every woman gets the check-in, at every life stage — adolescent through
-  // elderly, pregnant or not. The only gate is whether today is already logged.
-  const gating = !alreadyLogged;
   const pregnancyMode = Boolean(state.settings?.pregnancyMode);
 
-  const [dismissed, setDismissed] = useState(false);
-  const [open, setOpen] = useState(false);
-  const [step, setStep] = useState(0); // 0 feel · 1 word · 2 factors
-  const [band, setBand] = useState(0);
-  const [word, setWord] = useState(null);
-  const [factors, setFactors] = useState([]);
+  const [sheet, setSheet] = useState(null);   // null | 'moment' | 'day'
+  const [saving, setSaving] = useState(false);
 
-  const trackRef = useRef(null);
-  const sliderRef = useRef(null);
-  const openerRef = useRef(null);
+  const logged = todaysMoments.length > 0 || !!todaysDay;
+  const evening = new Date().getHours() >= EVENING_HOUR;
+  // Offer the day summary once the day is mostly spent and she hasn't given
+  // one; otherwise the quick, low-cost action stays primary.
+  const primaryScope = evening && !todaysDay ? 'day' : 'moment';
 
-  const b = BANDS[String(band)];
-
-  // The sheet owns the screen while it's up: lock the page behind it, focus the
-  // control that matters, and let Escape out.
-  useEffect(() => {
-    if (!open) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    const onKey = (e) => { if (e.key === 'Escape') close(); };
-    window.addEventListener('keydown', onKey);
-    return () => {
-      document.body.style.overflow = prev;
-      window.removeEventListener('keydown', onKey);
-    };
-  }, [open]);
-
-  useEffect(() => {
-    if (open && step === 0) sliderRef.current?.focus();
-  }, [open, step]);
-
-  function launch() {
+  function open(scope) {
     tap();
-    setStep(0);
-    setWord(null);
-    setFactors([]);
-    setOpen(true);
+    setSheet(scope);
   }
 
-  function close() {
-    setOpen(false);
-    openerRef.current?.focus();
+  async function handleSave({ valence, word, factors, scope }) {
+    setSaving(true);
+    try {
+      await log({ valence, word, factors, scope, source: 'checkin' });
+      toast(
+        scope === 'day' ? 'Today is logged. Thank you.' : 'Logged. Thank you for sharing.',
+        { icon: 'heart' },
+      );
+      setSheet(null);
+    } catch {
+      toast('That didn’t save. Check your connection and try again.', { icon: 'warning' });
+    } finally {
+      setSaving(false);
+    }
   }
-
-  function bandFromClientX(clientX) {
-    const el = trackRef.current;
-    if (!el) return band;
-    const rect = el.getBoundingClientRect();
-    const frac = rect.width ? (clientX - rect.left) / rect.width : 0.5;
-    const idx = Math.round(Math.min(1, Math.max(0, frac)) * 6);
-    return ORDER[idx];
-  }
-
-  function setFromPointer(clientX) {
-    const next = bandFromClientX(clientX);
-    if (next !== band) { tap(); setBand(next); }
-  }
-
-  function onKeyDown(e) {
-    const i = ORDER.indexOf(band);
-    if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
-      e.preventDefault(); setBand(ORDER[Math.min(6, i + 1)]);
-    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
-      e.preventDefault(); setBand(ORDER[Math.max(0, i - 1)]);
-    } else if (e.key === 'Home') { e.preventDefault(); setBand(-3); }
-    else if (e.key === 'End') { e.preventDefault(); setBand(3); }
-  }
-
-  function toggleFactor(f) {
-    tap();
-    setFactors((prev) => (prev.includes(f) ? prev.filter((x) => x !== f) : [...prev, f]));
-  }
-
-  function finish() {
-    dispatch({
-      type: 'LOG_PREGNANCY_DAY',
-      date: today,
-      data: { mood: word, valence: band, symptoms: factors },
-    });
-    confirm();
-    toast('Logged. Thank you for sharing.', { icon: 'heart' });
-    setOpen(false);
-    setDismissed(true);
-  }
-
-  if (!gating && !dismissed) return null;
-  const visible = gating && !dismissed;
 
   return (
-    // The rose tint belongs to pregnancy mode; outside it the card keeps the
-    // ordinary brand accent for whatever life stage she's in.
     <div className={pregnancyMode ? 'preg-tint' : undefined}>
-      <AnimatePresence>
-        {visible && (
+      <AnimatePresence mode="wait" initial={false}>
+        {!logged ? (
           <motion.button
-            key="mood-entry"
-            ref={openerRef}
+            key="invite"
             type="button"
             className="mood-entry"
-            onClick={launch}
-            aria-label="Start today's mood check-in"
+            onClick={() => open(primaryScope)}
+            aria-label="Start today's check-in"
             initial={reduce ? { opacity: 0 } : { opacity: 0, y: 18, scale: 0.98 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={reduce ? { opacity: 0 } : { opacity: 0, y: -10, scale: 0.98 }}
@@ -163,207 +90,79 @@ export default function DailyMoodCheckIn() {
               <MoodFlower band={2} size={64} />
             </span>
             <span className="mood-entry__text">
-              <span className="mood-entry__eyebrow">Daily check-in</span>
-              <span className="mood-entry__title">How are you feeling today?</span>
+              <span className="mood-entry__eyebrow">Check in</span>
+              <span className="mood-entry__title">
+                {primaryScope === 'day' ? 'How has today felt?' : 'How are you feeling?'}
+              </span>
               <span className="mood-entry__hint">Takes about a minute</span>
             </span>
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="mood-entry__chev">
-              <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <Chevron />
           </motion.button>
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {open && (
+        ) : (
           <motion.div
-            key="mood-scrim"
-            className="mood-scrim"
-            aria-hidden="true"
-            onClick={close}
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: reduce ? 0.18 : 0.4, ease: EXPO }}
-          />
-        )}
-      </AnimatePresence>
-
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            className="mood-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label="Daily mood check-in"
-            initial={reduce ? { opacity: 0 } : { y: '100%' }}
-            animate={reduce ? { opacity: 1 } : { y: 0 }}
-            exit={reduce ? { opacity: 0 } : { y: '100%' }}
-            transition={{ duration: reduce ? 0.18 : 0.54, ease: EXPO }}
-            style={{ color: b.ink }}
+            key="logged"
+            className="mood-recap"
+            initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={reduce ? { opacity: 0 } : { opacity: 0, y: -8 }}
+            transition={{ duration: reduce ? 0.18 : 0.42, ease: EXPO }}
           >
-            {/* The field itself carries the answer — it re-mixes on every change. */}
-            <motion.div
-              className="mood-sheet__field"
-              aria-hidden="true"
-              animate={{ background: `linear-gradient(178deg, ${b.wash2} 0%, ${b.wash} 62%, ${b.wash} 100%)` }}
-              transition={{ duration: reduce ? 0 : 0.62, ease: EXPO }}
-            />
+            <button
+              type="button"
+              className="mood-recap__head"
+              onClick={() => navigate('/track')}
+              aria-label="See your mood log in Track"
+            >
+              <span className="mood-recap__bloom" aria-hidden="true">
+                <MoodFlower band={todaysDay?.valence ?? todaysMoments[0].valence} size={56} breathe={false} />
+              </span>
+              <span className="mood-entry__text">
+                <span className="mood-entry__eyebrow">
+                  {todaysDay ? 'Today, overall' : `Today · ${timeLabel(todaysMoments[0].loggedAt)}`}
+                </span>
+                <span className="mood-entry__title">
+                  {todaysDay?.word || todaysMoments[0].word
+                    || BANDS[String(todaysDay?.valence ?? todaysMoments[0].valence)].label}
+                </span>
+                <span className="mood-entry__hint">
+                  {todaysMoments.length > 0
+                    ? `${todaysMoments.length} moment${todaysMoments.length === 1 ? '' : 's'} logged today`
+                    : 'See your log'}
+                </span>
+              </span>
+              <Chevron />
+            </button>
 
-            <header className="mood-sheet__bar">
-              {step > 0 ? (
-                <button type="button" className="mood-sheet__circle" onClick={() => setStep(step - 1)} aria-label="Go back">
-                  <svg width="17" height="17" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                    <path d="M10 3l-5 5 5 5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                </button>
-              ) : <span className="mood-sheet__circle mood-sheet__circle--ghost" aria-hidden="true" />}
-
-              <span className="mood-sheet__bar-title">Daily check-in</span>
-
-              <button type="button" className="mood-sheet__circle" onClick={close} aria-label="Close check-in">
-                <IconClose size={17} strokeWidth={2} />
+            <div className="mood-recap__actions">
+              <button type="button" className="mood-recap__action" onClick={() => open('moment')}>
+                Log this moment
               </button>
-            </header>
-
-            <div className="mood-sheet__body">
-              <AnimatePresence mode="wait" initial={false}>
-                {step === 0 && (
-                  <motion.div
-                    key="feel"
-                    className="mood-step mood-step--feel"
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -16 }}
-                    transition={{ duration: reduce ? 0.15 : 0.34, ease: EXPO }}
-                  >
-                    <h2 className="mood-sheet__headline">Choose how you&rsquo;re feeling right now</h2>
-
-                    <div className="mood-step__stage">
-                      <MoodFlower band={band} size={250} />
-                    </div>
-
-                    <p className="mood-sheet__verdict" aria-hidden="true">{b.label}</p>
-
-                    <div className="mood-slider">
-                      <div
-                        ref={(el) => { trackRef.current = el; sliderRef.current = el; }}
-                        className="mood-slider__track"
-                        role="slider"
-                        tabIndex={0}
-                        aria-label="How you're feeling"
-                        aria-valuemin={-3}
-                        aria-valuemax={3}
-                        aria-valuenow={band}
-                        aria-valuetext={b.label}
-                        onKeyDown={onKeyDown}
-                        onPointerDown={(e) => { e.currentTarget.setPointerCapture(e.pointerId); setFromPointer(e.clientX); }}
-                        onPointerMove={(e) => { if (e.buttons) setFromPointer(e.clientX); }}
-                      >
-                        <span className="mood-slider__rail" aria-hidden="true">
-                          <motion.span
-                            className="mood-slider__thumb"
-                            animate={{ left: `${((band + 3) / 6) * 100}%` }}
-                            transition={{ duration: reduce ? 0 : 0.32, ease: EXPO }}
-                          />
-                        </span>
-                      </div>
-                      <div className="mood-slider__ends" aria-hidden="true">
-                        <span>Very Unpleasant</span>
-                        <span>Very Pleasant</span>
-                      </div>
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 1 && (
-                  <motion.div
-                    key="word"
-                    className="mood-step"
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -16 }}
-                    transition={{ duration: reduce ? 0.15 : 0.34, ease: EXPO }}
-                  >
-                    <div className="mood-step__crown">
-                      <MoodFlower band={band} size={112} breathe={false} />
-                      <p className="mood-sheet__verdict mood-sheet__verdict--sm">{b.label}</p>
-                    </div>
-
-                    <h3 className="mood-sheet__question">What best describes this feeling?</h3>
-                    <div className="mood-chips" role="group" aria-label={`Words for ${b.label}`}>
-                      {WORD_BANDS[String(band)].map((w) => (
-                        <button
-                          key={w}
-                          type="button"
-                          className={`mood-chip${word === w ? ' mood-chip--on' : ''}`}
-                          aria-pressed={word === w}
-                          onClick={() => { tap(); setWord(w); }}
-                          style={word === w ? { background: b.btn, borderColor: b.btn } : undefined}
-                        >
-                          {w}
-                        </button>
-                      ))}
-                    </div>
-                  </motion.div>
-                )}
-
-                {step === 2 && (
-                  <motion.div
-                    key="factors"
-                    className="mood-step"
-                    initial={reduce ? { opacity: 0 } : { opacity: 0, x: 16 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    exit={reduce ? { opacity: 0 } : { opacity: 0, x: -16 }}
-                    transition={{ duration: reduce ? 0.15 : 0.34, ease: EXPO }}
-                  >
-                    <div className="mood-step__crown">
-                      <MoodFlower band={band} size={112} breathe={false} />
-                      <p className="mood-sheet__verdict mood-sheet__verdict--sm">{word || b.label}</p>
-                    </div>
-
-                    <h3 className="mood-sheet__question">What&rsquo;s having the biggest impact on you?</h3>
-                    {FACTOR_GROUPS.map((group, gi) => (
-                      <div className="mood-chips" key={gi} role="group" aria-label={`Factor group ${gi + 1}`}>
-                        {group.map((f) => {
-                          const on = factors.includes(f);
-                          return (
-                            <button
-                              key={f}
-                              type="button"
-                              className={`mood-chip${on ? ' mood-chip--on' : ''}`}
-                              aria-pressed={on}
-                              onClick={() => toggleFactor(f)}
-                              style={on ? { background: b.btn, borderColor: b.btn } : undefined}
-                            >
-                              {on && <IconCheck size={14} />}
-                              {f}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ))}
-                    <p className="mood-sheet__optional">Optional — skip if nothing stands out.</p>
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {!todaysDay && (
+                <button type="button" className="mood-recap__action" onClick={() => open('day')}>
+                  Sum up today
+                </button>
+              )}
             </div>
-
-            <footer className="mood-sheet__foot">
-              <motion.button
-                type="button"
-                className="mood-sheet__cta"
-                onClick={() => (step === 2 ? finish() : setStep(step + 1))}
-                disabled={step === 1 && !word}
-                animate={{ backgroundColor: b.btn }}
-                transition={{ duration: reduce ? 0 : 0.5, ease: EXPO }}
-              >
-                {step === 2 ? 'Done' : 'Next'}
-              </motion.button>
-            </footer>
           </motion.div>
         )}
       </AnimatePresence>
+
+      <MoodSheet
+        open={sheet !== null}
+        scope={sheet ?? 'moment'}
+        pregnancyMode={pregnancyMode}
+        saving={saving}
+        onClose={() => !saving && setSheet(null)}
+        onSave={handleSave}
+      />
     </div>
+  );
+}
+
+function Chevron() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" className="mood-entry__chev">
+      <path d="M6 4l4 4-4 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

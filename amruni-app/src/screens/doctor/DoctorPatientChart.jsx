@@ -137,7 +137,7 @@ export default function DoctorPatientChart() {
     );
   }
 
-  const { patient, chart, vitalsHistory, records, documents } = data;
+  const { patient, chart, vitalsHistory, records, documents, sharedJournal = [] } = data;
   const latestVitals = vitalsHistory[vitalsHistory.length - 1] || null;
 
   return (
@@ -243,6 +243,45 @@ export default function DoctorPatientChart() {
           </p>
         )}
       </section>
+
+      {/* What the patient asked to raise. Above the record timeline on
+          purpose — this is the agenda for the visit about to happen, not
+          history. Only entries she flagged herself ever appear here. */}
+      {sharedJournal.length > 0 && (
+        <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Notes the patient wants to raise">
+          <h2 className="doc-section-title">
+            From the patient
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {' '}— {sharedJournal.length} note{sharedJournal.length === 1 ? '' : 's'} she chose to share
+            </span>
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+            {sharedJournal.map((entry) => (
+              <article key={entry.id} className="doc-shared">
+                <header className="doc-shared__head">
+                  <span className="doc-shared__date">{fmtDate(entry.date)}</span>
+                  {entry.mood && (
+                    <span className="doc-shared__mood">
+                      {entry.mood.word || `Mood ${entry.mood.valence > 0 ? '+' : ''}${entry.mood.valence}`}
+                      <span className="doc-shared__scale"> ({entry.mood.valence > 0 ? '+' : ''}{entry.mood.valence} of ±3)</span>
+                    </span>
+                  )}
+                </header>
+                <p className="doc-shared__text">{entry.text}</p>
+                {(entry.mood?.factors?.length > 0 || entry.context?.kind) && (
+                  <p className="doc-shared__meta">
+                    {[
+                      entry.context?.kind === 'pregnancy' ? `Week ${entry.context.weeks}` : null,
+                      entry.context?.kind === 'cycle' ? `Cycle day ${entry.context.cycleDay}` : null,
+                      entry.mood?.factors?.length ? entry.mood.factors.join(', ') : null,
+                    ].filter(Boolean).join(' \u00b7 ')}
+                  </p>
+                )}
+              </article>
+            ))}
+          </div>
+        </section>
+      )}
 
       {/* Records timeline */}
       <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Consultation records">

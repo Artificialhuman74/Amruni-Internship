@@ -16,7 +16,8 @@
     "build:all": "npm run build:patient && npm run build:doctor && npm run build:admin",
     "dev:doctor": "vite --mode doctor",
     "dev:admin": "vite --mode admin",
-    "typecheck": "tsc -p tsconfig.json"
+    "typecheck": "tsc -p tsconfig.json",
+    "dev:https": "HTTPS=1 vite"
   },
   "dependencies": {
     "axios": "^1.18.1",
@@ -33,6 +34,7 @@
     "@eslint/js": "^10.0.1",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-basic-ssl": "^2.3.0",
     "@vitejs/plugin-react": "^6.0.1",
     "concurrently": "^10.0.3",
     "eslint": "^10.3.0",

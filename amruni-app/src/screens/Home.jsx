@@ -6,6 +6,8 @@ import { PHASE_INFO } from '../data/mock';
 import { appointmentApi } from '../services/appointmentApi';
 import DoctorAvatar from '../components/DoctorAvatar';
 import DailyMoodCheckIn from '../components/DailyMoodCheckIn';
+import MedicinesCard from '../components/MedicinesCard';
+import CareActivityCard from '../components/CareActivityCard';
 import {
   IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
   IconPregnant, IconBaby, IconStar, IconCamellia, IconSprout, IconBlossom,
@@ -203,6 +205,18 @@ export default function Home() {
               <span className="quick-action__label">I Need Help</span>
             </button>
           </div>
+        </motion.div>
+
+        {/* Something a caretaker did. Renders nothing unless there is
+            something she has not been told about yet. */}
+        <motion.div variants={fadeUp}>
+          <CareActivityCard />
+        </motion.div>
+
+        {/* Medicines — renders nothing until she is actually on something,
+            so Home doesn't carry an empty pill card for most women. */}
+        <motion.div variants={fadeUp}>
+          <MedicinesCard />
         </motion.div>
 
         {/* Journal & Community */}

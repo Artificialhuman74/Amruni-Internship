@@ -15,10 +15,10 @@ export default function NameStep() {
 
   return (
     <div className="screen screen--light">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-6)' }}>
+      <div className="onb-page">
         <OnboardHeader step={1} onBack={() => navigate('/onboarding/privacy')} onSkip={next} />
 
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="onb-body">
           <motion.div
             initial={{ opacity: 0, y: 16 }}
             animate={{ opacity: 1, y: 0 }}
@@ -54,7 +54,7 @@ export default function NameStep() {
 }
 
 // Shared header: back chevron + step dots + skip.
-export function OnboardHeader({ step, total = 3, onBack, onSkip }) {
+export function OnboardHeader({ step, total = 4, onBack, onSkip }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', minHeight: 32 }}>
       {onBack ? (

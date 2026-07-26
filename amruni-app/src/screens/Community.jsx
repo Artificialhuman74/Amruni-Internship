@@ -122,7 +122,7 @@ export default function Community() {
 
   return (
     <div className="screen screen--light">
-      <div style={{ padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) var(--sp-8)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)', position: 'relative', minHeight: '100%' }}>
+      <div style={{ padding: 'calc(env(safe-area-inset-top) + var(--sp-5)) var(--sp-6) calc(var(--sp-8) + 76px)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)', position: 'relative', minHeight: '100%' }}>
 
         {/* Header */}
         <motion.div
@@ -141,7 +141,7 @@ export default function Community() {
           initial={reduce ? false : { opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.35, delay: 0.05, ease: [0.16, 1, 0.3, 1] }}
-          style={{ display: 'flex', gap: 'var(--sp-2)', overflowX: 'auto', paddingBottom: 2, marginLeft: 'calc(var(--sp-6) * -1)', marginRight: 'calc(var(--sp-6) * -1)', paddingLeft: 'var(--sp-6)', paddingRight: 'var(--sp-6)' }}
+          style={{ display: 'flex', flexShrink: 0, gap: 'var(--sp-2)', overflowX: 'auto', paddingBottom: 2, marginLeft: 'calc(var(--sp-6) * -1)', marginRight: 'calc(var(--sp-6) * -1)', paddingLeft: 'var(--sp-6)', paddingRight: 'var(--sp-6)' }}
         >
           <button
             type="button"
@@ -258,7 +258,7 @@ export default function Community() {
         style={{
           position: 'fixed',
           bottom: 'calc(var(--nav-height) + env(safe-area-inset-bottom) + var(--sp-4))',
-          right: 'max(var(--sp-5), calc((100vw - 430px) / 2 + var(--sp-5)))',
+          right: 'var(--col-inset)',
           width: 56, height: 56,
           borderRadius: 'var(--radius-full)',
           background: 'var(--clr-brand)',

@@ -16,6 +16,7 @@ from pydantic import BaseModel
 
 from . import auth
 from .auth import current_doctor
+from .routes_meds import sync_from_prescription
 from .db import (
     appointment_json, doctor_json, document_json, get_db, record_json,
     slot_json, utcnow_iso,
@@ -274,6 +275,13 @@ def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(cu
         row = db.execute(
             "SELECT * FROM consultation_records WHERE appointment_id = ?", (appointment_id,)
         ).fetchone()
+
+        # The prescription becomes medicines on her phone, with a schedule
+        # derived from the frequency written above. Without this the doctor's
+        # instructions end here — readable only inside this record, by someone
+        # who thinks to come looking for it.
+        sync_from_prescription(db, appt["user_id"], row["id"], prescription, doctor["name"])
+
         return record_json(row)
 
 
@@ -325,6 +333,32 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
             if any(str(v).strip() for v in vitals.values()):
                 vitals_history.append({"date": r["appt_date"], **vitals})
 
+        # Journal entries the patient explicitly flagged to bring to an
+        # appointment — and only those. The journal is private by construction;
+        # this endpoint is not a window into it. Two independent gates have to
+        # be open for a single entry to appear: the doctor must have an
+        # appointment with her (_require_relationship above), and she must have
+        # marked that specific entry herself. Nothing here is inferred, and
+        # unflagging an entry removes it immediately.
+        shared = db.execute(
+            """SELECT * FROM journal_entries
+               WHERE user_id = ? AND bring_to_appointment = 1
+               ORDER BY date DESC, created_at DESC""",
+            (user_id,),
+        ).fetchall()
+        mood_by_id = {}
+        mood_ids = [j["mood_log_id"] for j in shared if j["mood_log_id"]]
+        if mood_ids:
+            marks = ",".join("?" * len(mood_ids))
+            for m in db.execute(f"SELECT * FROM mood_logs WHERE id IN ({marks})", mood_ids).fetchall():
+                mood_by_id[m["id"]] = {
+                    "valence": m["valence"],
+                    "word": m["word"],
+                    "factors": json.loads(m["factors"] or "[]"),
+                    "scope": m["scope"],
+                    "loggedAt": m["logged_at"],
+                }
+
         return {
             "patient": _patient_summary(user),
             "chart": {
@@ -338,6 +372,16 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
                 for r in records
             ],
             "documents": [document_json(d) for d in documents],
+            "sharedJournal": [
+                {
+                    "id": j["id"],
+                    "date": j["date"],
+                    "text": j["text"],
+                    "mood": mood_by_id.get(j["mood_log_id"]),
+                    "context": json.loads(j["context"] or "{}"),
+                }
+                for j in shared
+            ],
         }
 
 

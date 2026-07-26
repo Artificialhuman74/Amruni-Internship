@@ -165,7 +165,7 @@ export default function BookAppointment() {
               {/* Date Selector — only dates the doctor actually opened */}
               <div style={{ marginBottom: 'var(--sp-6)' }}>
                 <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>Choose Date</h3>
-                <div style={{ display: 'flex', gap: 'var(--sp-2)', overflowX: 'auto', paddingBottom: 'var(--sp-2)', scrollbarWidth: 'none' }}>
+                <div style={{ display: 'flex', flexShrink: 0, gap: 'var(--sp-2)', overflowX: 'auto', paddingBottom: 'var(--sp-2)', scrollbarWidth: 'none' }}>
                   {dates.map((iso) => {
                     const d = dateLabel(iso);
                     const active = selectedDate === iso;

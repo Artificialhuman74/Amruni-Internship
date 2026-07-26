@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { cacheRead, cachedRead } from '../lib/offline';
 
 const TOKEN_KEY = 'amruni_token';
 const ADMIN_KEY = 'amruni_admin_token'; // sessionStorage: short-lived, per-tab
@@ -34,8 +35,17 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
+// Reads are cached by URL as they succeed, and served from that cache when the
+// network fails. Opening Track or the journal on a dead connection then shows
+// what she saw last time — stale, but hers — instead of an error page. Writes
+// are never served from cache; they go to the outbox (see lib/offline.js).
 api.interceptors.response.use(
-  (res) => res,
+  (res) => {
+    if ((res.config?.method ?? 'get').toLowerCase() === 'get' && res.config?.url) {
+      cacheRead(res.config.url, res.data);
+    }
+    return res;
+  },
   (err) => {
     // Expired/invalid session: drop the token so route guards send the user
     // back through the OTP flow. Auth endpoints handle their own 401s, and a
@@ -44,6 +54,24 @@ api.interceptors.response.use(
       if (err.config?.headers?.['X-Admin-Key']) setAdminToken(null);
       else setToken(null);
     }
+
+    // The network is gone, not the server saying no. If we've read this URL
+    // before, hand back what we had — a month-old cycle log she can still read
+    // beats a screen that says the app is broken.
+    const isRead = (err.config?.method ?? 'get').toLowerCase() === 'get';
+    if (isRead && !err.response && err.config?.url) {
+      const hit = cachedRead(err.config.url);
+      if (hit) {
+        return Promise.resolve({
+          data: hit.data,
+          status: 200,
+          config: err.config,
+          fromCache: true,
+          cachedAt: hit.at,
+        });
+      }
+    }
+
     return Promise.reject(err);
   }
 );
@@ -67,6 +95,7 @@ export const authApi = {
 };
 
 export const meApi = {
+  putHealth: async (health) => (await api.put('/me/health', health)).data,
   get: async () => (await api.get('/me')).data,
   patch: async (profile) => (await api.patch('/me', profile)).data,
   syncState: async (state) => (await api.put('/me/state', state)).data,
