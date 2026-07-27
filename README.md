@@ -11,21 +11,21 @@ The product is two packages:
 
 ## Getting started
 
-Requires Node 20.19.x, 22.13.x, or >=24 for the frontend and Python 3.11+ for the backend.
+Requires Node 20.19.x, 22.13.x, or >=24 for the frontend and Python 3.10+ for the backend.
 
 ```bash
 # terminal 1 — backend on :4000 (SQLite DB auto-created, doctors + demo slots seeded)
 cd server
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-.venv/bin/uvicorn app.main:app --port 4000 --reload
+.venv/bin/python3 -m src
 
 # terminal 2 — frontend on :5173 (Vite proxies /api to the backend)
 cd amruni-app && npm install && npm run dev
 ```
 
-Open the local URL Vite prints (default `http://localhost:5173/`). Other frontend scripts: `npm run build` (production build to `dist/`), `npm run preview`, `npm run lint`.
+Open the local URL Vite prints (default `http://localhost:5173/`). Other frontend scripts: `npm run build:all` (builds all patient, doctor, and admin targets), `npm run dev`, `npm run lint`.
 
-**OTP in development:** codes are randomly generated per request and expire in 5 minutes. Without an SMS gateway configured, the code is returned in the API response and shown on the OTP screen (and logged by the server). In production (`ENV=production`) codes are never exposed — wire an SMS provider into `send_sms()` in [server/app/auth.py](server/app/auth.py).
+**OTP in development:** codes are randomly generated per request and expire in 5 minutes. Without an SMS gateway configured, the code is returned in the API response and shown on the OTP screen (and logged by the server). In production (`ENV=production`) codes are never exposed — wire an SMS provider into `send_sms()` in `server/src/modules/auth/auth.py`.
 
 **Payments & Google Meet:** the payment provider defaults to a mock (instant success) so the full book → pay → meet-link flow runs out of the box; set Razorpay keys for real payments. Meet links come from the Google Calendar API when a service account is configured, with a dev fallback otherwise — see [server/README.md](server/README.md).
 
@@ -36,8 +36,8 @@ Open the local URL Vite prints (default `http://localhost:5173/`). Other fronten
 - **Telemedicine** — browse verified women's-health specialists, filter by specialty. Doctors publish priced availability slots; booking locks the slot, payment confirms it, and a Google Meet link is generated automatically. Chat consultations connect instantly over WhatsApp.
 - **Doctor console** (`/doctor`) — a practitioner-side app in the same column: OTP sign-in with the registered practice number, today's consultation queue with one-tap join, availability publishing, and a full E-medical-records system — per-consultation records (diagnosis, vitals, structured prescriptions, follow-ups), per-patient charts (allergies, conditions, vitals history), and lab/report document storage. Saving a record puts the real prescription on the patient's consultation summary.
 - **NIMHANS mental health** — "I need help" gateway to 24/7 support, PHQ-9 and GAD-7 screening tools, and an anonymous mode that hides identity from counsellors.
-- **Cycle & fertility tracking** — a Flo-style calendar with daily flow and symptom logging, backed by **ML predictions**: quantile gradient-boosting models (trained on the real FedCycle dataset, ~1.5-day median error on held-out women) give a period window with honest confidence ("13–16 Jul, most likely 14 Jul"), personalized from your own logged cycles. Plus symptom forecasting per phase, cycle history with regularity analysis, and personalized insight cards.
-- **PCOS risk self-check** — a short questionnaire behind a logistic-regression model trained on a clinical PCOS dataset (541 patients, AUC 0.88) returns a risk band with the factors that drove it, and routes higher-risk users into the doctor-booking flow. A second cycle-only model (AUC 0.82) passively surfaces the check when your logged cycle pattern warrants it. Educational screening, not a diagnosis. Patients can add PCOS to their own health record — which makes the cycle predictor **widen the period window** to match how PCOS cycles actually behave.
+- **Cycle & fertility tracking** — a Flo-style calendar with daily flow and symptom logging, backed by **ML predictions**: personalized from your own logged cycles. Plus symptom forecasting per phase, cycle history with regularity analysis, and personalized insight cards.
+- **PCOS risk self-check** — risk screening model trained on a clinical PCOS dataset (541 patients, AUC 0.88) returns a risk band with the factors that drove it, and routes higher-risk users into the doctor-booking flow. Educational screening, not a diagnosis.
 - **Pregnancy mode** — week-by-week progress, milestones, sharing with trusted contacts, and an emergency alert.
 - **Elderly care mode** — a caretaker-setup flow for a family member.
 - **Settings** — life-stage switching, notification and privacy controls.
@@ -45,49 +45,51 @@ Open the local URL Vite prints (default `http://localhost:5173/`). Other fronten
 ## Project structure
 
 ```
-server/app/
-├── main.py               # FastAPI assembly; serves dist/ in prod (SPA fallback)
-├── db.py                 # SQLite schema, doctor + demo-slot seed, serializers
-├── auth.py               # OTP issue/verify (hashed, expiring, rate-limited) + JWT deps
-├── meet.py               # Google Meet via Calendar API (service account) + dev fallback
-├── payments.py           # payment providers: mock (default) and Razorpay
-├── routes_auth.py · routes_me.py
-├── routes_doctors.py     # directory + availability slots (publish/list/delete)
-├── routes_bookings.py    # book slot → pay → confirm → meet link; appointments
-└── routes_doctor.py      # doctor console: queue, slots, EMR (records, charts, documents)
+server/src/
+├── main.py               # FastAPI router assembly and app setup
+├── __main__.py           # Programmatic Uvicorn runner (entrypoint)
+├── config/
+│   └── settings.py       # Configuration environment loading
+├── database/
+│   └── db.py             # SQLite connection and schema setup
+├── services/             # Integrations (meet.py, payments.py)
+└── modules/              # Domain-driven feature routes and controllers
+    ├── auth/             # OTP login and token validation
+    ├── bookings/         # Booking lifecycle and payments
+    ├── care/             # Caretaker sharing links
+    ├── community/        # Community discussions and thread posts
+    ├── doctor/           # Doctor listings, availability and EMR (records, charts)
+    ├── meds/             # Reminders and pill trackers
+    ├── ml/               # Period predictor autoregressive ML models
+    ├── mood/             # Mood checkins and log analytics
+    ├── pcos/             # Logistic regression risk screening model
+    └── sos/              # SOS contacts ledger and alerts
 
 amruni-app/src/
-├── main.jsx              # entry: Router + AppProvider + ToastProvider
-├── App.jsx               # routes and auth/onboarding guards
-├── index.css             # design tokens + component styles (single source of truth)
-├── context/
-│   └── AppContext.jsx    # global state (reducer), server hydration + debounced sync, cycle math
-├── services/
-│   ├── api.js            # axios client, JWT storage, auth + me endpoints
-│   ├── appointmentApi.js # doctors + appointments endpoints
-│   └── videoApi.js       # video room endpoints
-├── data/
-│   └── mock.js           # screening questions, life stages, symptoms (static content)
-├── components/
-│   ├── AppShell.jsx      # tab layout + bottom nav
-│   ├── BottomNav.jsx
-│   ├── BottomSheet.jsx   # modal bottom sheet (ARIA dialog)
-│   ├── CycleCalendar.jsx
-│   ├── OTPInput.jsx
-│   ├── SuccessCheck.jsx  # self-drawing confirmation checkmark
-│   └── Toast.jsx         # quiet confirmation toast (ToastProvider + useToast)
-├── lib/
-│   └── haptics.js        # tap / confirm / warn vibration intents
-└── screens/
-    ├── Splash.jsx        # animated camellia bloom
-    ├── PhoneEntry.jsx · OTPVerify.jsx
-    ├── LifeStage.jsx · ProfileSetup.jsx   # onboarding
-    ├── Home.jsx
-    ├── Telemedicine.jsx · MentalHealth.jsx
-    ├── CycleTracker.jsx · Pregnancy.jsx
-    ├── Settings.jsx
-    └── doctor/           # practitioner console (own OTP session, /doctor/*)
-        ├── DoctorLogin.jsx · DoctorShell.jsx   # auth + tab shell (Today/Schedule/Patients/Profile)
+├── app/
+│   ├── index.jsx         # App entrypoint (StrictMode + context wrappers)
+│   ├── routes/           # Core entry components: PatientApp, DoctorApp, AdminApp
+│   ├── providers/        # State context providers (AppContext, MoodContext, VideoContext)
+│   └── layouts/          # Layout frames: AppShell, BottomNav
+├── components/common/    # Reusable UI components (Logo, SuccessCheck, Toast, Icons, etc.)
+├── features/             # Domain-driven features (logic + views)
+│   ├── auth/             # Sign-in & onboarding screens
+│   ├── cycle-tracker/    # Cycle charts, trackers, calendar & checkins
+│   ├── pregnancy/        # Kick counter, bloom visualization, due date form
+│   ├── sos/              # SOS button, banner, alerts & contacts
+│   ├── telemedicine/     # Appointments, doctor today, schedule, charts, logs & video rooms
+│   ├── community/        # Discussion thread feeds & post composer
+│   ├── journal/          # Mood-correlated daily journal logs
+│   ├── medicines/        # Medical calendars & reminders
+│   ├── care/             # Caretaker viewing share link feeds
+│   ├── pcos/             # PCOS risk screening test questionnaire
+│   └── settings/         # Settings panel & profile config
+├── services/             # Firebase integration, service workers, offline support
+│   └── api/              # Axios API bindings (api.js, appointmentApi.js, doctorApi.js, etc.)
+├── utils/                # Helper libraries (haptics, lifecourse, site links)
+├── constants/            # Static datasets (mock metrics, PCOS screening forms)
+└── styles/               # CSS styles (index.css)
+```ile)
         ├── DoctorToday.jsx                     # queue, next-up card, join, stats
         ├── DoctorSchedule.jsx                  # publish priced availability
         ├── DoctorPatients.jsx · DoctorPatientChart.jsx  # EMR: flags, vitals, records, documents
