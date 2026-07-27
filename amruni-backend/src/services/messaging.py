@@ -1,15 +1,8 @@
-import os
 import logging
 from typing import List, Dict, Any
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
-
-logger = logging.getLogger(__name__)
-
-# Load Twilio config
-TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
-TWILIO_PHONE_NUMBER = os.getenv("TWILIO_PHONE_NUMBER")
+from ..config.settings import TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_PHONE_NUMBER, logger
 
 # Determine if we should mock (if credentials are not fully provided)
 should_mock = not (TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN and TWILIO_PHONE_NUMBER)
