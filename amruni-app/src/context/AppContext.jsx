@@ -26,6 +26,9 @@ const initialState = {
   health: { conditions: [], allergies: [], bloodGroup: null },
   settings: {
     notifications: true,
+    // Off by default and opt-in, except in pregnancy where the corridor is
+    // clinical guidance. See screens/Track.jsx for why.
+    weightTracking: false,
     anonymousMode: false,
     pregnancyMode: false,
     // How many times the community identity-exposure warning has been shown
