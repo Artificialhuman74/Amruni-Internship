@@ -38,3 +38,13 @@ server/data/pcos_model.joblib
 
 # build outputs per target
 amruni-app/dist/
+
+# Agent and prompt files
+.agents/
+.claude/
+.gemini/
+.antigravity/
+*AGENT.md
+*Agent.md
+*PROMPT.md
+*Prompt.md
