@@ -4,10 +4,10 @@ import { useState, useEffect } from 'react';
 import { useApp, useCycleData, usePregnancyData } from '../context/AppContext';
 import { PHASE_INFO } from '../data/mock';
 import { appointmentApi } from '../services/appointmentApi';
-import DoctorAvatar from '../components/DoctorAvatar';
-import DailyMoodCheckIn from '../components/DailyMoodCheckIn';
-import MedicinesCard from '../components/MedicinesCard';
-import CareActivityCard from '../components/CareActivityCard';
+import { DoctorAvatar } from '../components/features/telemedicine';
+import { DailyMoodCheckIn } from '../components/features/cycle-tracker';
+import { MedicinesCard } from '../components/features/care';
+import { CareActivityCard } from '../components/features/care';
 import {
   IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
   IconPregnant, IconBaby, IconStar, IconCamellia, IconSprout, IconBlossom,

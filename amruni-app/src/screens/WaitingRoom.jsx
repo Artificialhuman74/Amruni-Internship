@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { appointmentApi } from '../services/appointmentApi';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { confirm } from '../lib/haptics';
-import DoctorAvatar from '../components/DoctorAvatar';
+import { DoctorAvatar } from '../components/features/telemedicine';
 import { IconChat, IconVideo } from '../icons.jsx';
 
 export default function WaitingRoom() {

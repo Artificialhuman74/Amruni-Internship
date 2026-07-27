@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { doctorApi, doctorApiError } from '../../services/doctorApi';
-import { useToast } from '../../components/Toast';
+import { useToast } from '../../components/shared';
 import { IconLab, IconReport, IconScan, IconAttachment, IconAlert, IconClose } from '../../icons.jsx';
 
 const STAGE_LABEL = {

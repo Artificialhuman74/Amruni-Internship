@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useApp, useCycleData } from '../context/AppContext';
 import { meApi } from '../services/api';
-import CycleCalendar from '../components/CycleCalendar';
-import MoodLogSection from '../components/MoodLogSection';
-import BottomSheet from '../components/BottomSheet';
-import { useToast } from '../components/Toast';
+import { CycleCalendar } from '../components/features/cycle-tracker';
+import { MoodLogSection } from '../components/features/cycle-tracker';
+import { BottomSheet } from '../components/shared';
+import { useToast } from '../components/shared';
 import { tap, confirm } from '../lib/haptics';
 import { PHASE_INFO, CYCLE_SYMPTOMS } from '../data/mock';
 import {

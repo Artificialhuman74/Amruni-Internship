@@ -3,10 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { communityApi } from '../services/communityApi';
 import { apiError } from '../services/api';
-import { useToast } from '../components/Toast';
-import BottomSheet from '../components/BottomSheet';
-import CommunityPostCard from '../components/CommunityPostCard';
-import CommunityPostComposer from '../components/CommunityPostComposer';
+import { useToast } from '../components/shared';
+import { BottomSheet } from '../components/shared';
+import { CommunityPostCard } from '../components/features/community';
+import { CommunityPostComposer } from '../components/features/community';
 import { tap } from '../lib/haptics';
 import { IconHeart } from '../icons.jsx';
 

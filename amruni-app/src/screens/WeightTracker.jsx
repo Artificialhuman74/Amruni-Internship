@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useApp, usePregnancyData } from '../context/AppContext';
-import { useToast } from '../components/Toast';
-import BottomSheet from '../components/BottomSheet';
-import WeightCorridor from '../components/WeightCorridor';
+import { useToast } from '../components/shared';
+import { BottomSheet } from '../components/shared';
+import { WeightCorridor } from '../components/features/pregnancy';
 import {
   bmiFrom, bmiCategory, categoryLabel, gainCorridorBand,
   personalRange, trendOf, isPlausibleWeight, isPlausibleGain,

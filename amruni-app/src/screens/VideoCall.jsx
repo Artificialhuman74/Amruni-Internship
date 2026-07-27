@@ -2,11 +2,11 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { appointmentApi } from '../services/appointmentApi';
-import VideoPlayer from '../components/video/VideoPlayer';
-import Controls from '../components/video/Controls';
-import ChatPanel from '../components/video/ChatPanel';
-import CallTimer from '../components/video/CallTimer';
-import ConnectionStatus from '../components/video/ConnectionStatus';
+import { VideoPlayer } from '../components/features/telemedicine/video';
+import { Controls } from '../components/features/telemedicine/video';
+import { ChatPanel } from '../components/features/telemedicine/video';
+import { CallTimer } from '../components/features/telemedicine/video';
+import { ConnectionStatus } from '../components/features/telemedicine/video';
 
 export default function VideoCall() {
   const { appointmentId } = useParams();

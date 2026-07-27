@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { appointmentApi } from '../services/appointmentApi';
 import { authApi, getAdminToken, setAdminToken, apiError } from '../services/api';
 import { confirm } from '../lib/haptics';
-import DoctorAvatar from '../components/DoctorAvatar';
+import { DoctorAvatar } from '../components/features/telemedicine';
 import { patientAppHref } from '../lib/siteLinks';
 import {
   IconSettings, IconAlert, IconPlus, IconTip, IconMobile, IconCheckCircle,

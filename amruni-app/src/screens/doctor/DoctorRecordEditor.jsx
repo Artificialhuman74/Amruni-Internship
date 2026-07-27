@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { doctorApi, doctorApiError } from '../../services/doctorApi';
-import SuccessCheck from '../../components/SuccessCheck';
+import { SuccessCheck } from '../../components/shared';
 import { confirm as confirmHaptic } from '../../lib/haptics';
 
 const EMPTY_LINE = { name: '', dose: '', frequency: '', duration: '' };

@@ -2,7 +2,7 @@ import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';
 import { AppProvider } from './context/AppContext';
-import { ToastProvider } from './components/Toast';
+import { ToastProvider } from './components/shared';
 import './index.css';
 import { startOfflineSync } from './lib/offline';
 

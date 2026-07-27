@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { authApi, apiError, setToken } from '../services/api';
-import OTPInput from '../components/OTPInput';
-import SuccessCheck from '../components/SuccessCheck';
+import { OTPInput } from '../components/shared';
+import { SuccessCheck } from '../components/shared';
 import { confirm } from '../lib/haptics';
 
 const RESEND_SEC = 30;

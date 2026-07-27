@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { medsApi } from '../services/medsApi';
 import { apiError } from '../services/api';
-import { useToast } from '../components/Toast';
-import BottomSheet from '../components/BottomSheet';
+import { useToast } from '../components/shared';
+import { BottomSheet } from '../components/shared';
 import { tap, confirm as confirmHaptic } from '../lib/haptics';
 import { IconPill, IconCheck, IconStethoscope, IconPlus } from '../icons.jsx';
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
-import TrackSwitch from '../components/TrackSwitch';
+import { TrackSwitch } from '../components/shared';
 import CycleTracker from './CycleTracker';
 import Pregnancy from './Pregnancy';
 import WeightTracker from './WeightTracker';

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { meApi, apiError } from '../services/api';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/shared';
 import { tap, confirm as confirmHaptic } from '../lib/haptics';
 import { useSosLift } from '../lib/useSosLift';
 import { IconDaisy, IconCheck } from '../icons.jsx';

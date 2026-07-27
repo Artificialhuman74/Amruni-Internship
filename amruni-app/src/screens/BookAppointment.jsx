@@ -3,10 +3,10 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useVideoCall } from '../hooks/useVideoCall';
 import { appointmentApi } from '../services/appointmentApi';
 import { apiError } from '../services/api';
-import DoctorAvatar from '../components/DoctorAvatar';
+import { DoctorAvatar } from '../components/features/telemedicine';
 import { useSosLift } from '../lib/useSosLift';
-import BottomSheet from '../components/BottomSheet';
-import SuccessCheck from '../components/SuccessCheck';
+import { BottomSheet } from '../components/shared';
+import { SuccessCheck } from '../components/shared';
 import { confirm as confirmHaptic } from '../lib/haptics';
 import { IconChat, IconVideo } from '../icons.jsx';
 

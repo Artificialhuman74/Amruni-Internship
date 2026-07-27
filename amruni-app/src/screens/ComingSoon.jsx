@@ -1,6 +1,6 @@
 import { useLocation, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import CamelliaHero from '../components/CamelliaHero';
+import { CamelliaHero } from '../components/shared';
 import { GOALS } from '../lib/lifeStage';
 import { IconSprout } from '../icons.jsx';
 
