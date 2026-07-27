@@ -16,8 +16,7 @@ import HealthStep from '../screens/onboarding/HealthStep';
 import Home from '../screens/Home';
 import Telemedicine from '../screens/Telemedicine';
 import MentalHealth from '../screens/MentalHealth';
-import CycleTracker from '../screens/CycleTracker';
-import Pregnancy from '../screens/Pregnancy';
+import Track from '../screens/Track';
 import Settings from '../screens/Settings';
 import SOSCenter from '../screens/SOSCenter';
 import PcosCheck from '../screens/PcosCheck';
@@ -43,11 +42,6 @@ export default function PatientApp() {
   const { state } = useApp();
   const { isAuthenticated } = state.auth;
   const { isOnboarded } = state.user;
-
-  // Track shows the pregnancy journey only when pregnancy mode is on
-  // (set by the onboarding goal or the Profile toggle) — never inferred
-  // from life stage, which is what caused it to default to pregnancy.
-  const TrackScreen = state.settings.pregnancyMode ? Pregnancy : CycleTracker;
 
   return (
     <VideoProvider>
@@ -82,7 +76,7 @@ export default function PatientApp() {
               <Route path="/home" element={<Home />} />
               <Route path="/consult" element={<Telemedicine />} />
               <Route path="/help" element={<MentalHealth />} />
-              <Route path="/track" element={<TrackScreen />} />
+              <Route path="/track" element={<Track />} />
               <Route path="/sos" element={<SOSCenter />} />
               <Route path="/pcos-check" element={<PcosCheck />} />
               <Route path="/coming-soon" element={<ComingSoon />} />

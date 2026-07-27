@@ -21,12 +21,12 @@ export default function GoalsStep() {
     setSaving(true);
     confirmHaptic();
 
-    const { lifeStage, pregnancyMode } = resolveFromGoal(state.user.dob, selected);
+    const { lifeStage, pregnancyMode, weightTracking } = resolveFromGoal(state.user.dob, selected);
     const name = state.user.name?.trim() || null;
     const goal = GOALS.find((g) => g.id === selected);
 
     dispatch({ type: 'SET_USER', payload: { goal: selected, lifeStage, isOnboarded: true } });
-    dispatch({ type: 'SET_SETTINGS', payload: { pregnancyMode } });
+    dispatch({ type: 'SET_SETTINGS', payload: { pregnancyMode, weightTracking } });
 
     try {
       await meApi.patch({ name, dob: state.user.dob, lifeStage, isOnboarded: true });

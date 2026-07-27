@@ -3749,3 +3749,152 @@ button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
 .ca-card__go { flex-shrink: 0; color: var(--clr-sage); font-size: var(--text-lg); }
+
+/* ── Track switch ─────────────────────────────────────────────
+   One indicator that slides between segments rather than two
+   states that swap: the movement is what says these panes are
+   siblings in one place, not two screens that resemble each
+   other. */
+.trk__switch {
+  padding: calc(var(--safe-top) + var(--sp-4)) var(--sp-6) 0;
+  background: var(--clr-bg);
+}
+.tsw {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-full);
+  background: var(--clr-surface-2);
+  border: 1px solid var(--clr-border);
+}
+.tsw__seg {
+  position: relative;
+  flex: 1;
+  min-height: 42px;
+  padding: 0 var(--sp-3);
+  border: none;
+  background: none;
+  cursor: pointer;
+  border-radius: var(--radius-full);
+  color: var(--clr-ink-muted);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  transition: color var(--dur-fast) var(--ease-out);
+}
+.tsw__seg--on { color: var(--clr-ink); }
+.tsw__seg:focus-visible { outline: 2px solid var(--clr-brand); outline-offset: 2px; }
+.tsw__ind {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-full);
+  background: var(--clr-surface);
+  box-shadow: var(--shadow-sm);
+}
+.tsw__label { position: relative; z-index: 1; }
+
+/* The offer, shown once at the foot of her own screen rather than as a tab she
+   has to decline every day. */
+.tsw__offer {
+  margin: var(--sp-6) var(--sp-6) var(--sp-10);
+  padding: var(--sp-5);
+  text-align: center;
+  background: var(--clr-surface);
+  border: 1px dashed var(--clr-border);
+  border-radius: var(--radius-xl);
+}
+.tsw__offer-text {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  margin-bottom: var(--sp-2);
+}
+
+/* ── Weight ───────────────────────────────────────────────────
+   The corridor is the subject; the figure is deliberately small.
+   A weight screen that opens with a big number is the version
+   this product's own brief warns about. */
+.wt {
+  padding: var(--sp-5) var(--sp-6) var(--sp-10);
+  display: flex; flex-direction: column; gap: var(--sp-5);
+}
+.wt__lede {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.wt__trend { font-size: var(--text-sm); color: var(--clr-ink); line-height: var(--leading-base); text-wrap: pretty; }
+.wt__trend strong { color: var(--clr-brand); }
+
+/* An impossible gain is a typed mistake, so it reads as something to correct
+   rather than as a finding about her body. */
+.wt__flag {
+  width: 100%; text-align: left;
+  padding: var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--clr-warning-soft);
+  border: none; cursor: pointer;
+}
+.wt__flag-title { display: block; font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); }
+.wt__flag-body {
+  display: block; font-size: var(--text-xs); color: var(--clr-ink-muted);
+  margin-top: 2px; line-height: var(--leading-snug); text-wrap: pretty;
+}
+
+.wt__actions { display: flex; flex-direction: column; gap: var(--sp-2); }
+.wt__empty {
+  text-align: center; padding: var(--sp-8) var(--sp-5);
+  background: var(--clr-surface); border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+}
+.wt__empty-mark { color: var(--clr-brand); display: flex; justify-content: center; margin-bottom: var(--sp-3); }
+.wt__empty-title { font-size: var(--text-base); font-weight: 700; color: var(--clr-ink); margin-bottom: var(--sp-2); }
+.wt__empty-body { font-size: var(--text-sm); color: var(--clr-ink-muted); line-height: var(--leading-snug); text-wrap: pretty; }
+
+/* ── The corridor chart ── */
+.wc { display: flex; flex-direction: column; gap: var(--sp-3); }
+.wc__plot {
+  position: relative;
+  width: 100%;
+  border-radius: var(--radius-lg);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  overflow: hidden;
+  touch-action: pan-y;      /* horizontal drag scrubs; vertical still scrolls */
+  cursor: crosshair;
+}
+.wc__plot--scrubbing { cursor: grabbing; }
+.wc__svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+.wc__hair {
+  position: absolute;
+  top: 0; bottom: 0;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: var(--clr-ink);
+  opacity: 0.28;
+  pointer-events: none;
+}
+.wc__dots { position: absolute; inset: 0; pointer-events: none; }
+.wc__dot {
+  position: absolute;
+  width: 8px; height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: var(--radius-full);
+  background: var(--clr-brand);
+  box-shadow: 0 0 0 2px var(--clr-surface);
+}
+.wc__dot--on {
+  width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
+  box-shadow: 0 0 0 2px var(--clr-surface), 0 0 0 4px var(--clr-brand-muted);
+}
+
+/* Verdict first, figure second, and the figure is not the biggest thing here. */
+.wc__read { display: flex; align-items: baseline; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); }
+.wc__verdict { font-size: var(--text-sm); font-weight: 700; }
+.wc__verdict--inside { color: var(--clr-sage); }
+.wc__verdict--above, .wc__verdict--below { color: var(--clr-warning); }
+.wc__verdict--none { color: var(--clr-ink-muted); }
+.wc__figure { font-size: var(--text-md); font-weight: 600; color: var(--clr-ink); font-variant-numeric: tabular-nums; }
+.wc__when { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-left: auto; }
+.wc__hint { font-size: var(--text-xs); color: var(--clr-ink-subtle); }

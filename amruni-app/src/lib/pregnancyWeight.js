@@ -69,3 +69,91 @@ export function rollingAverage(weightLogs, windowSize = 3) {
     return { ...entry, rollingKg: avg };
   });
 }
+
+/* ─────────────────────────────────────────────────────────────
+   Weight outside pregnancy.
+
+   The pregnancy corridor above is a clinical instrument: IOM/ACOG say how
+   much a body *should* gain, by week, and being outside it is a finding worth
+   raising with a doctor.
+
+   Nothing equivalent exists for everyone else, and inventing one would be
+   worse than useless — a target weight aimed at a sixteen-year-old is the
+   thing this product's own brief warns about under "body image". So the
+   general corridor is not a goal. It is a band drawn around where she has
+   actually been: her own recent range. Staying inside it means steady, and
+   steady is the only thing being asserted.
+   ───────────────────────────────────────────────────────────── */
+
+/** A weight a human being can have. Anything outside this is a typo. */
+export const WEIGHT_MIN_KG = 20;
+export const WEIGHT_MAX_KG = 300;
+
+export function isPlausibleWeight(kg) {
+  return typeof kg === 'number' && Number.isFinite(kg) && kg >= WEIGHT_MIN_KG && kg <= WEIGHT_MAX_KG;
+}
+
+/**
+ * A gain no pregnancy produces. Used to catch a baseline that was entered
+ * wrong rather than a body that did something remarkable — a "-50 kg gain" is
+ * always a mistyped starting weight, and rendering it as a confident red
+ * number tells a pregnant woman something alarming and false.
+ */
+export const GAIN_MIN_KG = -15;
+export const GAIN_MAX_KG = 40;
+
+export function isPlausibleGain(kg) {
+  return typeof kg === 'number' && Number.isFinite(kg) && kg >= GAIN_MIN_KG && kg <= GAIN_MAX_KG;
+}
+
+/**
+ * Her own steady range, from her own logs: the median of the recent window,
+ * plus or minus a band that widens with how much she actually fluctuates.
+ *
+ * Median rather than mean, and a floor on the half-width, so one heavy day or
+ * one dehydrated morning neither moves the centre nor pinches the band shut
+ * and reports her as "out of range" for ordinary daily variation.
+ */
+export function personalRange(logs, { windowDays = 90, minHalfKg = 1.2 } = {}) {
+  const usable = (logs ?? [])
+    .filter((l) => isPlausibleWeight(l.weightKg))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (usable.length < 2) return null;
+
+  const cutoff = new Date(Date.now() - windowDays * 86400000).toISOString().slice(0, 10);
+  const recent = usable.filter((l) => l.date >= cutoff);
+  const sample = recent.length >= 2 ? recent : usable.slice(-8);
+
+  const values = sample.map((l) => l.weightKg).sort((a, b) => a - b);
+  const median = values.length % 2
+    ? values[(values.length - 1) / 2]
+    : (values[values.length / 2 - 1] + values[values.length / 2]) / 2;
+
+  // Median absolute deviation: robust to the one bad reading that a standard
+  // deviation would let dominate the whole band.
+  const deviations = values.map((v) => Math.abs(v - median)).sort((a, b) => a - b);
+  const mad = deviations.length % 2
+    ? deviations[(deviations.length - 1) / 2]
+    : (deviations[deviations.length / 2 - 1] + deviations[deviations.length / 2]) / 2;
+
+  const half = Math.max(minHalfKg, mad * 1.8);
+  return { low: median - half, high: median + half, median, samples: sample.length };
+}
+
+/** Which way it has been going, stated only when the run is long enough to mean it. */
+export function trendOf(logs, { minPoints = 3 } = {}) {
+  const usable = (logs ?? [])
+    .filter((l) => isPlausibleWeight(l.weightKg))
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .slice(-8);
+  if (usable.length < minPoints) return { id: 'new', label: 'Getting started' };
+
+  const first = usable[0].weightKg;
+  const last = usable[usable.length - 1].weightKg;
+  const delta = last - first;
+  // Under a kilo across the window is noise — clothes, water, time of day.
+  if (Math.abs(delta) < 1) return { id: 'steady', label: 'Steady', deltaKg: delta };
+  return delta > 0
+    ? { id: 'rising', label: 'Gently rising', deltaKg: delta }
+    : { id: 'falling', label: 'Gently falling', deltaKg: delta };
+}

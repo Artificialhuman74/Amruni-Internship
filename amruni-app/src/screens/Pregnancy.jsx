@@ -6,7 +6,6 @@ import BottomSheet from '../components/BottomSheet';
 import PregnancyDueDateForm from '../components/PregnancyDueDateForm';
 import PregnancySymptoms from '../components/PregnancySymptoms';
 import PregnancyKickCounter from '../components/PregnancyKickCounter';
-import PregnancyWeightTracker from '../components/PregnancyWeightTracker';
 import MoodLogSection from '../components/MoodLogSection';
 import { useToast } from '../components/Toast';
 import { confirm, warn } from '../lib/haptics';
@@ -225,9 +224,6 @@ export default function Pregnancy() {
 
         {/* Kick counter — only meaningful once movement is reliably felt */}
         {weeks >= 28 && <PregnancyKickCounter />}
-
-        {/* Weight tracker */}
-        <PregnancyWeightTracker weeks={weeks} />
 
         {/* Next milestone */}
         {nextMilestone && (

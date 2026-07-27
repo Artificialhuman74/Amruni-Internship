@@ -44,7 +44,7 @@ export const GOALS = [
   { id: 'menopause', Icon: IconCamellia, label: 'Menopause support', desc: 'Hormones, mood and bone health', stage: 'menopause' },
   { id: 'mental', Icon: IconWellness, label: 'Mental wellbeing', desc: 'Screening and quiet support' },
   { id: 'pcos', Icon: IconStethoscope, label: 'Manage PCOS / a condition', desc: 'Track signs, get a specialist' },
-  { id: 'weight', Icon: IconWeight, label: 'Manage my weight', desc: 'Track weight alongside your cycle', soon: true },
+  { id: 'weight', Icon: IconWeight, label: 'Manage my weight', desc: 'Track weight alongside your cycle', weightTracking: true },
   { id: 'sleep', Icon: IconSleep, label: 'Improve my sleep', desc: 'See how rest moves with your hormones', soon: true },
   { id: 'body', Icon: IconGuide, label: 'Understand my body', desc: 'Learn your patterns and what’s normal', soon: true },
   { id: 'caretaker', Icon: IconHome, label: 'Set up for a family member', desc: 'Appointments and care, on their behalf', stage: 'elderly' },
@@ -57,5 +57,8 @@ export function resolveFromGoal(dob, goalId) {
   return {
     lifeStage: goal?.stage || base,
     pregnancyMode: !!goal?.pregnancyMode,
+    // Choosing "Manage my weight" is itself the opt-in — she asked for it, so
+    // Track shows the switch without asking a second time.
+    weightTracking: !!goal?.weightTracking,
   };
 }
