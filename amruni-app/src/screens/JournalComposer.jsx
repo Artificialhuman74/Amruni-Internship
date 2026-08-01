@@ -8,7 +8,8 @@ import { communityApi } from '../services/communityApi';
 import { apiError } from '../services/api';
 import { useToast } from '../components/Toast';
 import MoodSheet from '../components/MoodSheet';
-import MoodFlower, { BANDS } from '../components/MoodFlower';
+import MoodFlower from '../components/MoodFlower';
+import { BANDS } from '../lib/moodScale';
 import { captureContext } from '../lib/journalContext';
 import { promptsFor } from '../lib/journalPrompts';
 import { captureWeather, weatherForEntry, weatherLine, weatherError } from '../lib/weather';
@@ -178,11 +179,11 @@ export default function JournalComposer() {
     navigate('/journal');
   }
 
-  async function handleMoodSave({ valence, word, factors }) {
+  async function handleMoodSave({ valence, intensity, word, factors }) {
     setSavingMood(true);
     try {
       const created = await log({
-        valence, word, factors, scope: 'moment', source: 'journal', date,
+        valence, intensity, word, factors, scope: 'moment', source: 'journal', date,
       });
       setAttachedMood(created);
       setMoodSheet(false);

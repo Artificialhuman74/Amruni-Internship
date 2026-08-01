@@ -19,6 +19,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import current_user
+from . import crypto
 from .db import get_db, new_id, utcnow_iso
 
 router = APIRouter()
@@ -93,6 +94,17 @@ def sync_from_prescription(db, user_id: int, record_id: int, prescription: list[
     """
     today = date.today()
     seen = []
+    # Names are encrypted with a fresh nonce each time, so the same medicine
+    # written twice produces two different ciphertexts and no SQL predicate can
+    # match them. The rows for one record are a handful, so they are read once
+    # and matched in Python — without this, every re-save of a prescription
+    # would silently duplicate her whole medicine list.
+    existing_rows = db.execute(
+        "SELECT id, name, times FROM medications WHERE user_id = ? AND record_id = ?",
+        (user_id, record_id),
+    ).fetchall()
+    by_name = {crypto.dec(r["name"]): r for r in existing_rows}
+
     for item in prescription or []:
         name = (item.get("name") or "").strip()
         if not name:
@@ -100,15 +112,13 @@ def sync_from_prescription(db, user_id: int, record_id: int, prescription: list[
         seen.append(name)
         times = json.dumps(times_from_frequency(item.get("frequency")))
         ends = end_date_from_duration(item.get("duration"), today)
-        existing = db.execute(
-            "SELECT id, times FROM medications WHERE user_id = ? AND record_id = ? AND name = ?",
-            (user_id, record_id, name),
-        ).fetchone()
+        existing = by_name.get(name)
         if existing:
             db.execute(
                 """UPDATE medications SET dose = ?, frequency = ?, ends_on = ?,
                        doctor_name = ?, active = 1 WHERE id = ?""",
-                (item.get("dose"), item.get("frequency"), ends, doctor_name, existing["id"]),
+                (crypto.enc(item.get("dose")), crypto.enc(item.get("frequency")), ends,
+                 crypto.enc(doctor_name), existing["id"]),
             )
         else:
             db.execute(
@@ -116,22 +126,16 @@ def sync_from_prescription(db, user_id: int, record_id: int, prescription: list[
                      (id, user_id, name, dose, frequency, times, started_on, ends_on,
                       source, record_id, doctor_name, active)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'prescription', ?, ?, 1)""",
-                (new_id("med"), user_id, name, item.get("dose"), item.get("frequency"),
-                 times, today.isoformat(), ends, record_id, doctor_name),
+                (new_id("med"), user_id, crypto.enc(name), crypto.enc(item.get("dose")),
+                 crypto.enc(item.get("frequency")), times, today.isoformat(), ends,
+                 record_id, crypto.enc(doctor_name)),
             )
 
-    if seen:
-        marks = ",".join("?" * len(seen))
-        db.execute(
-            f"""UPDATE medications SET active = 0
-                WHERE user_id = ? AND record_id = ? AND name NOT IN ({marks})""",
-            (user_id, record_id, *seen),
-        )
-    else:
-        db.execute(
-            "UPDATE medications SET active = 0 WHERE user_id = ? AND record_id = ?",
-            (user_id, record_id),
-        )
+    # Same reason: "which rows are no longer prescribed" is decided on decrypted
+    # names, then applied by id.
+    dropped = [r["id"] for plain, r in by_name.items() if plain not in seen]
+    for med_id in dropped:
+        db.execute("UPDATE medications SET active = 0 WHERE id = ?", (med_id,))
 
 
 # ---------- shapes ----------
@@ -154,14 +158,14 @@ def _med_json(row, taken_slots: set[tuple[str, str]] | None = None, today: str |
     times = json.loads(row["times"] or "[]")
     out = {
         "id": row["id"],
-        "name": row["name"],
-        "dose": row["dose"],
-        "frequency": row["frequency"],
+        "name": crypto.dec(row["name"]),
+        "dose": crypto.dec(row["dose"]),
+        "frequency": crypto.dec(row["frequency"]),
         "times": times,
         "startedOn": row["started_on"],
         "endsOn": row["ends_on"],
         "source": row["source"],
-        "doctorName": row["doctor_name"],
+        "doctorName": crypto.dec(row["doctor_name"]),
         "active": bool(row["active"]),
     }
     if taken_slots is not None and today:
@@ -236,8 +240,9 @@ def add_medication(body: MedBody, user: dict = Depends(current_user)):
             """INSERT INTO medications
                  (id, user_id, name, dose, frequency, times, started_on, ends_on, source, active)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'self', 1)""",
-            (med_id, user["id"], body.name.strip(), body.dose, body.frequency,
-             json.dumps(times), body.startedOn or date.today().isoformat(), body.endsOn),
+            (med_id, user["id"], crypto.enc(body.name.strip()), crypto.enc(body.dose),
+             crypto.enc(body.frequency), json.dumps(times),
+             body.startedOn or date.today().isoformat(), body.endsOn),
         )
         row = db.execute("SELECT * FROM medications WHERE id = ?", (med_id,)).fetchone()
     return _med_json(row)
@@ -254,7 +259,8 @@ def update_medication(med_id: str, body: MedBody, user: dict = Depends(current_u
         db.execute(
             """UPDATE medications SET name = ?, dose = ?, frequency = ?, times = ?,
                    started_on = ?, ends_on = ? WHERE id = ?""",
-            (body.name.strip() or existing["name"], body.dose, body.frequency,
+            (crypto.enc(body.name.strip() or crypto.dec(existing["name"])), crypto.enc(body.dose),
+             crypto.enc(body.frequency),
              json.dumps(body.times or json.loads(existing["times"] or "[]")),
              body.startedOn or existing["started_on"], body.endsOn, med_id),
         )
@@ -305,51 +311,103 @@ def undo_dose(med_id: str, date: str, slot: str, user: dict = Depends(current_us
     return {"success": True}
 
 
-@router.get("/me/medications/adherence")
-def adherence(days: int = 14, user: dict = Depends(current_user)):
+def adherence_summary(db, user_id: int, days: int = 14) -> dict:
     """Doses taken against doses scheduled, over the last `days` days.
 
     Only counts days a medicine was actually running, so starting a course
-    yesterday doesn't report two weeks of failure.
+    yesterday doesn't report two weeks of failure. `byMedication` carries the
+    same arithmetic per medicine — an overall percentage hides the case that
+    actually matters clinically, which is one medicine being skipped while the
+    rest are taken.
     """
     days = max(1, min(90, days))
     today = date.today()
+    today_iso = today.isoformat()
+    now_hhmm = datetime.now().strftime("%H:%M")
     since = today - timedelta(days=days - 1)
-    with get_db() as db:
-        meds = db.execute(
-            "SELECT * FROM medications WHERE user_id = ?", (user["id"],)
-        ).fetchall()
-        doses = db.execute(
-            "SELECT medication_id, date, slot FROM medication_doses WHERE user_id = ? AND date >= ?",
-            (user["id"], since.isoformat()),
-        ).fetchall()
+
+    meds = db.execute("SELECT * FROM medications WHERE user_id = ?", (user_id,)).fetchall()
+    doses = db.execute(
+        "SELECT medication_id, date, slot FROM medication_doses WHERE user_id = ? AND date >= ?",
+        (user_id, since.isoformat()),
+    ).fetchall()
 
     taken = {(d["medication_id"], d["date"], d["slot"]) for d in doses}
+    per_med = {m["id"]: {"scheduled": 0, "taken": 0} for m in meds}
     scheduled = 0
     done = 0
     for offset in range(days):
-        day = since + timedelta(days=offset)
-        iso = day.isoformat()
+        iso = (since + timedelta(days=offset)).isoformat()
         for m in meds:
             start = m["started_on"]
             if start and iso < start:
                 continue
             if m["ends_on"] and iso > m["ends_on"]:
                 continue
-            if not m["active"] and iso == today.isoformat():
+            if not m["active"] and iso == today_iso:
                 continue
             for slot in json.loads(m["times"] or "[]"):
                 # Today's later doses aren't late yet — counting them as missed
                 # would show a falling score every morning.
-                if iso == today.isoformat() and slot > datetime.now().strftime("%H:%M"):
+                if iso == today_iso and slot > now_hhmm:
                     continue
                 scheduled += 1
+                per_med[m["id"]]["scheduled"] += 1
                 if (m["id"], iso, slot) in taken:
                     done += 1
+                    per_med[m["id"]]["taken"] += 1
 
     return {
         "days": days,
         "scheduled": scheduled,
         "taken": done,
         "rate": round(done / scheduled, 3) if scheduled else None,
+        "byMedication": per_med,
     }
+
+
+def medication_history(db, user_id: int, days: int = 14) -> dict:
+    """Her whole medicine history, for a clinician reading the chart.
+
+    Everything she is on and everything she has been on — including medicines
+    another doctor prescribed and ones she started herself. A list that only
+    showed this doctor's own prescriptions would be the more private answer and
+    the more dangerous one: the interaction you miss is with the drug you never
+    knew about.
+
+    Each row says where it came from and who wrote it, because "she is on
+    metformin" and "someone prescribed her metformin" are different facts, and
+    only one of them should be trusted without asking.
+    """
+    today = date.today()
+    rows = db.execute(
+        """SELECT * FROM medications WHERE user_id = ?
+           ORDER BY active DESC, started_on DESC, created_at DESC""",
+        (user_id,),
+    ).fetchall()
+    adherence = adherence_summary(db, user_id, days)
+    per_med = adherence["byMedication"]
+
+    def shape(row) -> dict:
+        counts = per_med.get(row["id"], {"scheduled": 0, "taken": 0})
+        return {
+            **_med_json(row),
+            # Doses recorded, not a grade. The doctor is given the two numbers
+            # rather than a percentage so a course that ran three days isn't
+            # read with the same weight as one that ran three weeks.
+            "adherence": counts if counts["scheduled"] else None,
+        }
+
+    current = [shape(r) for r in rows if _is_current(r, today)]
+    past = [shape(r) for r in rows if not _is_current(r, today)]
+    return {
+        "current": current,
+        "past": past,
+        "adherence": {k: adherence[k] for k in ("days", "scheduled", "taken", "rate")},
+    }
+
+
+@router.get("/me/medications/adherence")
+def adherence(days: int = 14, user: dict = Depends(current_user)):
+    with get_db() as db:
+        return adherence_summary(db, user["id"], days)

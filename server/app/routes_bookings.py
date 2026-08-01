@@ -34,6 +34,8 @@ class BookingBody(BaseModel):
     doctorId: int | None = None    # required for chat
     mode: str = "video"
     reason: str | None = None
+    # Honoured only for Mental Health doctors — see the note in create_booking.
+    anonymous: bool = False
 
 
 class ConfirmBody(BaseModel):
@@ -94,11 +96,22 @@ def create_booking(body: BookingBody, user: dict = Depends(current_user)):
             doctor_id, amount = doctor["id"], doctor["chat_fee_inr"]
             appt_date, appt_time, slot_id = date.today().isoformat(), "Instant", None
 
+        # Anonymity is confined to mental health, which is the only place the
+        # product ever offered it and the only place it is safe. A woman hiding
+        # her identity from a gynaecologist about to prescribe for her is not a
+        # privacy feature, so asking for it anywhere else is quietly ignored
+        # rather than honoured — and `anonymous` in the response tells the app
+        # exactly what it got, so the screen can never claim more than happened.
+        specialty = db.execute(
+            "SELECT specialty FROM doctors WHERE id = ?", (doctor_id,)
+        ).fetchone()
+        anonymous = int(bool(body.anonymous) and specialty and specialty["specialty"] == "Mental Health")
+
         appt_id = new_id("apt")
         db.execute(
-            """INSERT INTO appointments (id, user_id, doctor_id, slot_id, date, time, reason, consult_mode, amount_inr, status)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment')""",
-            (appt_id, user["id"], doctor_id, slot_id, appt_date, appt_time, body.reason, body.mode, amount),
+            """INSERT INTO appointments (id, user_id, doctor_id, slot_id, date, time, reason, consult_mode, amount_inr, status, anonymous)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?)""",
+            (appt_id, user["id"], doctor_id, slot_id, appt_date, appt_time, body.reason, body.mode, amount, anonymous),
         )
 
         order = payments.create_order(amount, receipt=appt_id)
@@ -112,6 +125,7 @@ def create_booking(body: BookingBody, user: dict = Depends(current_user)):
 
         return {
             "appointmentId": appt_id,
+            "anonymous": bool(anonymous),
             "payment": {**payment_json(payment), "keyId": order.get("key_id")},
         }
 

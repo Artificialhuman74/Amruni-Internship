@@ -5,12 +5,16 @@ import SOSButton from './SOSButton';
 import SOSBanner from './SOSBanner';
 import { useApp } from '../context/AppContext';
 import { useSosDock } from '../lib/useSosDock';
+import { useFertileAlerts } from '../lib/useFertileAlerts';
 
 export default function AppShell() {
   const location = useLocation();
   const navigate = useNavigate();
   const { state } = useApp();
   const { lifeStage } = state.user;
+
+  // Two moments a cycle, if she asked for them. No-ops for everyone else.
+  useFertileAlerts(state);
 
   const { dockState, place } = useSosDock();
   // Both lifted, because the bar has to react while the button is still in

@@ -8,6 +8,8 @@ import json
 import os
 import sqlite3
 import secrets
+
+from . import crypto
 from contextlib import contextmanager
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -137,7 +139,10 @@ CREATE TABLE IF NOT EXISTS pregnancy_logs (
 CREATE TABLE IF NOT EXISTS user_settings (
   user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   notifications  INTEGER NOT NULL DEFAULT 1,
-  anonymous_mode INTEGER NOT NULL DEFAULT 0
+  -- On by default. It costs a counsellor nothing to know her as a handle, and
+  -- the woman most likely to need this is the one least likely to go looking
+  -- through Settings for it before her first session.
+  anonymous_mode INTEGER NOT NULL DEFAULT 1
 );
 
 CREATE TABLE IF NOT EXISTS consultation_records (
@@ -474,11 +479,37 @@ def init_db():
         db.executescript(SCHEMA)
         _finish_pregnancy_state_migration(db)
         _ensure_column(db, "user_settings", "identity_warning_seen", "INTEGER NOT NULL DEFAULT 0")
+        # Two modes she turns on herself. They lived only in localStorage,
+        # which meant a reinstall or a second device silently forgot them —
+        # and one of them decides whether her phone notifies her about her
+        # fertile window, which is not a preference to lose quietly.
+        _ensure_column(db, "user_settings", "weight_tracking", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, "user_settings", "conceive_mode", "INTEGER NOT NULL DEFAULT 0")
+        _ensure_column(db, "user_settings", "pregnancy_mode", "INTEGER NOT NULL DEFAULT 0")
+        # A consultation she booked without her name attached. See routes_doctor:
+        # an anonymous appointment shows the doctor a handle, carries no phone
+        # number, and does not open her chart.
+        _ensure_column(db, "appointments", "anonymous", "INTEGER NOT NULL DEFAULT 0")
+        # Who ticked a dose. NULL means she did; a share token means a caretaker
+        # holding her link did, and the difference belongs in the record rather
+        # than quietly inside one adherence number.
+        _ensure_column(db, "medication_doses", "taken_by", "TEXT")
+        # Her phone is stored encrypted like everything else that names her, so
+        # sign-in cannot look it up directly. This is the deterministic index it
+        # looks up instead — see app/crypto.blind_index.
+        _ensure_column(db, "users", "phone_bidx", "TEXT")
+        db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_bidx ON users(phone_bidx) WHERE phone_bidx IS NOT NULL")
+        encrypt_existing_rows(db)
         # Journal entries gained a mood, an auto-captured body/cycle context and
         # a "bring this to my next appointment" flag after the table shipped.
         _ensure_column(db, "journal_entries", "mood_log_id", "TEXT")
         _ensure_column(db, "journal_entries", "context", "TEXT NOT NULL DEFAULT '{}'")
         _ensure_column(db, "journal_entries", "bring_to_appointment", "INTEGER NOT NULL DEFAULT 0")
+        # Where on the −3…3 scale she actually stopped, as opposed to the named
+        # band it rounds to. `valence` stays the integer every reader already
+        # speaks; this is the finer grain the slider now offers, kept so
+        # reopening an entry returns her thumb to where she left it.
+        _ensure_column(db, "mood_logs", "intensity", "REAL")
         if db.execute("SELECT COUNT(*) AS n FROM doctors").fetchone()["n"] == 0:
             for d in SEED_DOCTORS:
                 db.execute(
@@ -488,6 +519,61 @@ def init_db():
                      d["phone"], json.dumps(d["lang"]), d["photo"], d["rating"], d["reviews"]),
                 )
         seed_slots(db)
+
+
+# Which columns hold something that names her or describes her body. Anything
+# not listed is a date, a status, a foreign key or a number — the scaffolding a
+# database needs to answer a query at all, and none of it identifies her on its
+# own.
+ENCRYPTED_COLUMNS = {
+    "users": ["name", "dob", "phone"],
+    "patient_charts": ["allergies", "conditions", "blood_group"],
+    "consultation_records": ["diagnosis", "notes", "vitals", "prescription"],
+    "journal_entries": ["text", "context"],
+    "mood_logs": ["word", "factors"],
+    "pregnancy_logs": ["mood", "symptoms"],
+    "cycle_logs": ["symptoms"],
+    "medications": ["name", "dose", "frequency", "doctor_name"],
+    "sos_contacts": ["name", "phone", "relation"],
+    "sos_alerts": ["message"],
+    "documents": ["title", "data"],
+    "care_shares": ["label"],
+    "care_events": ["summary", "actor_label"],
+}
+
+
+def encrypt_existing_rows(db: sqlite3.Connection):
+    """Encrypts anything still sitting in plaintext, once.
+
+    Runs on every boot and is cheap after the first, because `crypto.enc`
+    returns an already-encrypted value untouched and the WHERE clause skips
+    rows that are done. A database created before this module existed is full
+    of plaintext, and a deploy that encrypted only new writes would leave the
+    oldest and most complete records — the ones worth stealing — readable.
+    """
+    for table, columns in ENCRYPTED_COLUMNS.items():
+        present = {r["name"] for r in db.execute(f"PRAGMA table_info({table})").fetchall()}
+        cols = [c for c in columns if c in present]
+        if not cols:
+            continue
+        clause = " OR ".join(f"({c} IS NOT NULL AND {c} != '' AND {c} NOT LIKE 'enc:v1:%')" for c in cols)
+        # Aliased: on a table whose primary key is INTEGER, `rowid` is an alias
+        # for that column and does not come back under the name `rowid`.
+        rows = db.execute(f"SELECT rowid AS _rid, {', '.join(cols)} FROM {table} WHERE {clause}").fetchall()
+        for row in rows:
+            sets = ", ".join(f"{c} = ?" for c in cols)
+            db.execute(
+                f"UPDATE {table} SET {sets} WHERE rowid = ?",
+                (*[crypto.enc(row[c]) for c in cols], row["_rid"]),
+            )
+        if rows and table == "users" and "phone" in cols:
+            # Rebuilt from the plaintext we just read, or nobody whose account
+            # predates this module can ever sign in again.
+            for row in rows:
+                db.execute(
+                    "UPDATE users SET phone_bidx = ? WHERE rowid = ?",
+                    (crypto.blind_index(row["phone"]), row["_rid"]),
+                )
 
 
 def seed_slots(db: sqlite3.Connection):
@@ -600,10 +686,10 @@ def record_json(row) -> dict:
         "id": row["id"],
         "appointmentId": row["appointment_id"],
         "doctorId": row["doctor_id"],
-        "diagnosis": row["diagnosis"],
-        "notes": row["notes"],
-        "vitals": json.loads(row["vitals"] or "{}"),
-        "prescription": json.loads(row["prescription"] or "[]"),
+        "diagnosis": crypto.dec(row["diagnosis"]),
+        "notes": crypto.dec(row["notes"]),
+        "vitals": crypto.dec_json(row["vitals"], {}),
+        "prescription": crypto.dec_json(row["prescription"], []),
         "followUp": row["follow_up"],
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
@@ -613,12 +699,14 @@ def record_json(row) -> dict:
 def document_json(row, include_data=False) -> dict:
     out = {
         "id": row["id"],
-        "title": row["title"],
+        "title": crypto.dec(row["title"]),
         "kind": row["kind"],
         "createdAt": row["created_at"],
     }
     if include_data:
-        out["data"] = row["data"]
+        # A scan or a lab report is the most identifying thing in the record,
+        # and it is stored as one long data URL — so it is encrypted whole.
+        out["data"] = crypto.dec(row["data"])
     return out
 
 

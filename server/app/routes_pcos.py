@@ -12,6 +12,7 @@ from pydantic import BaseModel
 
 from . import pcos
 from .auth import current_user
+from . import crypto
 from .db import get_db, utcnow_iso
 
 router = APIRouter()
@@ -59,9 +60,9 @@ def pcos_screening(body: ScreeningBody, user: dict = Depends(current_user)):
 def _chart(db, user_id):
     row = db.execute("SELECT * FROM patient_charts WHERE user_id = ?", (user_id,)).fetchone()
     return {
-        "allergies": json.loads(row["allergies"]) if row else [],
-        "conditions": json.loads(row["conditions"]) if row else [],
-        "bloodGroup": row["blood_group"] if row else None,
+        "allergies": crypto.dec_json(row["allergies"], []) if row else [],
+        "conditions": crypto.dec_json(row["conditions"], []) if row else [],
+        "bloodGroup": crypto.dec(row["blood_group"]) if row else None,
     }
 
 

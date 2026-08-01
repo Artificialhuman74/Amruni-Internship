@@ -21,6 +21,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from .auth import current_user
+from . import crypto
 from .db import get_db, new_id, utcnow_iso
 
 router = APIRouter()
@@ -41,6 +42,7 @@ class MoodBody(BaseModel):
     loggedAt: str | None = None
     scope: str = "moment"
     valence: int = Field(ge=-3, le=3)
+    intensity: float | None = Field(default=None, ge=-3, le=3)
     word: str | None = None
     factors: list[str] = []
     source: str = "checkin"
@@ -54,8 +56,9 @@ def _mood_json(row) -> dict:
         "loggedAt": row["logged_at"],
         "scope": row["scope"],
         "valence": row["valence"],
-        "word": row["word"],
-        "factors": json.loads(row["factors"] or "[]"),
+        "intensity": row["intensity"] if row["intensity"] is not None else row["valence"],
+        "word": crypto.dec(row["word"]),
+        "factors": crypto.dec_json(row["factors"], []),
         "source": row["source"],
         "journalId": row["journal_id"],
     }
@@ -109,10 +112,11 @@ def create_mood(body: MoodBody, user: dict = Depends(current_user)):
         mood_id = new_id("mood")
         db.execute(
             """INSERT INTO mood_logs
-                 (id, user_id, date, logged_at, scope, valence, word, factors, source, journal_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 (id, user_id, date, logged_at, scope, valence, intensity, word, factors, source, journal_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (mood_id, user["id"], body.date, logged_at, body.scope, body.valence,
-             body.word, json.dumps(body.factors), body.source, body.journalId),
+             body.intensity if body.intensity is not None else float(body.valence),
+             crypto.enc(body.word), crypto.enc_json(body.factors), body.source, body.journalId),
         )
 
         if body.scope == "day":
@@ -122,7 +126,7 @@ def create_mood(body: MoodBody, user: dict = Depends(current_user)):
                    VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(user_id, date) DO UPDATE SET
                      mood = excluded.mood, valence = excluded.valence""",
-                (user["id"], body.date, body.word, body.valence, json.dumps(body.factors)),
+                (user["id"], body.date, crypto.enc(body.word), body.valence, crypto.enc_json(body.factors)),
             )
 
         row = db.execute("SELECT * FROM mood_logs WHERE id = ?", (mood_id,)).fetchone()
@@ -139,6 +143,39 @@ def delete_mood(mood_id: str, user: dict = Depends(current_user)):
             raise HTTPException(404, "Mood entry not found.")
         db.execute("DELETE FROM mood_logs WHERE id = ?", (mood_id,))
     return {"success": True}
+
+
+@router.get("/mood/vocabulary")
+def mood_vocabulary(user: dict = Depends(current_user)):
+    """How often she has reached for each word and each reason.
+
+    Handed straight back to the check-in, which puts her own most-used first.
+    This is deliberately a tally and nothing more — no ranking against other
+    women, no inference about what she might be feeling, no suggestion she did
+    not make herself. The personalisation is her own history in her own order.
+
+    Words are counted per valence band, because "Tired" at −1 and "Tired" at −3
+    are not the same report and should not pool.
+    """
+    with get_db() as db:
+        rows = db.execute(
+            "SELECT valence, word, factors FROM mood_logs WHERE user_id = ?", (user["id"],)
+        ).fetchall()
+
+    words: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    factors: dict[str, int] = defaultdict(int)
+    for row in rows:
+        word = crypto.dec(row["word"])
+        if word:
+            words[str(row["valence"])][word] += 1
+        for factor in crypto.dec_json(row["factors"], []):
+            if isinstance(factor, str) and factor.strip():
+                factors[factor] += 1
+
+    return {
+        "words": {band: dict(counts) for band, counts in words.items()},
+        "factors": dict(factors),
+    }
 
 
 # ---------- derived signals ----------

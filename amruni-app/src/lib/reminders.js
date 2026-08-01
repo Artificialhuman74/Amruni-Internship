@@ -82,6 +82,21 @@ async function show(title, body, tag) {
   } catch { /* a blocked notification must never break the app */ }
 }
 
+/**
+ * A notification that fires at most once for a given key.
+ *
+ * The key carries its own date (`fertile-open-2026-08-04`), so "once" means
+ * once for that event rather than once ever — and re-opening the app, or
+ * having it open across midnight, cannot re-fire it.
+ */
+export async function notifyOnce(key, title, body) {
+  if (!key || permissionState() !== 'granted') return false;
+  if (firedToday().has(key)) return false;
+  await show(title, body, key);
+  markFired(key);
+  return true;
+}
+
 function nowHHMM() {
   const d = new Date();
   return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
