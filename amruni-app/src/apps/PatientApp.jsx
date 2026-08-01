@@ -24,6 +24,7 @@ import ComingSoon from '../screens/ComingSoon';
 import Journal from '../screens/Journal';
 import Medicines from '../screens/Medicines';
 import CareView from '../screens/CareView';
+import CareActivity from '../screens/CareActivity';
 import JournalComposer from '../screens/JournalComposer';
 import JournalEntry from '../screens/JournalEntry';
 import Community from '../screens/Community';
@@ -81,6 +82,9 @@ export default function PatientApp() {
               <Route path="/pcos-check" element={<PcosCheck />} />
               <Route path="/coming-soon" element={<ComingSoon />} />
               <Route path="/settings" element={<Settings />} />
+              {/* Her side of the care thread. Distinct from /care/:token, which
+                  is the recipient's unauthenticated view of the same events. */}
+              <Route path="/care-activity" element={<CareActivity />} />
               <Route path="/medicines" element={<Medicines />} />
             <Route path="/journal" element={<Journal />} />
               <Route path="/community" element={<Community />} />

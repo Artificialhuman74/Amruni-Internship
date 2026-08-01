@@ -5,7 +5,6 @@ import { useApp } from '../context/AppContext';
 import { LIFE_STAGES } from '../data/mock';
 import BottomSheet from '../components/BottomSheet';
 import ConditionPicker from '../components/ConditionPicker';
-import CareShares from '../components/CareShares';
 import PregnancyBloom from '../components/PregnancyBloom';
 import { AnimatePresence } from 'framer-motion';
 import { useToast } from '../components/Toast';
@@ -43,7 +42,6 @@ export default function Settings() {
   const [caretakerSheet, setCaretakerSheet] = useState(false);
   const [logoutSheet, setLogoutSheet] = useState(false);
   const [selectedStage, setSelectedStage] = useState(lifeStage);
-  const [careSheet, setCareSheet] = useState(false);
   const [healthSheet, setHealthSheet] = useState(false);
   const [conditions, setConditions] = useState(state.health?.conditions ?? []);
   const [savingHealth, setSavingHealth] = useState(false);
@@ -307,17 +305,20 @@ export default function Settings() {
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.14, ease: [0.16, 1, 0.3, 1] }}>
           <div className="settings-group">
             <div className="settings-group__title">Caretaker</div>
+            {/* One home for care. Creating a link and seeing what was done with
+                it are the same subject, and splitting them left the ledger with
+                nowhere she could reach it. */}
             <div
               className="settings-item"
-              onClick={() => setCareSheet(true)}
+              onClick={() => navigate('/care-activity')}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && setCareSheet(true)}
+              onKeyDown={(e) => e.key === 'Enter' && navigate('/care-activity')}
             >
               <div className="settings-item__icon" style={{ background: 'var(--clr-sage-soft)', color: 'var(--clr-sage)' }}><IconSend size={20} /></div>
               <div style={{ flex: 1 }}>
-                <div className="settings-item__label">Share with family</div>
-                <div className="settings-item__desc">A link for a daughter or caretaker — no app needed</div>
+                <div className="settings-item__label">Care sharing</div>
+                <div className="settings-item__desc">Who can see your record, and what they have done</div>
               </div>
               <ChevronRight />
             </div>
@@ -460,9 +461,6 @@ export default function Settings() {
       </div>
 
       {/* Life stage sheet */}
-      <BottomSheet open={careSheet} onClose={() => setCareSheet(false)} title="Share with family">
-        <CareShares />
-      </BottomSheet>
 
       <BottomSheet open={healthSheet} onClose={() => !savingHealth && setHealthSheet(false)} title="Health background">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', minHeight: '52dvh' }}>

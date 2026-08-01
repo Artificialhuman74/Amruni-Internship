@@ -51,10 +51,12 @@ export default function CareActivityCard() {
     <motion.button
       type="button"
       className="ca-card"
-      onClick={async () => {
+      onClick={() => {
         tap();
-        try { await careApi.markRead(); } catch { /* seen locally either way */ }
-        navigate('/settings');
+        // Not marked read here. Reading the card is not reading the thread, and
+        // clearing the badge on the way in is how the one thing she was told
+        // about gets lost. The destination marks it, once she is looking at it.
+        navigate('/care-activity');
       }}
       initial={reduce ? { opacity: 0 } : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
