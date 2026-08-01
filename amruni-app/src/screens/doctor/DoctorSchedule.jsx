@@ -6,12 +6,6 @@ import { useToast } from '../../components/Toast';
 import { confirm as confirmHaptic } from '../../lib/haptics';
 import { IconClose } from '../../icons.jsx';
 
-const STATUS_DOT = {
-  open: 'var(--clr-success)',
-  locked: 'var(--clr-warning)',
-  booked: 'var(--clr-brand)',
-};
-
 function dayLabel(iso) {
   const d = new Date(`${iso}T00:00`);
   const today = new Date(); today.setHours(0, 0, 0, 0);
@@ -105,6 +99,18 @@ export default function DoctorSchedule() {
         </button>
       </header>
 
+      {/* The key, before the thing it explains.
+          It used to sit at the foot of the page: you scrolled the whole
+          schedule past three unexplained colours, learned what they meant, and
+          scrolled back up to read it again. */}
+      {slots !== null && Object.keys(byDate).length > 0 && (
+        <p className="sched-key">
+          <span className="sched-key__item"><i className="sched-key__dot sched-key__dot--open" />open</span>
+          <span className="sched-key__item"><i className="sched-key__dot sched-key__dot--locked" />held, awaiting payment</span>
+          <span className="sched-key__item"><i className="sched-key__dot sched-key__dot--booked" />booked</span>
+        </p>
+      )}
+
       {slots === null ? (
         <div style={{ marginTop: 'var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }} aria-label="Loading schedule">
           <div className="skel" style={{ height: 88 }} />
@@ -133,26 +139,31 @@ export default function DoctorSchedule() {
                   {daySlots.filter((s) => s.status === 'booked').length}/{daySlots.length} booked
                 </span>
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
+              {/* A grid, so times line up in columns and a day's shape is
+                  readable down the page. Wrapping pills of different widths —
+                  an open slot carries a remove button, a booked one does not —
+                  meant no two rows ever aligned. The control now occupies the
+                  same space either way. */}
+              <div className="sched-slots">
                 {daySlots.map((s) => (
                   <span
                     key={s.id}
-                    className="chip chip--sm"
-                    style={{ cursor: 'default', gap: 6 }}
+                    className={`sched-slot sched-slot--${s.status}`}
                     title={`${s.time} · ₹${s.price} · ${s.status}`}
                   >
-                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: STATUS_DOT[s.status] || 'var(--clr-border)', flexShrink: 0 }} aria-hidden="true" />
-                    {s.time}
-                    <span style={{ color: 'var(--clr-ink-subtle)' }}>₹{s.price}</span>
-                    {s.status === 'open' && (
-                      <button
-                        onClick={() => removeSlot(s)}
-                        aria-label={`Remove ${s.time} slot on ${dayLabel(day)}`}
-                        style={{ color: 'var(--clr-ink-subtle)', lineHeight: 1, padding: 0, display: 'inline-flex' }}
-                      >
-                        <IconClose size={13} />
-                      </button>
-                    )}
+                    <span className="sched-slot__dot" aria-hidden="true" />
+                    <span className="sched-slot__time">{s.time}</span>
+                    <span className="sched-slot__price">₹{s.price}</span>
+                    <span className="sched-slot__action">
+                      {s.status === 'open' && (
+                        <button
+                          onClick={() => removeSlot(s)}
+                          aria-label={`Remove ${s.time} slot on ${dayLabel(day)}`}
+                        >
+                          <IconClose size={13} />
+                        </button>
+                      )}
+                    </span>
                   </span>
                 ))}
               </div>
@@ -160,12 +171,6 @@ export default function DoctorSchedule() {
           ))}
         </div>
       )}
-
-      <p style={{ marginTop: 'var(--sp-8)', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', lineHeight: 'var(--leading-base)' }}>
-        <span style={{ color: 'var(--clr-success)' }}>●</span> open&ensp;
-        <span style={{ color: 'var(--clr-warning)' }}>●</span> reserved, payment pending&ensp;
-        <span style={{ color: 'var(--clr-brand)' }}>●</span> booked
-      </p>
 
       <BottomSheet open={sheetOpen} onClose={() => !publishing && setSheetOpen(false)} title="Publish availability">
         <form onSubmit={handlePublish} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', padding: '0 var(--sp-2) var(--sp-4)' }}>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useVideoCall } from '../hooks/useVideoCall';
+import { useApp } from '../context/AppContext';
 import { appointmentApi } from '../services/appointmentApi';
 import { apiError } from '../services/api';
 import DoctorAvatar from '../components/DoctorAvatar';
@@ -33,6 +34,7 @@ export default function BookAppointment() {
   const [selectedDate, setSelectedDate] = useState(null);   // ISO date string
   const [selectedSlotId, setSelectedSlotId] = useState(null);
   const [reason, setReason] = useState('');
+  const { state } = useApp();
   const [error, setError] = useState('');
 
   // Payment flow: idle → ordering → pay (sheet open) → processing → done
@@ -69,6 +71,7 @@ export default function BookAppointment() {
         doctorId: consultMode === 'chat' ? Number(id) : undefined,
         mode: consultMode,
         reason,
+        anonymous: bookAnonymously,
       });
       setBooking(res);
       setPayStep('pay');
@@ -109,6 +112,17 @@ export default function BookAppointment() {
 
   const doctorName = currentDoctor?.name || 'Doctor';
   const doctorSpecialty = currentDoctor?.specialty || 'Specialist';
+
+  /**
+   * Anonymity is offered where it was promised and nowhere else.
+   *
+   * The Settings toggle says "in mental health sessions", so the option only
+   * appears in front of a mental health doctor. Offering it elsewhere and
+   * silently dropping it — which the server does, on purpose — would be the
+   * same broken promise in a new place.
+   */
+  const canBookAnonymously = doctorSpecialty === 'Mental Health';
+  const bookAnonymously = canBookAnonymously && Boolean(state.settings?.anonymousMode);
   const modeLabel = consultMode === 'chat' ? 'Chat / DM' : 'Video Call';
   const ModeIcon = consultMode === 'chat' ? IconChat : IconVideo;
 
@@ -219,6 +233,23 @@ export default function BookAppointment() {
               </div>
             </>
           )
+        )}
+
+        {/* Said before she books, not after. What anonymity does here has
+            edges — her money and her face are not part of it — and a woman
+            choosing this screen deserves those edges named rather than
+            discovered in the call. */}
+        {canBookAnonymously && (
+          <div className={`anon-note${bookAnonymously ? ' anon-note--on' : ''}`}>
+            <p className="anon-note__title">
+              {bookAnonymously ? 'Booking without your name' : 'Anonymous mode is off'}
+            </p>
+            <p className="anon-note__body">
+              {bookAnonymously
+                ? `${doctorName} will see a nickname instead of your name, with no phone number and no access to your health record. Your payment is still made from your own account, and a video call still shows your face — so this hides your record, not the room.`
+                : 'Turn it on in Settings and this counsellor will see a nickname instead of your name.'}
+            </p>
+          </div>
         )}
 
         {/* Reason / Symptoms input */}

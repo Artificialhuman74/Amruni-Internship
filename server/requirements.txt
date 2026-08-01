@@ -3,6 +3,9 @@ fastapi~=0.139
 uvicorn[standard]~=0.49
 PyJWT~=2.13
 
+# Encryption at rest for identifying and clinical fields (app/crypto.py)
+cryptography~=49.0
+
 # HTTP clients (payments, Google Calendar)
 httpx~=0.28
 requests~=2.34

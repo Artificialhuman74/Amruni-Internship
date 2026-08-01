@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import current_user
+from . import crypto
 from .db import get_db
 
 router = APIRouter()
@@ -24,9 +25,9 @@ def me_payload(user_id: int) -> dict:
 
     return {
         "user": {
-            "phone": user["phone"],
-            "name": user["name"],
-            "dob": user["dob"],
+            "phone": crypto.dec(user["phone"]),
+            "name": crypto.dec(user["name"]),
+            "dob": crypto.dec(user["dob"]),
             "lifeStage": user["life_stage"],
             "isOnboarded": bool(user["is_onboarded"]),
         },
@@ -35,7 +36,7 @@ def me_payload(user_id: int) -> dict:
             "cycleLength": cycle["cycle_length"] if cycle else 28,
             "periodLength": cycle["period_length"] if cycle else 5,
             "loggedDays": {
-                log["date"]: {"flow": log["flow"], "symptoms": json.loads(log["symptoms"] or "[]")}
+                log["date"]: {"flow": log["flow"], "symptoms": crypto.dec_json(log["symptoms"], [])}
                 for log in logs
             },
         },
@@ -49,9 +50,12 @@ def me_payload(user_id: int) -> dict:
             "kickCounts": json.loads(preg["kick_counts"] or "{}") if preg else {},
             "loggedDays": {
                 log["date"]: {
-                    "mood": log["mood"],
+                    # This table is a mirror the mood log also writes to, and it
+                    # writes encrypted; a day logged from the pregnancy screen
+                    # may still be plaintext. Both readers below tolerate either.
+                    "mood": crypto.dec(log["mood"]),
                     "valence": log["valence"],
-                    "symptoms": json.loads(log["symptoms"] or "[]"),
+                    "symptoms": crypto.dec_json(log["symptoms"], []),
                 }
                 for log in preg_logs
             },
@@ -61,14 +65,17 @@ def me_payload(user_id: int) -> dict:
         # of "does she have PCOS" is exactly the kind of split that ends with
         # the chart and the app disagreeing.
         "health": {
-            "conditions": json.loads(chart["conditions"]) if chart and chart["conditions"] else [],
-            "allergies": json.loads(chart["allergies"]) if chart and chart["allergies"] else [],
-            "bloodGroup": chart["blood_group"] if chart else None,
+            "conditions": crypto.dec_json(chart["conditions"], []) if chart else [],
+            "allergies": crypto.dec_json(chart["allergies"], []) if chart else [],
+            "bloodGroup": crypto.dec(chart["blood_group"]) if chart else None,
         },
         "settings": {
             "notifications": bool(settings["notifications"]) if settings else True,
-            "anonymousMode": bool(settings["anonymous_mode"]) if settings else False,
+            "anonymousMode": bool(settings["anonymous_mode"]) if settings else True,
             "identityWarningSeen": settings["identity_warning_seen"] if settings else 0,
+            "weightTracking": bool(settings["weight_tracking"]) if settings else False,
+            "conceiveMode": bool(settings["conceive_mode"]) if settings else False,
+            "pregnancyMode": bool(settings["pregnancy_mode"]) if settings else False,
         },
     }
 
@@ -107,8 +114,11 @@ class PregnancySlice(BaseModel):
 
 class SettingsSlice(BaseModel):
     notifications: bool = True
-    anonymousMode: bool = False
+    anonymousMode: bool = True
     identityWarningSeen: int = 0
+    weightTracking: bool = False
+    conceiveMode: bool = False
+    pregnancyMode: bool = False
 
 
 class StateBody(BaseModel):
@@ -148,7 +158,8 @@ def put_health(body: HealthBody, user: dict = Depends(current_user)):
                  allergies = excluded.allergies,
                  blood_group = excluded.blood_group,
                  updated_at = excluded.updated_at""",
-            (user["id"], json.dumps(body.conditions), json.dumps(body.allergies), body.bloodGroup),
+            (user["id"], crypto.enc_json(body.conditions), crypto.enc_json(body.allergies),
+             crypto.enc(body.bloodGroup)),
         )
     return me_payload(user["id"])
 
@@ -165,8 +176,8 @@ def patch_me(body: ProfilePatch, user: dict = Depends(current_user)):
         db.execute(
             "UPDATE users SET name = ?, dob = ?, life_stage = ?, is_onboarded = ? WHERE id = ?",
             (
-                patch.get("name", user["name"]),
-                patch.get("dob", user["dob"]),
+                crypto.enc(patch["name"]) if "name" in patch else user["name"],
+                crypto.enc(patch["dob"]) if "dob" in patch else user["dob"],
                 patch.get("lifeStage", user["life_stage"]),
                 int(patch["isOnboarded"]) if "isOnboarded" in patch else user["is_onboarded"],
                 user["id"],
@@ -184,8 +195,8 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
             db.execute(
                 "UPDATE users SET name = ?, dob = ?, life_stage = ?, is_onboarded = ? WHERE id = ?",
                 (
-                    u.get("name", user["name"]),
-                    u.get("dob", user["dob"]),
+                    crypto.enc(u["name"]) if "name" in u else user["name"],
+                    crypto.enc(u["dob"]) if "dob" in u else user["dob"],
                     u.get("lifeStage", user["life_stage"]),
                     int(u["isOnboarded"]) if "isOnboarded" in u else user["is_onboarded"],
                     user["id"],
@@ -205,7 +216,7 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
                 db.execute(
                     """INSERT INTO cycle_logs (user_id, date, flow, symptoms) VALUES (?, ?, ?, ?)
                        ON CONFLICT(user_id, date) DO UPDATE SET flow = excluded.flow, symptoms = excluded.symptoms""",
-                    (user["id"], day, data.get("flow"), json.dumps(data.get("symptoms") or [])),
+                    (user["id"], day, data.get("flow"), crypto.enc_json(data.get("symptoms") or [])),
                 )
         db.execute(
             """INSERT INTO pregnancy_state
@@ -231,14 +242,22 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
                     """INSERT INTO pregnancy_logs (user_id, date, mood, valence, symptoms) VALUES (?, ?, ?, ?, ?)
                        ON CONFLICT(user_id, date) DO UPDATE SET
                          mood = excluded.mood, valence = excluded.valence, symptoms = excluded.symptoms""",
-                    (user["id"], day, data.get("mood"), data.get("valence"), json.dumps(data.get("symptoms") or [])),
+                    (user["id"], day, crypto.enc(data.get("mood")), data.get("valence"),
+                     crypto.enc_json(data.get("symptoms") or [])),
                 )
         db.execute(
-            """INSERT INTO user_settings (user_id, notifications, anonymous_mode, identity_warning_seen) VALUES (?, ?, ?, ?)
+            """INSERT INTO user_settings
+                 (user_id, notifications, anonymous_mode, identity_warning_seen, weight_tracking,
+                  conceive_mode, pregnancy_mode)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET
                  notifications = excluded.notifications, anonymous_mode = excluded.anonymous_mode,
-                 identity_warning_seen = excluded.identity_warning_seen""",
-            (user["id"], int(body.settings.notifications), int(body.settings.anonymousMode), body.settings.identityWarningSeen),
+                 identity_warning_seen = excluded.identity_warning_seen,
+                 weight_tracking = excluded.weight_tracking, conceive_mode = excluded.conceive_mode,
+                 pregnancy_mode = excluded.pregnancy_mode""",
+            (user["id"], int(body.settings.notifications), int(body.settings.anonymousMode),
+             body.settings.identityWarningSeen, int(body.settings.weightTracking),
+             int(body.settings.conceiveMode), int(body.settings.pregnancyMode)),
         )
     return {"success": True}
 

@@ -16,6 +16,48 @@ function fmtDate(iso) {
   return new Date(`${iso.split('T')[0]}T00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
 }
 
+function fmtShort(iso) {
+  if (!iso) return '';
+  return new Date(`${iso.split('T')[0]}T00:00`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+}
+
+/**
+ * One medicine, as a clinician needs to read it.
+ *
+ * Provenance is stated on every row rather than implied: a medicine another
+ * doctor prescribed, and one she started herself, are both facts worth having
+ * and are not the same fact. Unlabelled, the self-added supplement reads as
+ * prescribed and the list quietly becomes untrustworthy.
+ */
+function MedRow({ med, past = false }) {
+  const source = med.source === 'prescription'
+    ? (med.doctorName ? `Prescribed by ${med.doctorName}` : 'Prescribed')
+    : 'Added by the patient';
+  const dates = past
+    ? [med.startedOn && `from ${fmtShort(med.startedOn)}`, med.endsOn ? `to ${fmtShort(med.endsOn)}` : 'stopped'].filter(Boolean).join(' ')
+    : med.startedOn && `since ${fmtShort(med.startedOn)}`;
+
+  return (
+    <div className={`med-row${past ? ' med-row--past' : ''}`}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <p className="med-row__name">
+          {med.name}
+          {med.dose && <span className="med-row__dose"> {med.dose}</span>}
+        </p>
+        <p className="med-row__meta">
+          {[med.frequency, dates].filter(Boolean).join(' · ')}
+        </p>
+      </div>
+      <div className="med-row__side">
+        <span className={`med-tag med-tag--${med.source === 'prescription' ? 'rx' : 'self'}`}>{source}</span>
+        {!past && med.adherence && (
+          <span className="med-row__doses">{med.adherence.taken}/{med.adherence.scheduled} taken</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function DoctorPatientChart() {
   const { userId } = useParams();
   const navigate = useNavigate();
@@ -137,8 +179,9 @@ export default function DoctorPatientChart() {
     );
   }
 
-  const { patient, chart, vitalsHistory, records, documents, sharedJournal = [] } = data;
+  const { patient, chart, vitalsHistory, records, documents, sharedJournal = [], context } = data;
   const latestVitals = vitalsHistory[vitalsHistory.length - 1] || null;
+  const meds = data.medications || { current: [], past: [], adherence: null };
 
   return (
     <div style={{ padding: 'calc(env(safe-area-inset-top) + var(--sp-4)) var(--sp-6) var(--sp-8)' }}>
@@ -164,6 +207,17 @@ export default function DoctorPatientChart() {
           </p>
         </div>
       </header>
+
+      {/* Her situation, before anything that could be prescribed.
+          Placed above the allergy chips deliberately: pregnancy and actively
+          trying change what is safe more broadly than any single allergy, and
+          a doctor who reads only the top of a chart should still meet it. */}
+      {context && (
+        <section className={`ctx-band ctx-band--${context.kind}`} aria-label="Patient situation">
+          <p className="ctx-band__label">{context.label}</p>
+          <p className="ctx-band__caution">{context.caution}</p>
+        </section>
+      )}
 
       {/* Clinical flags */}
       <section style={{ marginTop: 'var(--sp-6)' }} aria-label="Clinical flags">
@@ -241,6 +295,62 @@ export default function DoctorPatientChart() {
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
             Vitals recorded during consultations will build a history here.
           </p>
+        )}
+      </section>
+
+      {/* Medicines.
+          High in the chart, directly under vitals, because it is the section
+          that changes what may safely be prescribed in the next five minutes.
+          It is her whole list — other doctors' prescriptions and the tablets
+          she started herself included — not this doctor's own prescribing
+          history, which is already readable further down. */}
+      <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Medicines">
+        <h2 className="doc-section-title">
+          Medicines
+          {meds.current.length > 0 && (
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {' '}— {meds.current.length} currently taken
+            </span>
+          )}
+        </h2>
+
+        {meds.current.length === 0 && meds.past.length === 0 ? (
+          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
+            No medicines recorded. Anything prescribed here, or added by her, will appear on this list.
+          </p>
+        ) : (
+          <>
+            {meds.current.length === 0 && (
+              <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
+                Nothing currently being taken.
+              </p>
+            )}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+              {meds.current.map((m) => <MedRow key={m.id} med={m} />)}
+            </div>
+
+            {/* Doses recorded against doses due, said as two numbers rather
+                than a score. A percentage invites a judgement the data can't
+                support — she may have taken a tablet and not ticked it. */}
+            {meds.adherence?.scheduled > 0 && (
+              <p className="med-adherence">
+                {meds.adherence.taken} of {meds.adherence.scheduled} doses ticked in the
+                last {meds.adherence.days} days
+                <span className="med-adherence__caveat"> — self-reported; ask before reading it as a missed dose</span>
+              </p>
+            )}
+
+            {meds.past.length > 0 && (
+              <details style={{ marginTop: 'var(--sp-3)' }}>
+                <summary style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', cursor: 'pointer' }}>
+                  Previously taken ({meds.past.length})
+                </summary>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)', marginTop: 'var(--sp-2)' }}>
+                  {meds.past.map((m) => <MedRow key={m.id} med={m} past />)}
+                </div>
+              </details>
+            )}
+          </>
         )}
       </section>
 

@@ -6,7 +6,8 @@ import { useMood } from '../context/MoodContext';
 import { useToast } from './Toast';
 import MoodSheet from './MoodSheet';
 import MoodChart from './MoodChart';
-import MoodFlower, { BANDS } from './MoodFlower';
+import MoodFlower from './MoodFlower';
+import { BANDS } from '../lib/moodScale';
 import { tap } from '../lib/haptics';
 import { IconTrend, IconChat } from '../icons.jsx';
 
@@ -70,10 +71,10 @@ export default function MoodLogSection() {
 
   const logged = days.filter((d) => d.entries.length > 0).length;
 
-  async function handleSave({ valence, word, factors, scope }) {
+  async function handleSave({ valence, intensity, word, factors, scope }) {
     setSaving(true);
     try {
-      await log({ valence, word, factors, scope, source: 'track' });
+      await log({ valence, intensity, word, factors, scope, source: 'track' });
       toast(scope === 'day' ? 'Today is logged. Thank you.' : 'Logged. Thank you for sharing.', { icon: 'heart' });
       setSheet(null);
     } catch {

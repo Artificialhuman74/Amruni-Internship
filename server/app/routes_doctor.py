@@ -16,7 +16,9 @@ from pydantic import BaseModel
 
 from . import auth
 from .auth import current_doctor
-from .routes_meds import sync_from_prescription
+from .routes_community import get_or_create_anon_handle
+from .routes_meds import medication_history, sync_from_prescription
+from . import crypto
 from .db import (
     appointment_json, doctor_json, document_json, get_db, record_json,
     slot_json, utcnow_iso,
@@ -63,16 +65,51 @@ def _age(dob: str | None) -> int | None:
 def _patient_summary(user_row) -> dict:
     return {
         "id": user_row["id"],
-        "name": user_row["name"] or "Unnamed patient",
-        "phone": user_row["phone"],
-        "age": _age(user_row["dob"]),
+        "name": crypto.dec(user_row["name"]) or "Unnamed patient",
+        "phone": crypto.dec(user_row["phone"]),
+        "age": _age(crypto.dec(user_row["dob"])),
         "lifeStage": user_row["life_stage"],
+        "anonymous": False,
+    }
+
+
+def _anonymous_summary(db, user_row) -> dict:
+    """What a counsellor sees when she booked without her name.
+
+    The settings toggle has promised "identity hidden from counsellors" since
+    the first release and hid nothing — it was stored, synced, and read by one
+    line of text describing itself. This is that promise made true.
+
+    Age and life stage stay, because a counsellor treating a 16-year-old and a
+    counsellor treating a 60-year-old need to know which; neither identifies
+    her. The handle is the same one the community allocates, so she is a
+    consistent person across sessions rather than a fresh stranger each time —
+    continuity of care without a name.
+
+    `id` is deliberately absent. Every patient-scoped endpoint keys on it, so
+    withholding it is what makes the chart genuinely unreachable rather than
+    merely unlinked in the interface.
+    """
+    return {
+        "id": None,
+        "name": get_or_create_anon_handle(db, user_row["id"]),
+        "phone": None,
+        "age": _age(crypto.dec(user_row["dob"])),
+        "lifeStage": user_row["life_stage"],
+        "anonymous": True,
     }
 
 
 def _require_relationship(db, doctor_id: int, user_id: int):
+    """An anonymous consultation grants no access to anything but itself.
+
+    Without this clause the promise would leak through the side door: a
+    counsellor could not read her name in the queue but could open the chart
+    that carries it, along with her whole history.
+    """
     ok = db.execute(
-        "SELECT 1 FROM appointments WHERE doctor_id = ? AND user_id = ? LIMIT 1",
+        """SELECT 1 FROM appointments
+           WHERE doctor_id = ? AND user_id = ? AND COALESCE(anonymous, 0) = 0 LIMIT 1""",
         (doctor_id, user_id),
     ).fetchone()
     if not ok:
@@ -95,7 +132,8 @@ def doctor_me(doctor: dict = Depends(current_doctor)):
                 (doctor["id"], today),
             ).fetchone()["n"],
             "patients": db.execute(
-                "SELECT COUNT(DISTINCT user_id) AS n FROM appointments WHERE doctor_id = ?",
+                """SELECT COUNT(DISTINCT user_id) AS n FROM appointments
+                   WHERE doctor_id = ? AND COALESCE(anonymous, 0) = 0""",
                 (doctor["id"],),
             ).fetchone()["n"],
             "weekEarnings": db.execute(
@@ -115,9 +153,11 @@ def _doctor_appointment(db, row) -> dict:
     has_record = db.execute(
         "SELECT 1 FROM consultation_records WHERE appointment_id = ?", (row["id"],)
     ).fetchone() is not None
+    anon = bool(row["anonymous"])
     return {
         **appointment_json(row),
-        "patient": _patient_summary(patient) if patient else None,
+        "patient": (_anonymous_summary(db, patient) if anon else _patient_summary(patient)) if patient else None,
+        "anonymous": anon,
         "hasRecord": has_record,
     }
 
@@ -229,9 +269,11 @@ def get_record(appointment_id: str, doctor: dict = Depends(current_doctor)):
             "SELECT * FROM consultation_records WHERE appointment_id = ?", (appointment_id,)
         ).fetchone()
         patient = db.execute("SELECT * FROM users WHERE id = ?", (appt["user_id"],)).fetchone()
+        anon = bool(appt["anonymous"])
         return {
             "appointment": appointment_json(appt),
-            "patient": _patient_summary(patient),
+            "patient": _anonymous_summary(db, patient) if anon else _patient_summary(patient),
+            "anonymous": anon,
             "record": record_json(row) if row else None,
         }
 
@@ -264,8 +306,9 @@ def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(cu
                  diagnosis = excluded.diagnosis, notes = excluded.notes,
                  vitals = excluded.vitals, prescription = excluded.prescription,
                  follow_up = excluded.follow_up, updated_at = excluded.updated_at""",
-            (appointment_id, doctor["id"], appt["user_id"], body.diagnosis, body.notes,
-             json.dumps(body.vitals or {}), json.dumps(prescription), body.followUp, utcnow_iso()),
+            (appointment_id, doctor["id"], appt["user_id"], crypto.enc(body.diagnosis),
+             crypto.enc(body.notes), crypto.enc_json(body.vitals or {}),
+             crypto.enc_json(prescription), body.followUp, utcnow_iso()),
         )
         # Writing the record is the natural end of a consultation.
         db.execute(
@@ -285,6 +328,54 @@ def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(cu
         return record_json(row)
 
 
+def _life_context(db, user_id: int) -> dict | None:
+    """Pregnant, or trying to become pregnant — stated at the top of the chart.
+
+    This is the modes reaching the one screen where they change what is safe to
+    do. A prescription written for a woman who is pregnant or actively trying
+    is the scenario the teratogen categories exist for, and until now the chart
+    said nothing: a doctor had to think to ask, every time, for every patient.
+
+    Only the fact is shared. Not her fertile window, not her cycle day, not
+    anything from the conceive screen — a doctor needs to know the situation,
+    not to read along.
+    """
+    settings = db.execute("SELECT * FROM user_settings WHERE user_id = ?", (user_id,)).fetchone()
+    preg = db.execute("SELECT * FROM pregnancy_state WHERE user_id = ?", (user_id,)).fetchone()
+    if not settings:
+        return None
+
+    pregnancy_mode = bool(settings["pregnancy_mode"]) if "pregnancy_mode" in settings.keys() else False
+    conceive = bool(settings["conceive_mode"]) if "conceive_mode" in settings.keys() else False
+
+    weeks = None
+    due = preg["due_date_override"] if preg else None
+    if preg and (preg["last_period_start"] or due):
+        try:
+            lmp = (date.fromisoformat(preg["last_period_start"]) if preg["last_period_start"]
+                   else date.fromisoformat(due) - timedelta(days=280))
+            due = due or (lmp + timedelta(days=280)).isoformat()
+            weeks = max(0, (date.today() - lmp).days // 7)
+        except (ValueError, TypeError):
+            weeks = None
+
+    overdue = bool(due and due < date.today().isoformat())
+    if pregnancy_mode and weeks is not None and not overdue:
+        return {"kind": "pregnant", "weeks": weeks,
+                "trimester": 1 if weeks <= 13 else 2 if weeks <= 27 else 3,
+                "dueDate": due,
+                "label": f"Pregnant · {weeks} weeks",
+                "caution": "Check every prescription against pregnancy safety."}
+    if pregnancy_mode and overdue:
+        return {"kind": "recently-pregnant", "dueDate": due,
+                "label": "Recently pregnant — due date has passed",
+                "caution": "Confirm the outcome before prescribing or assuming."}
+    if conceive:
+        return {"kind": "trying", "label": "Trying to conceive",
+                "caution": "She may be pregnant before she knows it — check prescriptions accordingly."}
+    return None
+
+
 # ---------- patients & charts ----------
 
 @router.get("/doctor/patients")
@@ -293,7 +384,7 @@ def doctor_patients(doctor: dict = Depends(current_doctor)):
         rows = db.execute(
             """SELECT u.*, MAX(a.created_at) AS last_visit, COUNT(a.id) AS visits
                FROM users u JOIN appointments a ON a.user_id = u.id
-               WHERE a.doctor_id = ?
+               WHERE a.doctor_id = ? AND COALESCE(a.anonymous, 0) = 0
                GROUP BY u.id ORDER BY last_visit DESC""",
             (doctor["id"],),
         ).fetchall()
@@ -320,7 +411,8 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
                FROM consultation_records r
                JOIN appointments a ON a.id = r.appointment_id
                JOIN doctors d ON d.id = r.doctor_id
-               WHERE r.user_id = ? ORDER BY r.created_at DESC""",
+               WHERE r.user_id = ? AND COALESCE(a.anonymous, 0) = 0
+               ORDER BY r.created_at DESC""",
             (user_id,),
         ).fetchall()
         documents = db.execute(
@@ -329,7 +421,7 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
 
         vitals_history = []
         for r in reversed(records):  # chronological
-            vitals = json.loads(r["vitals"] or "{}")
+            vitals = crypto.dec_json(r["vitals"], {})
             if any(str(v).strip() for v in vitals.values()):
                 vitals_history.append({"date": r["appt_date"], **vitals})
 
@@ -353,19 +445,32 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
             for m in db.execute(f"SELECT * FROM mood_logs WHERE id IN ({marks})", mood_ids).fetchall():
                 mood_by_id[m["id"]] = {
                     "valence": m["valence"],
-                    "word": m["word"],
-                    "factors": json.loads(m["factors"] or "[]"),
+                    "word": crypto.dec(m["word"]),
+                    "factors": crypto.dec_json(m["factors"], []),
                     "scope": m["scope"],
                     "loggedAt": m["logged_at"],
                 }
 
+        # What she is actually on — not what this doctor once wrote down.
+        #
+        # The prescription inside a consultation record is a snapshot of one
+        # visit; the medicine list is the live answer, and it includes the
+        # tablets another doctor started her on and the supplements she takes
+        # on her own. Reading the records alone gives a doctor a confident,
+        # incomplete drug list, which is the shape most interaction errors
+        # have. Adherence rides along for the same reason: whether a drug was
+        # taken changes what "it isn't working" means.
+        medications = medication_history(db, user_id)
+
         return {
             "patient": _patient_summary(user),
+            "context": _life_context(db, user_id),
             "chart": {
-                "allergies": json.loads(chart["allergies"]) if chart else [],
-                "conditions": json.loads(chart["conditions"]) if chart else [],
-                "bloodGroup": chart["blood_group"] if chart else None,
+                "allergies": crypto.dec_json(chart["allergies"], []) if chart else [],
+                "conditions": crypto.dec_json(chart["conditions"], []) if chart else [],
+                "bloodGroup": crypto.dec(chart["blood_group"]) if chart else None,
             },
+            "medications": medications,
             "vitalsHistory": vitals_history,
             "records": [
                 {**record_json(r), "date": r["appt_date"], "time": r["appt_time"], "doctorName": r["doctor_name"]}
@@ -376,9 +481,9 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
                 {
                     "id": j["id"],
                     "date": j["date"],
-                    "text": j["text"],
+                    "text": crypto.dec(j["text"]),
                     "mood": mood_by_id.get(j["mood_log_id"]),
-                    "context": json.loads(j["context"] or "{}"),
+                    "context": crypto.dec_json(j["context"], {}),
                 }
                 for j in shared
             ],
@@ -397,7 +502,8 @@ def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_d
                ON CONFLICT(user_id) DO UPDATE SET
                  allergies = excluded.allergies, conditions = excluded.conditions,
                  blood_group = excluded.blood_group, updated_at = excluded.updated_at""",
-            (user_id, json.dumps(allergies), json.dumps(conditions), body.bloodGroup, utcnow_iso()),
+            (user_id, crypto.enc_json(allergies), crypto.enc_json(conditions),
+             crypto.enc(body.bloodGroup), utcnow_iso()),
         )
     return {"success": True}
 
@@ -424,7 +530,7 @@ def upload_document(user_id: int, body: DocumentBody, doctor: dict = Depends(cur
         _require_relationship(db, doctor["id"], user_id)
         cur = db.execute(
             "INSERT INTO documents (user_id, doctor_id, title, kind, data) VALUES (?, ?, ?, ?, ?)",
-            (user_id, doctor["id"], body.title.strip(), body.kind, body.data),
+            (user_id, doctor["id"], crypto.enc(body.title.strip()), body.kind, crypto.enc(body.data)),
         )
         row = db.execute("SELECT * FROM documents WHERE id = ?", (cur.lastrowid,)).fetchone()
         return document_json(row)

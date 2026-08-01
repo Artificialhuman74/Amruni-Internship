@@ -11,6 +11,10 @@ export const careApi = {
   slots: async (token) => (await api.get(`/care/${token}/slots`)).data,
   book: async (token, { slotId, reason }) =>
     (await api.post(`/care/${token}/book`, { slotId, reason })).data,
+  // What a caretaker can actually do, beyond reading.
+  markDose: async (token, medId, { slot, date }) =>
+    (await api.post(`/care/${token}/medicines/${medId}/taken`, { slot, date })).data,
+  note: async (token, text) => (await api.post(`/care/${token}/notes`, { text })).data,
   // Her side of the same thread.
   events: async () => (await api.get('/me/care/events')).data,
   markRead: async () => (await api.post('/me/care/events/read')).data,

@@ -21,12 +21,12 @@ her beyond the name she chose to share.
 """
 import json
 import secrets
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from . import payments
+from . import crypto, payments
 from .auth import current_user
 from .db import get_db, new_id, to_12h, utcnow_iso
 
@@ -69,13 +69,23 @@ def log_event(db, user_id: int, *, actor: str, kind: str, summary: str,
     db.execute(
         """INSERT INTO care_events (id, user_id, actor, actor_label, share_token, kind, summary, meta)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
-        (new_id("ev"), user_id, actor, actor_label, share_token, kind, summary, json.dumps(meta or {})),
+        (new_id("ev"), user_id, actor, crypto.enc(actor_label), share_token, kind,
+         crypto.enc(summary), json.dumps(meta or {})),
     )
 
 
 class BookBody(BaseModel):
     slotId: int
     reason: str | None = None
+
+
+class DoseBody(BaseModel):
+    date: str | None = None
+    slot: str
+
+
+class NoteBody(BaseModel):
+    text: str
 
 
 class ShareBody(BaseModel):
@@ -92,7 +102,7 @@ def _clean_scopes(scopes: list[str]) -> list[str]:
 def _share_json(row) -> dict:
     return {
         "token": row["token"],
-        "label": row["label"],
+        "label": crypto.dec(row["label"]),
         "scopes": json.loads(row["scopes"] or "[]"),
         "expiresAt": row["expires_at"],
         "revoked": bool(row["revoked"]),
@@ -135,7 +145,7 @@ def create_share(body: ShareBody, user: dict = Depends(current_user)):
         db.execute(
             """INSERT INTO care_shares (token, user_id, label, scopes, expires_at)
                VALUES (?, ?, ?, ?, ?)""",
-            (token, user["id"], (body.label or "").strip() or None,
+            (token, user["id"], crypto.enc((body.label or "").strip() or None),
              json.dumps(_clean_scopes(body.scopes)), expires),
         )
         row = db.execute("SELECT * FROM care_shares WHERE token = ?", (token,)).fetchone()
@@ -174,10 +184,11 @@ def read_share(token: str):
         scopes = json.loads(row["scopes"] or "[]")
         uid = row["user_id"]
         user = db.execute("SELECT name FROM users WHERE id = ?", (uid,)).fetchone()
+        patient_name = crypto.dec(user["name"]) if user else None
 
         out = {
-            "name": user["name"] if user else None,
-            "label": row["label"],
+            "name": patient_name,
+            "label": crypto.dec(row["label"]),
             "scopes": scopes,
             "expiresAt": row["expires_at"],
         }
@@ -194,29 +205,44 @@ def read_share(token: str):
 
         if "medicines" in scopes:
             meds = db.execute(
-                "SELECT name, dose, frequency, times FROM medications WHERE user_id = ? AND active = 1",
+                "SELECT id, name, dose, frequency, times FROM medications WHERE user_id = ? AND active = 1",
                 (uid,),
             ).fetchall()
+            today = date.today().isoformat()
+            taken = {
+                (d["medication_id"], d["slot"])
+                for d in db.execute(
+                    "SELECT medication_id, slot FROM medication_doses WHERE user_id = ? AND date = ?",
+                    (uid, today),
+                ).fetchall()
+            }
             out["medicines"] = [
-                {"name": m["name"], "dose": m["dose"], "frequency": m["frequency"],
-                 "times": json.loads(m["times"] or "[]")}
+                {"id": m["id"], "name": crypto.dec(m["name"]), "dose": crypto.dec(m["dose"]),
+                 "frequency": crypto.dec(m["frequency"]),
+                 "times": json.loads(m["times"] or "[]"),
+                 "takenToday": [t for t in json.loads(m["times"] or "[]") if (m["id"], t) in taken]}
                 for m in meds
             ]
+            out["today"] = today
 
         if "contacts" in scopes:
             contacts = db.execute(
                 "SELECT name, phone, relation FROM sos_contacts WHERE user_id = ?", (uid,)
             ).fetchall()
-            out["contacts"] = [dict(c) for c in contacts]
+            out["contacts"] = [
+                {"name": crypto.dec(c["name"]), "phone": crypto.dec(c["phone"]),
+                 "relation": crypto.dec(c["relation"])}
+                for c in contacts
+            ]
 
         if "conditions" in scopes:
             chart = db.execute(
                 "SELECT allergies, conditions, blood_group FROM patient_charts WHERE user_id = ?", (uid,)
             ).fetchone()
             out["chart"] = {
-                "bloodGroup": chart["blood_group"] if chart else None,
-                "allergies": json.loads(chart["allergies"]) if chart else [],
-                "conditions": json.loads(chart["conditions"]) if chart else [],
+                "bloodGroup": crypto.dec(chart["blood_group"]) if chart else None,
+                "allergies": crypto.dec_json(chart["allergies"], []) if chart else [],
+                "conditions": crypto.dec_json(chart["conditions"], []) if chart else [],
             } if chart else None
 
         # The ledger, shown to the caretaker as well. Both sides read the same
@@ -226,8 +252,13 @@ def read_share(token: str):
                FROM care_events WHERE user_id = ? ORDER BY created_at DESC LIMIT 40""",
             (uid,),
         ).fetchall()
-        out["events"] = [dict(e) for e in events]
+        out["events"] = [
+            {**dict(e), "summary": crypto.dec(e["summary"]),
+             "actor_label": crypto.dec(e["actor_label"])}
+            for e in events
+        ]
         out["canBook"] = "appointments" in scopes
+        out["canMarkDoses"] = "medicines" in scopes
 
         # Every open is counted, so she can see the link is being used — and
         # notice if it is being used when it shouldn't be.
@@ -306,10 +337,11 @@ def book_via_share(token: str, body: BookBody):
              to_12h(slot["start_time"]), body.reason, slot["price_inr"]),
         )
 
-        who = share["label"] or "Someone you shared with"
+        label = crypto.dec(share["label"])
+        who = label or "Someone you shared with"
         log_event(
             db, uid,
-            actor="caretaker", actor_label=share["label"], share_token=token,
+            actor="caretaker", actor_label=label, share_token=token,
             kind="booked",
             summary=f"{who} booked {doctor['name']} for {slot['date']} at {to_12h(slot['start_time'])}",
             meta={"appointmentId": appt_id, "doctor": doctor["name"],
@@ -328,6 +360,85 @@ def book_via_share(token: str, body: BookBody):
     }
 
 
+def _open_share(db, token: str, scope: str | None = None):
+    share = db.execute("SELECT * FROM care_shares WHERE token = ?", (token,)).fetchone()
+    if not share or share["revoked"] or _expired(share):
+        raise HTTPException(404, "This link is no longer active.")
+    if scope and scope not in json.loads(share["scopes"] or "[]"):
+        raise HTTPException(403, "This link does not cover that.")
+    return share
+
+
+@router.post("/care/{token}/medicines/{med_id}/taken", status_code=201)
+def caretaker_marks_dose(token: str, med_id: str, body: DoseBody):
+    """A daughter hands her mother the tablet and ticks it here.
+
+    This is the action a caretaker actually performs, several times a day, and
+    until now the page could only describe it. It stays inside the rule the
+    rest of this module is built on — it adds a record of care given and can
+    remove nothing.
+
+    Every tick records *who*. An adherence number a doctor reads is worth
+    having only if it distinguishes "she took it" from "someone says she took
+    it", and the honest version of letting a caretaker help is saying so in the
+    record rather than quietly folding it into her own.
+    """
+    today = date.today().isoformat()
+    when = body.date or today
+    # Only today and yesterday. A link that can rewrite a fortnight of adherence
+    # is a link that can rewrite what her doctor believes about her treatment.
+    if when not in (today, (date.today() - timedelta(days=1)).isoformat()):
+        raise HTTPException(400, "Only today or yesterday can be marked.")
+
+    with get_db() as db:
+        share = _open_share(db, token, "medicines")
+        uid = share["user_id"]
+        med = db.execute(
+            "SELECT * FROM medications WHERE id = ? AND user_id = ? AND active = 1", (med_id, uid)
+        ).fetchone()
+        if not med:
+            raise HTTPException(404, "Medicine not found.")
+        if body.slot not in json.loads(med["times"] or "[]"):
+            raise HTTPException(400, "That is not one of this medicine's times.")
+
+        db.execute(
+            """INSERT INTO medication_doses (user_id, medication_id, date, slot, taken_at, taken_by)
+               VALUES (?, ?, ?, ?, ?, ?)
+               ON CONFLICT(user_id, medication_id, date, slot)
+               DO UPDATE SET taken_at = excluded.taken_at, taken_by = excluded.taken_by""",
+            (uid, med_id, when, body.slot, utcnow_iso(), token),
+        )
+        name = crypto.dec(med["name"])
+        label = crypto.dec(share["label"])
+        log_event(
+            db, uid, actor="caretaker", actor_label=label, share_token=token, kind="dose",
+            summary=f"{label or 'Someone you shared with'} marked {name} ({body.slot}) as taken",
+            meta={"medicationId": med_id, "date": when, "slot": body.slot},
+        )
+    return {"success": True, "date": when, "slot": body.slot}
+
+
+@router.post("/care/{token}/notes", status_code=201)
+def caretaker_note(token: str, body: NoteBody):
+    """A line in the shared thread — "took her to Dr Sharma, BP was fine".
+
+    The ledger was a list of things the app noticed. The person actually in the
+    room could see it and add nothing to it, which made the "both of you are
+    reading the same thread" promise half true.
+    """
+    text = body.text.strip()[:280]
+    if not text:
+        raise HTTPException(422, "A note needs some words.")
+    with get_db() as db:
+        share = _open_share(db, token)
+        label = crypto.dec(share["label"])
+        log_event(
+            db, share["user_id"], actor="caretaker", actor_label=label, share_token=token,
+            kind="note", summary=text, meta={"note": True},
+        )
+    return {"success": True}
+
+
 # ---------- her side of the ledger ----------
 
 @router.get("/me/care/events")
@@ -338,7 +449,12 @@ def my_events(user: dict = Depends(current_user)):
                FROM care_events WHERE user_id = ? ORDER BY created_at DESC LIMIT 60""",
             (user["id"],),
         ).fetchall()
-    events = [{**dict(r), "meta": json.loads(r["meta"] or "{}")} for r in rows]
+    events = [
+        {**dict(r), "summary": crypto.dec(r["summary"]),
+         "actor_label": crypto.dec(r["actor_label"]),
+         "meta": json.loads(r["meta"] or "{}")}
+        for r in rows
+    ]
     return {
         "events": events,
         # Only a caretaker's actions are things she needs telling about; her own

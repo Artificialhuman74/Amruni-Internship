@@ -14,6 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import current_user
+from . import crypto
 from .db import get_db, new_id, utcnow_iso
 
 router = APIRouter()
@@ -109,7 +110,7 @@ def _post_json(db: sqlite3.Connection, row, viewer_id: int) -> dict:
     display_name = get_or_create_anon_handle(db, row["author_id"]) if row["is_anonymous"] else None
     if not row["is_anonymous"]:
         user = db.execute("SELECT name FROM users WHERE id = ?", (row["author_id"],)).fetchone()
-        display_name = (user["name"] if user and user["name"] else "A member")
+        display_name = (crypto.dec(user["name"]) if user and user["name"] else None) or "A member"
 
     liked = db.execute(
         "SELECT 1 FROM community_likes WHERE user_id = ? AND post_id = ?", (viewer_id, row["id"])
@@ -185,12 +186,12 @@ def _journal_json(row, mood: dict | None = None) -> dict:
     return {
         "id": row["id"],
         "date": row["date"],
-        "text": row["text"],
+        "text": crypto.dec(row["text"]),
         "tags": json.loads(row["tags"] or "[]"),
         "sharedAsPostId": row["shared_as_post_id"],
         "moodLogId": row["mood_log_id"],
         "mood": mood,
-        "context": json.loads(row["context"] or "{}"),
+        "context": crypto.dec_json(row["context"], {}),
         "bringToAppointment": bool(row["bring_to_appointment"]),
         "createdAt": row["created_at"],
         "updatedAt": row["updated_at"],
@@ -211,8 +212,8 @@ def _moods_for(db, rows) -> dict[str, dict]:
         m["id"]: {
             "id": m["id"],
             "valence": m["valence"],
-            "word": m["word"],
-            "factors": json.loads(m["factors"] or "[]"),
+            "word": crypto.dec(m["word"]),
+            "factors": crypto.dec_json(m["factors"], []),
             "scope": m["scope"],
             "loggedAt": m["logged_at"],
         }
@@ -240,8 +241,8 @@ def create_journal(body: JournalBody, user: dict = Depends(current_user)):
             """INSERT INTO journal_entries
                  (id, user_id, date, text, tags, mood_log_id, context, bring_to_appointment, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-            (entry_id, user["id"], body.date, body.text, json.dumps(body.tags),
-             body.moodLogId, json.dumps(body.context), int(body.bringToAppointment), now, now),
+            (entry_id, user["id"], body.date, crypto.enc(body.text), json.dumps(body.tags),
+             body.moodLogId, crypto.enc_json(body.context), int(body.bringToAppointment), now, now),
         )
         # Back-link the mood so deleting the entry can take its mood with it.
         if body.moodLogId:
@@ -268,8 +269,8 @@ def update_journal(entry_id: str, body: JournalBody, user: dict = Depends(curren
                  SET date = ?, text = ?, tags = ?, mood_log_id = ?, context = ?,
                      bring_to_appointment = ?, updated_at = ?
                WHERE id = ?""",
-            (body.date, body.text, json.dumps(body.tags), body.moodLogId,
-             json.dumps(body.context) if body.context else existing["context"],
+            (body.date, crypto.enc(body.text), json.dumps(body.tags), body.moodLogId,
+             crypto.enc_json(body.context) if body.context else existing["context"],
              int(body.bringToAppointment), utcnow_iso(), entry_id),
         )
         if body.moodLogId:

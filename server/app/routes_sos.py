@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import current_user
+from . import crypto
 from .db import get_db, new_id, utcnow_iso
 
 router = APIRouter()
@@ -31,9 +32,9 @@ class AlertBody(BaseModel):
 def _contact_json(row) -> dict:
     return {
         "id": row["id"],
-        "name": row["name"],
-        "phone": row["phone"],
-        "relation": row["relation"],
+        "name": crypto.dec(row["name"]),
+        "phone": crypto.dec(row["phone"]),
+        "relation": crypto.dec(row["relation"]),
         "createdAt": row["created_at"],
     }
 
@@ -56,13 +57,19 @@ def add_contact(body: ContactBody, user: dict = Depends(current_user)):
     with get_db() as db:
         # The same number twice is never intended, and would mean she is texted
         # about twice in an emergency.
-        existing = db.execute(
-            "SELECT id FROM sos_contacts WHERE user_id = ? AND phone = ?", (user["id"], phone)
-        ).fetchone()
+        # Encrypted phones cannot be compared in SQL, so the duplicate check
+        # reads her contacts and compares decrypted. The list is a handful of
+        # people by design.
+        existing = next(
+            (r for r in db.execute(
+                "SELECT id, phone FROM sos_contacts WHERE user_id = ?", (user["id"],)
+            ).fetchall() if crypto.dec(r["phone"]) == phone),
+            None,
+        )
         if existing:
             db.execute(
                 "UPDATE sos_contacts SET name = ?, relation = ? WHERE id = ?",
-                (name, body.relation, existing["id"]),
+                (crypto.enc(name), crypto.enc(body.relation), existing["id"]),
             )
             row = db.execute("SELECT * FROM sos_contacts WHERE id = ?", (existing["id"],)).fetchone()
             return _contact_json(row)
@@ -70,7 +77,7 @@ def add_contact(body: ContactBody, user: dict = Depends(current_user)):
         contact_id = new_id("contact")
         db.execute(
             "INSERT INTO sos_contacts (id, user_id, name, phone, relation) VALUES (?, ?, ?, ?, ?)",
-            (contact_id, user["id"], name, phone, body.relation),
+            (contact_id, user["id"], crypto.enc(name), crypto.enc(phone), crypto.enc(body.relation)),
         )
         row = db.execute("SELECT * FROM sos_contacts WHERE id = ?", (contact_id,)).fetchone()
     return _contact_json(row)
@@ -95,7 +102,7 @@ def list_alerts(user: dict = Depends(current_user)):
     return [
         {
             "id": r["id"],
-            "message": r["message"],
+            "message": crypto.dec(r["message"]),
             "sentTo": json.loads(r["sent_to"] or "[]"),
             "isTest": bool(r["is_test"]),
             "timestamp": r["timestamp"],
@@ -111,7 +118,7 @@ def save_alert(body: AlertBody, user: dict = Depends(current_user)):
         db.execute(
             """INSERT INTO sos_alerts (id, user_id, message, sent_to, is_test, timestamp)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (alert_id, user["id"], body.message, json.dumps(body.sentTo),
+            (alert_id, user["id"], crypto.enc(body.message), json.dumps(body.sentTo),
              int(body.isTest), utcnow_iso()),
         )
     return {"id": alert_id}

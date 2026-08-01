@@ -5,7 +5,8 @@ import { useApp } from '../context/AppContext';
 import { useMood } from '../context/MoodContext';
 import { useToast } from './Toast';
 import { tap } from '../lib/haptics';
-import MoodFlower, { BANDS } from './MoodFlower';
+import MoodFlower from './MoodFlower';
+import { BANDS } from '../lib/moodScale';
 import MoodSheet from './MoodSheet';
 
 /**
@@ -55,10 +56,10 @@ export default function DailyMoodCheckIn() {
     setSheet(scope);
   }
 
-  async function handleSave({ valence, word, factors, scope }) {
+  async function handleSave({ valence, intensity, word, factors, scope }) {
     setSaving(true);
     try {
-      await log({ valence, word, factors, scope, source: 'checkin' });
+      await log({ valence, intensity, word, factors, scope, source: 'checkin' });
       toast(
         scope === 'day' ? 'Today is logged. Thank you.' : 'Logged. Thank you for sharing.',
         { icon: 'heart' },
