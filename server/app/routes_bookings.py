@@ -131,6 +131,60 @@ def create_booking(body: BookingBody, user: dict = Depends(current_user)):
 
 
 @router.post("/payments/{payment_id}/confirm")
+def settle_payment(db, payment, appt, provider_payment_id=None, signature=None):
+    """Verifies a payment and turns the reservation into a real appointment.
+
+    Extracted so the care link can reach it. A caretaker paying from her own
+    card has to end up with exactly the same booking, slot lock, and generated
+    meeting as the patient paying from hers — a second copy of this would be a
+    second chance for the two paths to drift, and the one that drifts is always
+    the one used less.
+    """
+    if payment["status"] == "paid":            # idempotent re-confirm
+        return appt
+    if payment["status"] != "created":
+        raise HTTPException(400, "This payment can no longer be confirmed.")
+    if appt["status"] != "pending_payment":
+        raise HTTPException(409, "This booking has expired. Please book again.")
+
+    payments.verify(payment, provider_payment_id, signature)
+
+    db.execute(
+        "UPDATE payments SET status = 'paid', paid_at = ? WHERE id = ?",
+        (utcnow_iso(), payment["id"]),
+    )
+    if appt["slot_id"]:
+        db.execute("UPDATE slots SET status = 'booked', locked_at = NULL WHERE id = ?", (appt["slot_id"],))
+
+    # Payment captured → generate the meeting automatically.
+    meet_link = meet_event = meet_provider = None
+    if appt["consult_mode"] == "video":
+        doctor = db.execute("SELECT * FROM doctors WHERE id = ?", (appt["doctor_id"],)).fetchone()
+        slot = db.execute("SELECT * FROM slots WHERE id = ?", (appt["slot_id"],)).fetchone() if appt["slot_id"] else None
+        duration = 30
+        start_time = "10:00"
+        if slot:
+            start_time = slot["start_time"]
+            sh, sm = map(int, slot["start_time"].split(":"))
+            eh, em = map(int, slot["end_time"].split(":"))
+            duration = (eh * 60 + em) - (sh * 60 + sm)
+        meeting = meet.create_meeting(
+            summary=f"Amruni consultation — {doctor['name']}",
+            description=f"Video consultation booked via Amruni.\nAppointment: {appt['id']}\n"
+                        f"Reason: {appt['reason'] or 'Not specified'}",
+            date=appt["date"],
+            start_time=start_time,
+            duration_minutes=duration,
+        )
+        meet_link, meet_event, meet_provider = meeting["link"], meeting["event_id"], meeting["provider"]
+
+    db.execute(
+        "UPDATE appointments SET status = 'confirmed', meet_link = ?, meet_event_id = ?, meet_provider = ? WHERE id = ?",
+        (meet_link, meet_event, meet_provider, appt["id"]),
+    )
+    return db.execute("SELECT * FROM appointments WHERE id = ?", (appt["id"],)).fetchone()
+
+
 def confirm_payment(payment_id: str, body: ConfirmBody, user: dict = Depends(current_user)):
     with get_db() as db:
         payment = db.execute(
@@ -139,9 +193,8 @@ def confirm_payment(payment_id: str, body: ConfirmBody, user: dict = Depends(cur
         if not payment:
             raise HTTPException(404, "Payment not found")
         appt = db.execute("SELECT * FROM appointments WHERE id = ?", (payment["appointment_id"],)).fetchone()
-
-        if payment["status"] == "paid":            # idempotent re-confirm
-            return _appointment_with_doctor(db, appt)
+        appt = settle_payment(db, payment, appt, body.providerPaymentId, body.signature)
+        return _appointment_with_doctor(db, appt)
         if payment["status"] != "created":
             raise HTTPException(400, "This payment can no longer be confirmed.")
         if appt["status"] != "pending_payment":

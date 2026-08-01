@@ -29,9 +29,22 @@ export function smsBod(userName, link, medical = {}, { test = false } = {}) {
   return lines.join('\n');
 }
 
-/** The clinical lines. Returns nothing at all when there's nothing true to say. */
-export function medicalSummary({ bloodGroup, allergies = [], conditions = [] } = {}) {
+/**
+ * The clinical lines. Returns nothing at all when there's nothing true to say.
+ *
+ * Pregnancy leads, above blood group, because it changes the answer to almost
+ * everything that follows it — which hospital she should be taken to, which
+ * drugs are safe to give her, and how urgently a bleed or a fall needs to be
+ * treated. It was the one fact the app already knew and the message left
+ * behind, which made it the most expensive omission in the whole alert.
+ */
+export function medicalSummary({ pregnancy = null, bloodGroup, allergies = [], conditions = [] } = {}) {
   const out = [];
+  if (pregnancy?.weeks != null) {
+    out.push(`PREGNANT — ${pregnancy.weeks} weeks (trimester ${pregnancy.trimester})`);
+  } else if (pregnancy?.recentlyPregnant) {
+    out.push('RECENTLY PREGNANT — due date has passed');
+  }
   if (bloodGroup) out.push(`Blood group: ${bloodGroup}`);
   if (allergies.length) out.push(`Allergies: ${allergies.join(', ')}`);
   if (conditions.length) {

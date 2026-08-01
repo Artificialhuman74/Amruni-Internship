@@ -1,7 +1,11 @@
 import { useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import BottomSheet from './BottomSheet';
+import { lifeContext } from '../lib/lifeContext';
+import { flagsFor, URGENCY_COPY } from '../lib/pregnancyRedFlags';
+import { IconPhone, IconStethoscope } from '../icons.jsx';
 
 // Must stay in exact sync with the Home-screen mood-logging card — both read
 // and write state.pregnancy.loggedDays[date].mood/valence.
@@ -19,8 +23,13 @@ const SYMPTOMS = ['Nausea', 'Fatigue', 'Back pain', 'Swelling', 'Heartburn', 'Cr
 
 export default function PregnancySymptoms() {
   const { state, dispatch } = useApp();
+  const navigate = useNavigate();
   const reduce = useReducedMotion();
   const [editOpen, setEditOpen] = useState(false);
+  const [flagged, setFlagged] = useState(null);   // the red flag being explained
+
+  const ctx = lifeContext(state);
+  const redFlags = useMemo(() => flagsFor(ctx.weeks), [ctx.weeks]);
 
   const today = useMemo(() => new Date().toISOString().split('T')[0], []);
   const todayEntry = state.pregnancy.loggedDays?.[today];
@@ -32,10 +41,23 @@ export default function PregnancySymptoms() {
   }, [todayEntry]);
 
   function toggleSymptom(symptom) {
-    const next = symptoms.includes(symptom)
-      ? symptoms.filter(s => s !== symptom)
-      : [...symptoms, symptom];
+    const adding = !symptoms.includes(symptom);
+    const next = adding ? [...symptoms, symptom] : symptoms.filter(s => s !== symptom);
     dispatch({ type: 'LOG_PREGNANCY_DAY', date: today, data: { symptoms: next } });
+    return adding;
+  }
+
+  /**
+   * Logs it first, then explains it.
+   *
+   * The order matters: the record is written whatever she decides to do next,
+   * and nothing about the sheet can be dismissed in a way that loses what she
+   * reported. Un-ticking never opens it — she is correcting a tap, not telling
+   * the app something new.
+   */
+  function toggleFlag(flag) {
+    const added = toggleSymptom(flag.label);
+    if (added) setFlagged(flag);
   }
 
   function pickMoodWord(word) {
@@ -98,6 +120,65 @@ export default function PregnancySymptoms() {
           })}
         </div>
       </div>
+
+      {/* The signs that are worth a call.
+          Kept as their own list rather than mixed into the everyday chips: a
+          woman scanning for "heartburn" should not have to read past "bleeding"
+          to find it, and these need naming plainly rather than blending in. */}
+      {redFlags.length > 0 && (
+        <div>
+          <p className="section-title">Anything like this today?</p>
+          <p className="preg-flags__lede">
+            These are the ones worth mentioning to someone rather than only writing down.
+            Most turn out to be nothing.
+          </p>
+          <div className="preg-flags">
+            {redFlags.map((flag) => {
+              const active = symptoms.includes(flag.label);
+              return (
+                <button
+                  key={flag.id}
+                  type="button"
+                  className={`preg-flag${active ? ' preg-flag--on' : ''}`}
+                  aria-pressed={active}
+                  onClick={() => toggleFlag(flag)}
+                >
+                  {flag.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* What it might mean, and who to ring. Never a diagnosis. */}
+      <BottomSheet open={!!flagged} onClose={() => setFlagged(null)} title="Worth checking">
+        {flagged && (
+          <div className="preg-triage">
+            <p className="preg-triage__flag">{flagged.label}</p>
+            <p className="preg-triage__title">{URGENCY_COPY[flagged.urgency].title}</p>
+            <p className="preg-triage__body">{URGENCY_COPY[flagged.urgency].body}</p>
+            <p className="preg-triage__meaning">{flagged.meaning}</p>
+
+            <div className="preg-triage__actions">
+              {flagged.urgency === 'now' && (
+                <a href="tel:112" className="btn btn--emergency">
+                  <IconPhone size={17} /> Call 112
+                </a>
+              )}
+              <button className="btn btn--primary" onClick={() => { setFlagged(null); navigate('/consult'); }}>
+                <IconStethoscope size={17} /> Talk to a doctor now
+              </button>
+              <button className="btn btn--ghost" onClick={() => setFlagged(null)}>
+                I have already been seen about this
+              </button>
+            </div>
+            <p className="preg-triage__logged">
+              Logged either way — it stays on today&rsquo;s record whatever you decide.
+            </p>
+          </div>
+        )}
+      </BottomSheet>
 
       {/* Mood edit sheet — re-pick within today's already-logged valence band */}
       <BottomSheet open={editOpen} onClose={() => setEditOpen(false)} title="Update today's mood">

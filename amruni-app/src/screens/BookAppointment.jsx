@@ -322,7 +322,25 @@ export default function BookAppointment() {
                   <SummaryRow label="Slot" value={`${dateLabel(selectedSlot.date).dayName} ${dateLabel(selectedSlot.date).dayNum} ${dateLabel(selectedSlot.date).month}, ${selectedSlot.time}`} />
                 )}
                 <SummaryRow label="Amount" value={feeLabel} strong />
+                {booking?.anonymous === true && <SummaryRow label="Booked as" value="A nickname" />}
               </div>
+
+              {/* The server says what it actually did, and the screen believes
+                  it rather than its own intention.
+                  An older API silently ignores the anonymous flag, which would
+                  leave this screen promising a woman that her counsellor cannot
+                  see her name while her name is being stored — the precise
+                  failure the setting was fixed to end. She is told before she
+                  pays, while cancelling still costs her nothing. */}
+              {bookAnonymously && booking && booking.anonymous !== true && (
+                <p role="alert" className="anon-note anon-note--warn">
+                  <span className="anon-note__title">This booking will carry your name</span>
+                  <span className="anon-note__body">
+                    Anonymous booking is not available on this server yet, so {doctorName} will
+                    see your name and phone number. Go back if you would rather not continue.
+                  </span>
+                </p>
+              )}
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginBottom: 'var(--sp-4)' }}>
                 Your slot is reserved for 10 minutes while you pay. Your video meeting link is generated
                 automatically the moment payment succeeds.

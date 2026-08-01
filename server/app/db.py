@@ -494,6 +494,9 @@ def init_db():
         # holding her link did, and the difference belongs in the record rather
         # than quietly inside one adherence number.
         _ensure_column(db, "medication_doses", "taken_by", "TEXT")
+        # Set when a caretaker paid through a care link. It is what makes the
+        # confirm endpoint safe: a token may only settle payments it created.
+        _ensure_column(db, "payments", "share_token", "TEXT")
         # Her phone is stored encrypted like everything else that names her, so
         # sign-in cannot look it up directly. This is the deterministic index it
         # looks up instead — see app/crypto.blind_index.

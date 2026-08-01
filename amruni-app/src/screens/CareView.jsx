@@ -25,6 +25,8 @@ export default function CareView() {
   const [booking, setBooking] = useState(false);   // the slot picker
   const [slots, setSlots] = useState(null);
   const [busy, setBusy] = useState(null);          // slotId being reserved
+  const [held, setHeld] = useState(null);          // reserved, awaiting her card
+  const [paying, setPaying] = useState(false);
   const [freshId, setFreshId] = useState(null);    // the event just written
   const [error, setError] = useState('');
   const [dosing, setDosing] = useState(null);      // `${medId}:${slot}` in flight
@@ -108,17 +110,37 @@ export default function CareView() {
     }
   }
 
+  async function pay() {
+    if (!held || paying) return;
+    setPaying(true);
+    setError('');
+    try {
+      // Razorpay Checkout would open here first with held.payment.keyId /
+      // orderId, handing its payment id and signature to the call below. On the
+      // mock provider the confirm stands alone, exactly as the patient's own
+      // checkout does.
+      await careApi.confirmPayment(token, held.payment.paymentId);
+      setHeld(null);
+      await refresh();
+    } catch {
+      setError('That payment did not go through. The time is still held — try again.');
+    } finally {
+      setPaying(false);
+    }
+  }
+
   async function reserve(slot) {
     if (busy) return;
     setBusy(slot.slotId);
     setError('');
     try {
-      await careApi.book(token, { slotId: slot.slotId });
-      // The newest caretaker event is the one just written — flagged so the
-      // ledger can play its arrival rather than have it appear already there.
-      await refresh();
+      // Held, not booked. The slot is locked while she pays, and the ledger
+      // already records the attempt either way.
+      const res = await careApi.book(token, { slotId: slot.slotId });
+      setHeld({ ...res, slot });
       setBooking(false);
       setSlots(null);
+      await refresh();
     } catch (err) {
       setError(err?.response?.status === 409
         ? 'That time was just taken. Please pick another.'
@@ -248,12 +270,26 @@ export default function CareView() {
       {data.canBook && (
         <section className="cv__card">
           <h2 className="cv__card-title"><IconAppointment size={16} /> Book an appointment</h2>
-          {!booking ? (
+          {held ? (
+            <div className="cv__pay">
+              <p className="cv__pay-line">
+                <strong>{held.doctor}</strong> — {held.slot?.date && new Date(`${held.slot.date}T00:00`).toLocaleDateString('en-IN', { weekday: 'short', day: 'numeric', month: 'short' })} · {held.time}
+              </p>
+              <p className="cv__pay-amount">₹{held.amount}</p>
+              <button className="btn btn--primary" onClick={pay} disabled={paying}>
+                {paying ? 'Paying…' : `Pay ₹${held.amount}`}
+              </button>
+              <p className="cv__hint">
+                Charged to your card, not {data.name || 'hers'}. The time is held while you pay,
+                and {data.name || 'she'} is told that you booked and paid.
+              </p>
+            </div>
+          ) : !booking ? (
             <>
               <button className="btn btn--primary" onClick={openBooking}>Find a time</button>
               <p className="cv__hint">
-                You can reserve a time. {data.name || 'She'} confirms and pays in her own app —
-                so nothing is charged to you, and the final say stays hers.
+                Book and pay for {data.name || 'her'} from your own card. Nothing is charged to
+                her, and she is told about anything you do here.
               </p>
             </>
           ) : (

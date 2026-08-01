@@ -2,6 +2,7 @@ import { useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { mapsLink, smsBod, waLink, fireSmsBurst, watchLocation } from './sos';
 import { conditionLabel } from '../data/conditions';
+import { lifeContext } from './lifeContext';
 import { saveAlert } from './sosService';
 import { warn } from './haptics';
 import { useToast } from '../components/Toast';
@@ -22,7 +23,11 @@ export function useSOSActivation() {
     const contacts = state.sos.contacts || [];
     // What a responder asks for first. Already on her chart; it just wasn't
     // being carried.
+    const ctx = lifeContext(state);
     const medical = {
+      pregnancy: ctx.isPregnant
+        ? { weeks: ctx.weeks, trimester: ctx.trimester }
+        : ctx.postpartumLikely ? { recentlyPregnant: true } : null,
       bloodGroup: state.health?.bloodGroup ?? null,
       allergies: state.health?.allergies ?? [],
       conditions: state.health?.conditions ?? [],

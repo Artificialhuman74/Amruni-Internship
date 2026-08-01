@@ -114,27 +114,3 @@ export function lifeContext(state) {
       : STAGE_LABEL[stage] ?? null,
   };
 }
-
-/**
- * What someone answering an emergency needs, in the order they need it.
- *
- * Pregnancy leads because it changes the answer to almost everything that
- * follows it — which hospital, which drugs, how urgent a bleed is. Blood group
- * and allergies come next because they are what a stranger acts on.
- */
-export function emergencyBrief(state) {
-  const ctx = lifeContext(state);
-  const health = state?.health ?? {};
-  const lines = [];
-
-  if (ctx.isPregnant) {
-    lines.push(`PREGNANT — ${ctx.weeks} weeks (trimester ${ctx.trimester})`);
-  } else if (ctx.postpartumLikely) {
-    lines.push('RECENTLY PREGNANT — due date has passed');
-  }
-  if (health.bloodGroup) lines.push(`Blood group ${health.bloodGroup}`);
-  if (health.allergies?.length) lines.push(`Allergic to ${health.allergies.join(', ')}`);
-  if (health.conditions?.length) lines.push(`Conditions: ${health.conditions.join(', ')}`);
-
-  return { lines, context: ctx };
-}

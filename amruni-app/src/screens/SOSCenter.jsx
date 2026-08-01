@@ -5,6 +5,7 @@ import { useApp } from '../context/AppContext';
 import { getAlerts } from '../lib/sosService';
 import { useSOSActivation } from '../lib/useSOSActivation';
 import { medicalSummary } from '../lib/sos';
+import { lifeContext } from '../lib/lifeContext';
 import { useToast } from '../components/Toast';
 import { tap } from '../lib/haptics';
 import { IconPhone, IconShield } from '../icons.jsx';
@@ -98,7 +99,11 @@ export default function SOSCenter() {
           <p style={{ fontSize: 'var(--text-md)', fontWeight: 600, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>What your contacts will see</p>
 
           {(() => {
+            const ctx = lifeContext(state);
             const medical = {
+              pregnancy: ctx.isPregnant
+                ? { weeks: ctx.weeks, trimester: ctx.trimester }
+                : ctx.postpartumLikely ? { recentlyPregnant: true } : null,
               bloodGroup: state.health?.bloodGroup ?? null,
               allergies: state.health?.allergies ?? [],
               conditions: state.health?.conditions ?? [],

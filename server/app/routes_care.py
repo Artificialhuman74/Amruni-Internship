@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from . import crypto, payments
 from .auth import current_user
-from .db import get_db, new_id, to_12h, utcnow_iso
+from .db import get_db, new_id, payment_json, to_12h, utcnow_iso
 
 router = APIRouter()
 
@@ -49,16 +49,24 @@ DEFAULT_TTL_DAYS = 90
 
 # What a caretaker may do, and — more importantly — may not.
 #
-# Booking ADDS care. Cancelling removes it, payment spends her money, minting
-# links widens the holder's own access, and the emergency details are what get
-# used when she cannot speak for herself. Those four are the shape coercive
-# control takes, so no link can reach them: a caretaker can only ever put
-# something *on* her calendar, never take it off, and never pay for it.
+# Booking ADDS care. Cancelling removes it, minting links widens the holder's
+# own access, and the emergency details are what get used when she cannot speak
+# for herself. Those are the shape coercive control takes, so no link reaches
+# them: a caretaker can only ever put something *on* her calendar, never take
+# it off.
 #
-# A caretaker booking is created unpaid on purpose. It reserves the slot and
-# then waits for her — she is the one who confirms and pays, which keeps the
-# final say with the patient without making the help useless.
+# Payment sat on that list until it was looked at properly. What the rule is
+# actually protecting is *her money* — and a daughter paying for her mother's
+# consultation from her own card spends none of it. So a caretaker may now book
+# and pay outright, through a Razorpay order raised against the link. Her card,
+# her charge, and a refund on cancellation goes back to her.
+#
+# The patient still holds the ledger, and every booking and payment is written
+# into it under the caretaker's name, because someone spending money on your
+# behalf is exactly the thing you should not have to discover from a bank
+# statement.
 CARETAKER_MAY_BOOK = True
+CARETAKER_MAY_PAY = True
 
 
 def log_event(db, user_id: int, *, actor: str, kind: str, summary: str,
@@ -86,6 +94,11 @@ class DoseBody(BaseModel):
 
 class NoteBody(BaseModel):
     text: str
+
+
+class ConfirmBody(BaseModel):
+    providerPaymentId: str | None = None
+    signature: str | None = None
 
 
 class ShareBody(BaseModel):
@@ -337,6 +350,18 @@ def book_via_share(token: str, body: BookBody):
              to_12h(slot["start_time"]), body.reason, slot["price_inr"]),
         )
 
+        # The order is raised against the link, and `share_token` is what the
+        # confirm endpoint checks — a token can only ever settle a payment it
+        # created, never one belonging to the patient or to another link.
+        order = payments.create_order(slot["price_inr"], receipt=appt_id)
+        pay_id = new_id("pay")
+        db.execute(
+            """INSERT INTO payments (id, appointment_id, user_id, provider, order_id, amount_inr, share_token)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (pay_id, appt_id, uid, order["provider"], order["order_id"], slot["price_inr"], token),
+        )
+        payment = db.execute("SELECT * FROM payments WHERE id = ?", (pay_id,)).fetchone()
+
         label = crypto.dec(share["label"])
         who = label or "Someone you shared with"
         log_event(
@@ -355,8 +380,9 @@ def book_via_share(token: str, body: BookBody):
         "date": slot["date"],
         "time": to_12h(slot["start_time"]),
         "amount": slot["price_inr"],
-        # Said plainly to the caretaker, so nobody assumes it is settled.
-        "note": "Reserved. It is confirmed once she approves and pays in her app.",
+        "payment": {**payment_json(payment), "keyId": order.get("key_id")},
+        # Said plainly, so nobody assumes it is settled before it is.
+        "note": "Held for you. It is confirmed once the payment goes through.",
     }
 
 
@@ -437,6 +463,51 @@ def caretaker_note(token: str, body: NoteBody):
             kind="note", summary=text, meta={"note": True},
         )
     return {"success": True}
+
+
+@router.post("/care/{token}/payments/{payment_id}/confirm")
+def confirm_via_share(token: str, payment_id: str, body: ConfirmBody):
+    """The caretaker settles the booking she just made, from her own card.
+
+    Two things make this safe on a page with no login. The payment must have
+    been created by *this* token — so holding a link never lets anyone touch
+    the patient's own payments, or another link's — and the settlement itself
+    is the same `settle_payment` the authenticated path uses, so a care-link
+    booking cannot end up in a different state from a normal one.
+    """
+    from .routes_bookings import settle_payment
+
+    with get_db() as db:
+        share = _open_share(db, token, "appointments")
+        payment = db.execute(
+            "SELECT * FROM payments WHERE id = ? AND share_token = ?", (payment_id, token)
+        ).fetchone()
+        if not payment or payment["user_id"] != share["user_id"]:
+            raise HTTPException(404, "Payment not found")
+
+        appt = db.execute(
+            "SELECT * FROM appointments WHERE id = ?", (payment["appointment_id"],)
+        ).fetchone()
+        already_paid = payment["status"] == "paid"
+        appt = settle_payment(db, payment, appt, body.providerPaymentId, body.signature)
+
+        if not already_paid:
+            doctor = db.execute("SELECT * FROM doctors WHERE id = ?", (appt["doctor_id"],)).fetchone()
+            label = crypto.dec(share["label"])
+            who = label or "Someone you shared with"
+            log_event(
+                db, share["user_id"], actor="caretaker", actor_label=label, share_token=token,
+                kind="paid",
+                summary=f"{who} paid ₹{payment['amount_inr']} for {doctor['name']} on {appt['date']}",
+                meta={"appointmentId": appt["id"], "amount": payment["amount_inr"],
+                      "doctor": doctor["name"], "paidByCaretaker": True},
+            )
+        return {
+            "appointmentId": appt["id"],
+            "status": appt["status"],
+            "meetLink": appt["meet_link"],
+            "note": "Confirmed. She can see it in her app, and the ledger records that you paid.",
+        }
 
 
 # ---------- her side of the ledger ----------

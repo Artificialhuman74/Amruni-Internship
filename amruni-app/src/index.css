@@ -1595,6 +1595,27 @@ body[data-overlay='true'] .sos-orb {
 .vital-cell dt { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--clr-ink-subtle); }
 .vital-cell dd { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
 
+/* Anonymity, stated before she books — and corrected if the server did not
+   actually deliver it. */
+.anon-note {
+  display: block;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--clr-surface-2);
+  margin-bottom: var(--sp-5);
+}
+.anon-note--on { background: var(--clr-sage-soft); }
+.anon-note--warn { background: var(--clr-warning-soft); }
+.anon-note__title { display: block; font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); }
+.anon-note__body {
+  display: block;
+  font-size: var(--text-xs);
+  color: var(--clr-ink-muted);
+  margin-top: 2px;
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+
 /* The one line at the top of a chart that changes what may be prescribed. */
 .ctx-band {
   margin-top: var(--sp-5);
@@ -4344,3 +4365,88 @@ button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
   resize: none;
 }
 .cv__note-input:focus { outline: none; border-color: var(--clr-brand-muted); }
+
+/* ── Pregnancy warning signs ─────────────────────────────────────────────────
+   Set apart from the everyday symptom chips, and deliberately not alarming:
+   these are read most often by someone who is fine, and a list that shouts is
+   one she learns to scroll past — which is the failure mode that matters. */
+.preg-flags__lede {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  margin: calc(-1 * var(--sp-1)) 0 var(--sp-3);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.preg-flags {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-2);
+}
+.preg-flag {
+  display: flex; align-items: center;
+  min-height: 48px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  font-size: var(--text-sm);
+  color: var(--clr-ink);
+  text-align: left;
+  line-height: var(--leading-snug);
+}
+.preg-flag:hover { border-color: var(--clr-warning); }
+.preg-flag--on {
+  background: var(--clr-warning-soft);
+  border-color: transparent;
+  font-weight: 600;
+}
+
+.preg-triage { display: flex; flex-direction: column; gap: var(--sp-2); }
+.preg-triage__flag {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--clr-ink-subtle);
+}
+.preg-triage__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg); font-weight: 600; color: var(--clr-ink);
+  line-height: var(--leading-tight); text-wrap: balance;
+}
+.preg-triage__body,
+.preg-triage__meaning {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.preg-triage__meaning {
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--clr-border);
+  margin-top: var(--sp-1);
+}
+.preg-triage__actions { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-4); }
+.preg-triage__actions .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2); }
+.preg-triage__logged {
+  font-size: var(--text-xs); color: var(--clr-ink-subtle);
+  text-align: center; margin-top: var(--sp-3);
+}
+
+.cs__forever-note {
+  font-size: var(--text-xs);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  background: var(--clr-warning-soft);
+  margin-bottom: var(--sp-4);
+}
+
+/* The caretaker's own checkout, on a page with no account. */
+.cv__pay { display: flex; flex-direction: column; gap: var(--sp-2); }
+.cv__pay-line { font-size: var(--text-sm); color: var(--clr-ink); }
+.cv__pay-amount {
+  font-family: var(--font-display);
+  font-size: var(--text-2xl); font-weight: 600; color: var(--clr-ink);
+  font-variant-numeric: tabular-nums;
+  margin-bottom: var(--sp-2);
+}
