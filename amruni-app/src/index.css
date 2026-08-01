@@ -1595,6 +1595,61 @@ body[data-overlay='true'] .sos-orb {
 .vital-cell dt { font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; color: var(--clr-ink-subtle); }
 .vital-cell dd { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); margin-top: 2px; font-variant-numeric: tabular-nums; }
 
+/* The one line at the top of a chart that changes what may be prescribed. */
+.ctx-band {
+  margin-top: var(--sp-5);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-lg);
+  background: var(--clr-warning-soft);
+}
+.ctx-band--pregnant { background: var(--clr-preg-soft); }
+.ctx-band--trying { background: var(--clr-sage-soft); }
+.ctx-band__label { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); }
+.ctx-band__caution {
+  font-size: var(--text-xs);
+  color: var(--clr-ink-muted);
+  margin-top: 2px;
+  line-height: var(--leading-snug);
+  text-wrap: pretty;
+}
+
+/* Medicines on the patient chart */
+.med-row {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+}
+.med-row--past { background: transparent; }
+.med-row--past .med-row__name { color: var(--clr-ink-muted); font-weight: 600; }
+.med-row__name { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); }
+.med-row__dose { font-weight: 600; color: var(--clr-ink-muted); }
+.med-row__meta { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-top: 2px; }
+.med-row__side {
+  display: flex; flex-direction: column; align-items: flex-end; gap: 3px;
+  flex-shrink: 0; text-align: right;
+}
+.med-row__doses { font-size: var(--text-xs); color: var(--clr-ink-muted); font-variant-numeric: tabular-nums; }
+.med-tag {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.03em;
+  padding: 2px var(--sp-2);
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+}
+.med-tag--rx { background: var(--clr-brand-soft); color: var(--clr-brand); }
+.med-tag--self { background: var(--clr-sky-soft); color: var(--clr-sky); }
+.med-adherence {
+  font-size: var(--text-xs);
+  color: var(--clr-ink-muted);
+  margin-top: var(--sp-3);
+  font-variant-numeric: tabular-nums;
+  line-height: var(--leading-snug);
+}
+.med-adherence__caveat { color: var(--clr-ink-subtle); font-variant-numeric: normal; }
+
 /* Records timeline */
 .doc-record {
   background: var(--clr-surface);
@@ -1928,6 +1983,19 @@ body[data-overlay='true'] .sos-orb {
 .mood-slider__track:focus-visible { outline: 2px solid currentColor; outline-offset: 3px; }
 /* Inset by half a thumb so travel ends flush with the track, never overhanging. */
 .mood-slider__rail { position: absolute; top: 0; bottom: 0; left: 26px; right: 26px; }
+/* The seven named states, marked on a rail she can now stand anywhere on. */
+.mood-slider__notch {
+  position: absolute;
+  top: 50%;
+  width: 3px; height: 3px;
+  margin: -1.5px 0 0 -1.5px;
+  border-radius: var(--radius-full);
+  background: currentColor;
+  opacity: 0.28;
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease-out), transform var(--dur-fast) var(--ease-out);
+}
+.mood-slider__notch--on { opacity: 0.55; transform: scale(1.6); }
 .mood-slider__thumb {
   position: absolute;
   top: 50%;
@@ -1948,14 +2016,29 @@ body[data-overlay='true'] .sos-orb {
 }
 
 /* ── Chips ── */
+/* A grid, not a wrapping cloud.
+   Twelve words and thirty-three reasons set as free-flowing pills tore the
+   right edge into a ragged silhouette with nothing to scan down. Columns give
+   the eye a straight edge and a reading order, and — because every cell is the
+   same width — selecting something can no longer resize it and reflow the rows
+   underneath.
+
+   Two columns, fixed, rather than auto-fill. The sheet is capped at
+   --app-max-width, so the widest this grid is ever laid out in is about 382px;
+   auto-fill would take a third column somewhere above 430px and hand every
+   cell less room for text than a 320px phone gets with two. It was sizing
+   against a width this container cannot have. */
 .mood-chips {
-  display: flex; flex-wrap: wrap; gap: var(--sp-2);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--sp-2);
   margin-bottom: var(--sp-4);
 }
 .mood-chip {
-  display: inline-flex; align-items: center; gap: 6px;
+  display: inline-flex; align-items: center; justify-content: center;
+  text-align: center;
   min-height: 44px;
-  padding: var(--sp-2) var(--sp-4);
+  padding: var(--sp-2) var(--sp-3);
   border-radius: var(--radius-full);
   border: 1px solid transparent;
   background: oklch(1 0 0 / 0.6);
@@ -1968,6 +2051,42 @@ body[data-overlay='true'] .sos-orb {
 .mood-chip:active { transform: scale(0.96); }
 .mood-chip:focus-visible { outline: 2px solid currentColor; outline-offset: 2px; }
 .mood-chip--on { color: #fff; font-weight: 600; }
+
+/* Four headed lists rather than one wall of thirty-three chips.
+   The label belongs to the chips beneath it, so it sits tight to them and the
+   air goes above — between the groups, where the separation means something. */
+.mood-group + .mood-group { margin-top: var(--sp-6); }
+.mood-group .mood-chips { margin-bottom: 0; }
+.mood-group__label {
+  font-size: var(--text-xs);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: var(--sp-2);
+}
+
+/* "In your own words" — dashed so it reads as an opening rather than an option
+   already on the list, and the same size as the chips it sits among. */
+.mood-chip--add {
+  background: transparent;
+  border-style: dashed;
+  border-color: currentColor;
+  opacity: 0.65;
+}
+.mood-chip--add:hover { background: oklch(1 0 0 / 0.5); opacity: 1; }
+.mood-chip--field {
+  width: 100%;
+  min-width: 0;
+  text-align: center;
+  border-style: solid;
+  border-color: currentColor;
+  background: oklch(1 0 0 / 0.9);
+  font-family: inherit;
+  /* 16px floor: anything a field can inherit below it makes iOS Safari zoom. */
+  font-size: var(--text-base);
+}
+.mood-chip--field::placeholder { color: currentColor; opacity: 0.45; }
 .mood-chip--on:hover { filter: brightness(1.06); }
 
 /* ── Footer ── */
@@ -3545,8 +3664,21 @@ button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
    No account, no app, often a phone that has never seen Amruni.
    So: plain, legible, and offering nothing but the information
    it was shared to give. */
+/* This page owns its own scrolling.
+   Every other screen gets it from .screen or .app-shell__content, but the care
+   link sits outside the auth guard and the tab shell — so it is a direct child
+   of #root, which is a fixed-height flex column with overflow:hidden. With only
+   a min-height it grew past the viewport and #root clipped the remainder: the
+   recipient could not reach the ledger, the footer, or on a long share the
+   booking button. flex + min-height:0 is the same pattern .app-shell__content
+   uses. */
 .cv {
-  min-height: 100dvh;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
   background: var(--clr-bg);
   padding: calc(var(--safe-top) + var(--sp-6)) var(--sp-6) calc(var(--safe-bottom) + var(--sp-10));
   display: flex; flex-direction: column; gap: var(--sp-4);
@@ -3855,14 +3987,20 @@ button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
 .wc__plot {
   position: relative;
   width: 100%;
-  border-radius: var(--radius-lg);
-  background: var(--clr-surface);
-  border: 1px solid var(--clr-border);
-  overflow: hidden;
   touch-action: pan-y;      /* horizontal drag scrubs; vertical still scrolls */
   cursor: crosshair;
 }
 .wc__plot--scrubbing { cursor: grabbing; }
+/* The card, and the only thing that clips. Markers sit above it so a first or
+   last reading on the very edge stays a whole dot. */
+.wc__canvas {
+  position: absolute;
+  inset: 0;
+  border-radius: var(--radius-lg);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  overflow: hidden;
+}
 .wc__svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 
 .wc__hair {
@@ -3898,3 +4036,311 @@ button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
 .wc__figure { font-size: var(--text-md); font-weight: 600; color: var(--clr-ink); font-variant-numeric: tabular-nums; }
 .wc__when { font-size: var(--text-xs); color: var(--clr-ink-subtle); margin-left: auto; }
 .wc__hint { font-size: var(--text-xs); color: var(--clr-ink-subtle); }
+
+/* ── Trying to conceive ─────────────────────────────────────────────────────
+   The window is the subject, so the ramp gets the strongest colour on the
+   page and everything explaining it stays quiet underneath. Nothing here
+   scores a cycle or counts how many have passed. */
+.ttc {
+  padding: var(--sp-5) var(--sp-5) var(--sp-8);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.ttc-hero {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-xl);
+  padding: var(--sp-5);
+}
+/* Open window: the one place on the screen that raises its voice, and it
+   does it with light rather than volume — the fertile tint washing up from the
+   foot of the card the way the band fills from the left. */
+.ttc-hero--open {
+  background: linear-gradient(168deg, var(--clr-surface) 0%, var(--clr-fertile-soft) 78%);
+  border-color: color-mix(in oklch, var(--clr-fertile) 22%, transparent);
+}
+.ttc-hero__title {
+  font-family: var(--font-display);
+  font-size: var(--text-xl);
+  font-weight: 600;
+  color: var(--clr-ink);
+  line-height: var(--leading-tight);
+  text-wrap: balance;
+}
+.ttc-hero__body {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  margin-top: var(--sp-2);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.ttc-hero__dates {
+  font-size: var(--text-xs);
+  color: var(--clr-ink-subtle);
+  margin-top: var(--sp-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The window itself */
+.ttc-win { position: relative; padding-top: 26px; margin: 0; }
+
+/* The bracket over the crest. Top, left and right borders only — a
+   measurement mark, which is what it is. */
+.ttc-win__peak { position: absolute; top: 0; display: flex; flex-direction: column; align-items: center; }
+.ttc-win__peak-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--clr-fertile);
+  white-space: nowrap;
+}
+.ttc-win__peak-rule {
+  width: 100%;
+  height: 6px;
+  margin-top: 3px;
+  border: 1px solid var(--clr-fertile);
+  border-bottom: none;
+  border-radius: 3px 3px 0 0;
+  opacity: 0.45;
+}
+
+.ttc-win__band { position: relative; height: 112px; }
+.ttc-win__band svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+
+/* A dot on the curve with its line dropped to the baseline. */
+.ttc-win__now-line {
+  position: absolute;
+  bottom: 0;
+  width: 1.5px;
+  margin-left: -0.75px;
+  background: linear-gradient(var(--clr-ink) 0 100%);
+  opacity: 0.55;
+}
+.ttc-win__now-line::before {
+  content: '';
+  position: absolute;
+  top: -4px; left: 50%;
+  width: 9px; height: 9px;
+  margin-left: -4.5px;
+  border-radius: var(--radius-full);
+  background: var(--clr-ink);
+  box-shadow: 0 0 0 3px var(--clr-bg);
+}
+
+.ttc-win__days {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  margin-top: var(--sp-2);
+}
+.ttc-win__day { display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; }
+.ttc-win__day--past { opacity: 0.4; }
+.ttc-win__wd {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clr-ink-subtle);
+}
+.ttc-win__num {
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--clr-ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+/* Reserved on every column so six dates share one baseline. */
+.ttc-win__note {
+  min-height: 13px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--clr-ink-subtle);
+  white-space: nowrap;
+}
+.ttc-win__day--today .ttc-win__num { color: var(--clr-ink); font-weight: 700; }
+.ttc-win__day--today .ttc-win__note { color: var(--clr-ink); }
+
+.ttc-caveat {
+  font-size: var(--text-xs);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+  max-width: 62ch;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--clr-border);
+}
+
+.ttc-section__title {
+  font-family: var(--font-display);
+  font-size: var(--text-lg);
+  font-weight: 600;
+  color: var(--clr-ink);
+}
+.ttc-section__lede {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  margin-top: var(--sp-1);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.ttc-list { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-4); }
+.ttc-item {
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+.ttc-item--open { border-color: color-mix(in oklch, var(--clr-fertile) 35%, var(--clr-border)); }
+.ttc-item__head {
+  display: flex; align-items: center; gap: var(--sp-3);
+  width: 100%; text-align: left;
+  padding: var(--sp-3) var(--sp-4);
+  cursor: pointer;
+}
+.ttc-item__title { flex: 1; font-size: var(--text-sm); font-weight: 600; color: var(--clr-ink); }
+.ttc-item__chev {
+  font-size: var(--text-xs); color: var(--clr-ink-subtle); flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+.ttc-item--open .ttc-item__chev { transform: rotate(180deg); }
+.ttc-item__body { padding: 0 var(--sp-4) var(--sp-4); }
+.ttc-item__body p {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.ttc-item__source {
+  font-size: var(--text-xs) !important;
+  color: var(--clr-ink-subtle) !important;
+  margin-top: var(--sp-2);
+}
+
+.ttc-help__line {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  margin-top: var(--sp-2);
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+.ttc-help__sub { font-size: var(--text-sm); font-weight: 600; color: var(--clr-ink); margin-top: var(--sp-4); }
+.ttc-help__list {
+  margin: var(--sp-2) 0 0;
+  padding-left: var(--sp-5);
+  display: flex; flex-direction: column; gap: var(--sp-2);
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  line-height: var(--leading-snug);
+}
+.ttc-help__actions { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-5); }
+
+.ttc-empty { text-align: center; padding: var(--sp-8) var(--sp-4); }
+.ttc-empty__mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 72px; height: 72px;
+  border-radius: var(--radius-full);
+  background: var(--clr-fertile-soft);
+  color: var(--clr-fertile);
+  margin-bottom: var(--sp-4);
+}
+.ttc-empty__title { font-size: var(--text-md); font-weight: 700; color: var(--clr-ink); }
+.ttc-empty__body {
+  font-size: var(--text-sm);
+  color: var(--clr-ink-muted);
+  margin: var(--sp-2) auto var(--sp-5);
+  max-width: 34ch;
+  line-height: var(--leading-base);
+  text-wrap: pretty;
+}
+
+/* ── Doctor schedule ─────────────────────────────────────────────────────── */
+.sched-key {
+  display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-4);
+  font-size: var(--text-xs);
+  color: var(--clr-ink-muted);
+}
+.sched-key__item { display: inline-flex; align-items: center; gap: 6px; }
+.sched-key__dot { width: 7px; height: 7px; border-radius: var(--radius-full); }
+.sched-key__dot--open { background: var(--clr-success); }
+.sched-key__dot--locked { background: var(--clr-warning); }
+.sched-key__dot--booked { background: var(--clr-brand); }
+
+/* Times align into columns so the shape of a day is readable down the page. */
+.sched-slots {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(8.75rem, 1fr));
+  gap: var(--sp-2);
+}
+.sched-slot {
+  display: grid;
+  grid-template-columns: 7px 1fr auto 16px;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+.sched-slot__dot { width: 7px; height: 7px; border-radius: var(--radius-full); background: var(--clr-border); }
+.sched-slot--open .sched-slot__dot { background: var(--clr-success); }
+.sched-slot--locked .sched-slot__dot { background: var(--clr-warning); }
+.sched-slot--booked .sched-slot__dot { background: var(--clr-brand); }
+/* A booked slot is a commitment, not an option — it reads heavier. */
+.sched-slot--booked { background: var(--clr-brand-soft); border-color: transparent; font-weight: 600; }
+.sched-slot__time { color: var(--clr-ink); }
+.sched-slot__price { color: var(--clr-ink-subtle); font-size: var(--text-xs); }
+/* Reserved whether or not there is a control, so rows stay aligned. */
+.sched-slot__action { display: inline-flex; justify-content: flex-end; width: 16px; }
+.sched-slot__action button { color: var(--clr-ink-subtle); display: inline-flex; padding: 0; }
+.sched-slot__action button:hover { color: var(--clr-ink); }
+
+/* ── Care link: what the recipient can do ────────────────────────────────── */
+.cv__list--roomy { gap: var(--sp-4); }
+.cv__med-head { display: flex; flex-direction: column; gap: 2px; }
+.cv__doses {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(7.5rem, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.cv__dose {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 1px;
+  min-height: 48px;                 /* a caretaker may be elderly herself */
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--clr-border);
+  background: var(--clr-surface);
+  text-align: left;
+}
+.cv__dose:hover:not(:disabled) { border-color: var(--clr-brand-muted); background: var(--clr-brand-soft); }
+.cv__dose--done { background: var(--clr-sage-soft); border-color: transparent; }
+.cv__dose:disabled { cursor: default; }
+.cv__dose-time { font-size: var(--text-sm); font-weight: 700; color: var(--clr-ink); font-variant-numeric: tabular-nums; }
+.cv__dose-state { font-size: var(--text-xs); color: var(--clr-ink-muted); }
+.cv__dose--done .cv__dose-state { color: var(--clr-sage); font-weight: 600; }
+
+.cv__note-form { display: flex; flex-direction: column; gap: var(--sp-2); margin-top: var(--sp-4); }
+.cv__note-label {
+  font-size: var(--text-xs); font-weight: 700;
+  letter-spacing: 0.06em; text-transform: uppercase; color: var(--clr-ink-muted);
+}
+.cv__note-input {
+  width: 100%;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--radius-md);
+  border: 1.5px solid var(--clr-border);
+  background: var(--clr-surface-2);
+  color: var(--clr-ink);
+  /* 16px floor so iOS does not zoom the page when it takes focus. */
+  font-size: var(--text-base);
+  font-family: inherit;
+  line-height: var(--leading-base);
+  resize: none;
+}
+.cv__note-input:focus { outline: none; border-color: var(--clr-brand-muted); }

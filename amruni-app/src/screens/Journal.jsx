@@ -5,7 +5,7 @@ import { journalApi } from '../services/journalApi';
 import { communityApi } from '../services/communityApi';
 import { apiError } from '../services/api';
 import { useToast } from '../components/Toast';
-import { BANDS } from '../components/MoodFlower';
+import { BANDS } from '../lib/moodScale';
 import { IconJournal } from '../icons.jsx';
 import { tap } from '../lib/haptics';
 

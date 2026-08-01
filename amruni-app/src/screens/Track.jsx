@@ -5,19 +5,22 @@ import TrackSwitch from '../components/TrackSwitch';
 import CycleTracker from './CycleTracker';
 import Pregnancy from './Pregnancy';
 import WeightTracker from './WeightTracker';
+import Conceive from './Conceive';
 
 /**
  * Track, with a switch at the top.
  *
  * The first pane is whatever her body is doing — her cycle, or her pregnancy.
- * The second is weight.
+ * After it come the panes she has asked for: the fertile window if she is
+ * trying to conceive, and weight.
  *
- * Weight is opt-in everywhere except pregnancy, and that asymmetry is
- * deliberate. In pregnancy it is clinical guidance she is expected to follow.
- * Everywhere else it is a number this product's own brief warns can do harm —
- * PRODUCT.md names body image as a core adolescent concern — so nobody is
- * handed a scale they did not ask for. The switch simply isn't there until
- * she turns it on.
+ * Both of those are opt-in, and both asymmetries are deliberate. Weight is
+ * automatic only in pregnancy, where it is clinical guidance she is expected
+ * to follow; everywhere else it is a number this product's own brief warns can
+ * do harm, so nobody is handed a scale they did not ask for. The fertile
+ * window is the same argument from the other direction — for a woman who is
+ * not trying, a tab counting down to ovulation every month is a monthly
+ * reminder of a decision she has already made.
  */
 
 const EXPO = [0.16, 1, 0.3, 1];
@@ -26,13 +29,22 @@ export default function Track() {
   const { state, dispatch } = useApp();
   const reduce = useReducedMotion();
   const pregnancyMode = Boolean(state.settings?.pregnancyMode);
+  // Pregnant and trying to conceive are not a state anyone occupies at once,
+  // and the pregnancy pane is the one that matters if the flags disagree.
+  const conceiveOn = !pregnancyMode && Boolean(state.settings?.conceiveMode);
   const weightOn = pregnancyMode || Boolean(state.settings?.weightTracking);
 
   const [pane, setPane] = useState('body');
 
   const Body = pregnancyMode ? Pregnancy : CycleTracker;
+  const panes = [
+    { id: 'body', label: pregnancyMode ? 'Pregnancy' : 'Cycle', Screen: Body },
+    ...(conceiveOn ? [{ id: 'conceive', label: 'Conceive', Screen: Conceive }] : []),
+    ...(weightOn ? [{ id: 'weight', label: 'Weight', Screen: WeightTracker }] : []),
+  ];
 
-  if (!weightOn) {
+  // A switch with one segment is a label pretending to be a control.
+  if (panes.length === 1) {
     return (
       <div className="screen screen--light">
         <Body />
@@ -51,28 +63,30 @@ export default function Track() {
     );
   }
 
+  const index = Math.max(0, panes.findIndex((p) => p.id === pane));
+  const Active = panes[index].Screen;
+
   return (
     <div className="screen screen--light">
       <div className="trk__switch">
         <TrackSwitch
-          value={pane}
+          value={panes[index].id}
           onChange={setPane}
-          options={[
-            { id: 'body', label: pregnancyMode ? 'Pregnancy' : 'Cycle' },
-            { id: 'weight', label: 'Weight' },
-          ]}
+          options={panes.map(({ id, label }) => ({ id, label }))}
         />
       </div>
 
       <AnimatePresence mode="wait" initial={false}>
+        {/* Slides the way the segment moved, so the panes read as one row
+            being scrolled rather than as screens replacing each other. */}
         <motion.div
-          key={pane}
-          initial={reduce ? { opacity: 0 } : { opacity: 0, x: pane === 'weight' ? 18 : -18 }}
+          key={panes[index].id}
+          initial={reduce ? { opacity: 0 } : { opacity: 0, x: 18 }}
           animate={{ opacity: 1, x: 0 }}
-          exit={reduce ? { opacity: 0 } : { opacity: 0, x: pane === 'weight' ? -18 : 18 }}
+          exit={reduce ? { opacity: 0 } : { opacity: 0, x: -18 }}
           transition={{ duration: reduce ? 0.15 : 0.3, ease: EXPO }}
         >
-          {pane === 'body' ? <Body /> : <WeightTracker />}
+          <Active />
         </motion.div>
       </AnimatePresence>
     </div>

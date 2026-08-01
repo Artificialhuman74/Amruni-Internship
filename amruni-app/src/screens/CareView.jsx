@@ -27,6 +27,9 @@ export default function CareView() {
   const [busy, setBusy] = useState(null);          // slotId being reserved
   const [freshId, setFreshId] = useState(null);    // the event just written
   const [error, setError] = useState('');
+  const [dosing, setDosing] = useState(null);      // `${medId}:${slot}` in flight
+  const [note, setNote] = useState('');
+  const [noting, setNoting] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -66,17 +69,54 @@ export default function CareView() {
     }
   }
 
+  /** Refreshes the page's own data after any action, so both panes agree. */
+  async function refresh(flagFresh = true) {
+    const next = await careApi.view(token);
+    setData(next);
+    if (flagFresh) setFreshId(next.events?.find((e) => e.actor === 'caretaker')?.id ?? null);
+  }
+
+  async function markDose(med, slot) {
+    const key = `${med.id}:${slot}`;
+    if (dosing) return;
+    setDosing(key);
+    setError('');
+    try {
+      await careApi.markDose(token, med.id, { slot });
+      await refresh();
+    } catch {
+      setError('Could not record that dose. Try again in a moment.');
+    } finally {
+      setDosing(null);
+    }
+  }
+
+  async function leaveNote(e) {
+    e.preventDefault();
+    const text = note.trim();
+    if (!text || noting) return;
+    setNoting(true);
+    setError('');
+    try {
+      await careApi.note(token, text);
+      setNote('');
+      await refresh();
+    } catch {
+      setError('Could not add that note. Try again in a moment.');
+    } finally {
+      setNoting(false);
+    }
+  }
+
   async function reserve(slot) {
     if (busy) return;
     setBusy(slot.slotId);
     setError('');
     try {
       await careApi.book(token, { slotId: slot.slotId });
-      const next = await careApi.view(token);
-      setData(next);
       // The newest caretaker event is the one just written — flagged so the
       // ledger can play its arrival rather than have it appear already there.
-      setFreshId(next.events?.find((e) => e.actor === 'caretaker')?.id ?? null);
+      await refresh();
       setBooking(false);
       setSlots(null);
     } catch (err) {
@@ -99,7 +139,8 @@ export default function CareView() {
         <p className="cv__eyebrow">Shared with you</p>
         <h1 className="cv__name">{data.name || 'A patient'}</h1>
         <p className="cv__note">
-          Read-only. Only what {data.name || 'she'} chose to share appears here.
+          Only what {data.name || 'she'} chose to share. You can tick off medicine, book a
+          time and leave a note — nothing here can cancel, pay, or remove anything.
         </p>
       </motion.header>
 
@@ -142,17 +183,49 @@ export default function CareView() {
         <section className="cv__card">
           <h2 className="cv__card-title"><IconPill size={16} /> Medicines</h2>
           {data.medicines?.length ? (
-            <ul className="cv__list">
-              {data.medicines.map((m, i) => (
-                <li key={i} className="cv__row">
-                  <span className="cv__row-main">{m.name}</span>
-                  <span className="cv__row-meta">
-                    {[m.dose, m.frequency, m.times?.length ? m.times.join(', ') : null].filter(Boolean).join(' · ')}
-                  </span>
+            <ul className="cv__list cv__list--roomy">
+              {data.medicines.map((m) => (
+                <li key={m.id ?? m.name} className="cv__med">
+                  <div className="cv__med-head">
+                    <span className="cv__row-main">{m.name}</span>
+                    <span className="cv__row-meta">{[m.dose, m.frequency].filter(Boolean).join(' · ')}</span>
+                  </div>
+                  {/* One button per dose. This is the thing a caretaker is
+                      actually doing all day, and the page could previously only
+                      describe it back to her. */}
+                  {data.canMarkDoses && m.times?.length > 0 && (
+                    <div className="cv__doses">
+                      {m.times.map((t) => {
+                        const done = m.takenToday?.includes(t);
+                        const busyHere = dosing === `${m.id}:${t}`;
+                        return (
+                          <button
+                            key={t}
+                            type="button"
+                            className={`cv__dose${done ? ' cv__dose--done' : ''}`}
+                            disabled={done || dosing !== null}
+                            aria-pressed={done}
+                            onClick={() => markDose(m, t)}
+                          >
+                            <span className="cv__dose-time">{t}</span>
+                            <span className="cv__dose-state">
+                              {busyHere ? 'Saving…' : done ? 'Given' : 'Mark given'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
                 </li>
               ))}
             </ul>
           ) : <p className="cv__empty">No current medicines.</p>}
+          {data.canMarkDoses && data.medicines?.length > 0 && (
+            <p className="cv__hint">
+              Marking a dose records that you gave it, under your name — {data.name || 'she'} and
+              her doctor both see who ticked it.
+            </p>
+          )}
         </section>
       )}
 
@@ -223,6 +296,23 @@ export default function CareView() {
       <section className="cv__card">
         <h2 className="cv__card-title">What&rsquo;s been happening</h2>
         <CareLedger events={data.events} patientName={data.name} freshId={freshId} />
+        {/* The thread claimed both of you were reading it while only one of you
+            could write to it. */}
+        <form className="cv__note-form" onSubmit={leaveNote}>
+          <label className="cv__note-label" htmlFor="cv-note">Add to the thread</label>
+          <textarea
+            id="cv-note"
+            className="cv__note-input"
+            rows={2}
+            maxLength={280}
+            value={note}
+            placeholder="e.g. Took her to Dr Sharma today — blood pressure was fine."
+            onChange={(e) => setNote(e.target.value)}
+          />
+          <button className="btn btn--secondary" type="submit" disabled={!note.trim() || noting}>
+            {noting ? 'Adding…' : 'Add note'}
+          </button>
+        </form>
         <p className="cv__hint">
           {data.name || 'She'} sees this same thread, and is told whenever you do something here.
         </p>

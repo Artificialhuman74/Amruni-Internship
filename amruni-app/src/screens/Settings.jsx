@@ -25,7 +25,7 @@ export default function Settings() {
   const toast = useToast();
   const { state, dispatch } = useApp();
   const { name, dob, lifeStage } = state.user;
-  const { notifications, anonymousMode, pregnancyMode } = state.settings;
+  const { notifications, anonymousMode, pregnancyMode, conceiveMode } = state.settings;
   const [bloom, setBloom] = useState(false);
 
   function togglePregnancy() {
@@ -254,6 +254,36 @@ export default function Settings() {
                 </div>
               </div>
               <ChevronRight />
+            </div>
+            {/* Above pregnancy mode, since one usually precedes the other, and
+                off in one tap: a fertile-window countdown is the first thing a
+                woman wants gone when trying stops — whether it stopped because
+                it worked or because it didn't. */}
+            <div className="settings-item">
+              <div className="settings-item__icon" style={{ background: 'var(--clr-sage-soft)', color: 'var(--clr-sage)' }}><IconSprout size={20} /></div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label">Trying to conceive</div>
+                <div className="settings-item__desc">
+                  {pregnancyMode
+                    ? 'Paused while pregnancy mode is on'
+                    : 'Your fertile window in Track, and a nudge on the days that count'}
+                </div>
+              </div>
+              <button
+                className={`toggle${conceiveMode && !pregnancyMode ? ' toggle--on' : ''}`}
+                onClick={() => {
+                  if (pregnancyMode) return;
+                  const next = !conceiveMode;
+                  dispatch({ type: 'SET_SETTINGS', payload: { conceiveMode: next } });
+                  confirm();
+                  toast(next ? 'Fertile window added to Track' : 'Trying-to-conceive mode off', { icon: next ? 'check' : 'bloom' });
+                }}
+                aria-pressed={conceiveMode && !pregnancyMode}
+                aria-label="Toggle trying to conceive mode"
+                disabled={pregnancyMode}
+              >
+                <div className="toggle__knob" />
+              </button>
             </div>
             <div className="settings-item">
               <div className="settings-item__icon" style={{ background: 'var(--clr-preg-soft)' }}><IconPregnant size={20} /></div>

@@ -39,7 +39,7 @@ export function stageFromDob(dob) {
 // it still completes onboarding, then lands on the Coming-soon page.
 export const GOALS = [
   { id: 'cycle', Icon: IconCycle, label: 'Track my cycle', desc: 'Periods, symptoms and predictions' },
-  { id: 'conceive', Icon: IconSprout, label: 'Trying to conceive', desc: 'Fertile window and ovulation' },
+  { id: 'conceive', Icon: IconSprout, label: 'Trying to conceive', desc: 'Fertile window and ovulation', conceiveMode: true },
   { id: 'pregnancy', Icon: IconPregnant, label: "I'm pregnant", desc: 'Week-by-week, gently guided', pregnancyMode: true },
   { id: 'menopause', Icon: IconCamellia, label: 'Menopause support', desc: 'Hormones, mood and bone health', stage: 'menopause' },
   { id: 'mental', Icon: IconWellness, label: 'Mental wellbeing', desc: 'Screening and quiet support' },
@@ -60,5 +60,11 @@ export function resolveFromGoal(dob, goalId) {
     // Choosing "Manage my weight" is itself the opt-in — she asked for it, so
     // Track shows the switch without asking a second time.
     weightTracking: !!goal?.weightTracking,
+    // Likewise "Trying to conceive": saying so at onboarding is the whole
+    // consent for the fertile-window pane and its two notifications a cycle.
+    // It is a setting rather than a read of `goal` because this is the one
+    // thing on her phone she is most likely to want turned off in a hurry —
+    // and turning it off has to be one switch, not a re-run of onboarding.
+    conceiveMode: !!goal?.conceiveMode,
   };
 }

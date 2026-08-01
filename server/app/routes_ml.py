@@ -11,6 +11,7 @@ from fastapi import APIRouter, Depends
 
 from . import ml, pcos
 from .auth import current_user
+from . import crypto
 from .db import get_db
 
 router = APIRouter()
@@ -78,7 +79,7 @@ def cycle_predictions(user: dict = Depends(current_user)):
         ).fetchall()
         chart = db.execute("SELECT conditions FROM patient_charts WHERE user_id = ?", (user["id"],)).fetchone()
 
-    conditions = json.loads(chart["conditions"]) if chart and chart["conditions"] else []
+    conditions = crypto.dec_json(chart["conditions"], []) if chart else []
     # Conditions arrive two ways: structured ids she picked herself during
     # onboarding, and free text a doctor typed into her chart. Both are matched,
     # so a clinician writing "polycystic ovaries" counts the same as her tapping
@@ -99,7 +100,7 @@ def cycle_predictions(user: dict = Depends(current_user)):
     other_irregular = sorted(OTHER_IRREGULAR.intersection(conditions))
 
     logs = {
-        r["date"]: {"flow": r["flow"], "symptoms": json.loads(r["symptoms"] or "[]")}
+        r["date"]: {"flow": r["flow"], "symptoms": crypto.dec_json(r["symptoms"], [])}
         for r in log_rows
     }
     declared_len = cycle["cycle_length"] if cycle else 28

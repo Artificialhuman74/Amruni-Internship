@@ -13,13 +13,18 @@ export const moodApi = {
     if (until) params.until = until;
     return (await api.get('/mood', { params })).data;
   },
-  create: async ({ date, loggedAt, scope, valence, word, factors, source, journalId }) =>
+  create: async ({ date, loggedAt, scope, valence, intensity, word, factors, source, journalId }) =>
     (await api.post('/mood', {
       date, loggedAt, scope, valence, word,
+      // Where on the scale she actually stopped. `valence` is the named band
+      // it rounds to and stays the unit everything else reasons about.
+      intensity: intensity ?? valence,
       factors: factors ?? [],
       source: source ?? 'checkin',
       journalId: journalId ?? null,
     })).data,
   remove: async (id) => (await api.delete(`/mood/${id}`)).data,
   insights: async () => (await api.get('/mood/insights')).data,
+  // Her own word and factor counts, so the check-in can offer hers first.
+  vocabulary: async () => (await api.get('/mood/vocabulary')).data,
 };

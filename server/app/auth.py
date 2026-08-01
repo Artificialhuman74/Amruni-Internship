@@ -16,6 +16,7 @@ import re
 import jwt
 from fastapi import HTTPException, Request
 
+from . import crypto
 from .db import get_db
 
 IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
@@ -130,9 +131,14 @@ def verify_otp(phone: str, code: str) -> dict:
     """Returns {token, user_id}. Creates the account on first sign-in."""
     with get_db() as db:
         _consume_otp(db, phone, code)
-        user = db.execute("SELECT * FROM users WHERE phone = ?", (phone,)).fetchone()
+        # Looked up by the deterministic index rather than the number itself,
+        # which is stored encrypted and cannot be matched on directly.
+        bidx = crypto.blind_index(phone)
+        user = db.execute("SELECT * FROM users WHERE phone_bidx = ?", (bidx,)).fetchone()
         if not user:
-            cur = db.execute("INSERT INTO users (phone) VALUES (?)", (phone,))
+            cur = db.execute(
+                "INSERT INTO users (phone, phone_bidx) VALUES (?, ?)", (crypto.enc(phone), bidx)
+            )
             uid = cur.lastrowid
             db.execute("INSERT INTO cycle_state (user_id) VALUES (?)", (uid,))
             db.execute("INSERT INTO pregnancy_state (user_id) VALUES (?)", (uid,))

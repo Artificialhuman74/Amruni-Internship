@@ -29,8 +29,13 @@ const initialState = {
     // Off by default and opt-in, except in pregnancy where the corridor is
     // clinical guidance. See screens/Track.jsx for why.
     weightTracking: false,
-    anonymousMode: false,
+    // On by default: mental-health consults are booked under a handle unless
+    // she turns this off. See routes_doctor._anonymous_summary.
+    anonymousMode: true,
     pregnancyMode: false,
+    // "I'm trying to conceive" — opens the fertile-window pane in Track and
+    // the two notifications a cycle that go with it. Off unless she says so.
+    conceiveMode: false,
     // How many times the community identity-exposure warning has been shown
     // (capped at 2, ever — see IdentityWarningSheet.jsx).
     identityWarningSeen: 0,
@@ -58,7 +63,7 @@ export function stateFromServer(payload, phone, prev = {}) {
     cycle: payload.cycle,
     pregnancy: payload.pregnancy,
     health: payload.health ?? prev.health ?? { conditions: [], allergies: [], bloodGroup: null },
-    settings: { pregnancyMode: prev.settings?.pregnancyMode ?? false, ...payload.settings },
+    settings: { ...prev.settings, ...payload.settings },
   };
 }
 

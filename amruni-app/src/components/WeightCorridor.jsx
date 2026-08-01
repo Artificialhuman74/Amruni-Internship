@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useRef, useState } from 'react';
+import { useCallback, useId, useMemo, useRef, useState } from 'react';
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
 
 /**
@@ -21,6 +21,14 @@ import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } fro
  * stay hairline-true under that non-uniform scale, and the dots are separate
  * absolutely-positioned elements because circles inside it would render as
  * ellipses.
+ *
+ * That stretch is also why her line is revealed by a clip wipe rather than by
+ * animating `pathLength`. pathLength draws by leaving a stroke-dasharray on
+ * the path, and a dash array measured in the unstretched 0–100 space cannot be
+ * reconciled with a stroke rendered in device space by non-scaling-stroke: the
+ * pattern tiles along the curve instead of covering it once, and her line
+ * arrives in pieces with gaps in it. A moving clip rect makes no claim about
+ * distance, so it survives any amount of non-uniform scaling.
  */
 
 const EXPO = [0.16, 1, 0.3, 1];
@@ -56,6 +64,9 @@ export default function WeightCorridor({
 }) {
   const reduce = useReducedMotion();
   const plotRef = useRef(null);
+  // SVG ids are document-global; two corridors on one page would otherwise
+  // share a gradient and a clip path, and the second would drive the first.
+  const uid = useId().replace(/:/g, '');
   const [scrubIndex, setScrubIndex] = useState(null);
   const [scrubbing, setScrubbing] = useState(false);
 
@@ -138,68 +149,83 @@ export default function WeightCorridor({
         onPointerUp={() => setScrubbing(false)}
         onPointerCancel={() => setScrubbing(false)}
       >
-        <svg className="wc__svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-          <defs>
-            <linearGradient id="wc-band" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="var(--clr-sage)" stopOpacity="0.26" />
-              <stop offset="100%" stopColor="var(--clr-sage)" stopOpacity="0.12" />
-            </linearGradient>
-            <clipPath id="wc-clip"><rect x="0" y="0" width="100" height="100" /></clipPath>
-          </defs>
+        {/* The card clips; the dots below it do not. A reading on the first or
+            last day sits exactly on the edge, and clipping it would slice the
+            marker in half at precisely the two moments — her first log and her
+            latest — that she is most likely to be looking for. */}
+        <div className="wc__canvas">
+          <svg className="wc__svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+            <defs>
+              <linearGradient id={`wc-band-${uid}`} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--clr-sage)" stopOpacity="0.26" />
+                <stop offset="100%" stopColor="var(--clr-sage)" stopOpacity="0.12" />
+              </linearGradient>
+              <clipPath id={`wc-clip-${uid}`}><rect x="0" y="0" width="100" height="100" /></clipPath>
+              {/* The wipe. Overscans vertically so a round line cap near the top
+                  or bottom of the plot is never shaved by its own reveal. */}
+              <clipPath id={`wc-reveal-${uid}`}>
+                <motion.rect
+                  x="0" y="-20" width="100" height="140"
+                  initial={reduce ? false : { width: 0 }}
+                  animate={{ width: 100 }}
+                  transition={{ duration: reduce ? 0 : 0.65, ease: EXPO }}
+                />
+              </clipPath>
+            </defs>
 
-          <g clipPath="url(#wc-clip)">
-            {/* The channel settles in behind. It used to open first and hold
-                her line back by a third of a second — which meant the one
-                thing she opened the screen for arrived last. The band is
-                context; it can afford to be the thing that catches up. */}
-            {bandPath && (
-              <motion.path
-                d={bandPath}
-                fill="url(#wc-band)"
-                initial={reduce ? false : { opacity: 0, scaleY: 0.06 }}
-                animate={{ opacity: 1, scaleY: 1 }}
-                style={{ transformOrigin: '50% 50%' }}
-                transition={{ duration: reduce ? 0 : 0.55, ease: EXPO }}
-              />
-            )}
-            {bandPath && (
-              <motion.path
-                d={bandPath}
-                fill="none"
-                stroke="var(--clr-sage)"
-                strokeOpacity="0.4"
-                strokeWidth="1"
-                vectorEffect="non-scaling-stroke"
-                initial={reduce ? false : { opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ duration: reduce ? 0 : 0.45, ease: EXPO }}
-              />
-            )}
+            <g clipPath={`url(#wc-clip-${uid})`}>
+              {/* The channel settles in behind. It used to open first and hold
+                  her line back by a third of a second — which meant the one
+                  thing she opened the screen for arrived last. The band is
+                  context; it can afford to be the thing that catches up. */}
+              {bandPath && (
+                <motion.path
+                  d={bandPath}
+                  fill={`url(#wc-band-${uid})`}
+                  initial={reduce ? false : { opacity: 0, scaleY: 0.06 }}
+                  animate={{ opacity: 1, scaleY: 1 }}
+                  style={{ transformOrigin: '50% 50%' }}
+                  transition={{ duration: reduce ? 0 : 0.55, ease: EXPO }}
+                />
+              )}
+              {bandPath && (
+                <motion.path
+                  d={bandPath}
+                  fill="none"
+                  stroke="var(--clr-sage)"
+                  strokeOpacity="0.4"
+                  strokeWidth="1"
+                  vectorEffect="non-scaling-stroke"
+                  initial={reduce ? false : { opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  transition={{ duration: reduce ? 0 : 0.45, ease: EXPO }}
+                />
+              )}
 
-            {/* Today. */}
-            {nowX != null && (
-              <line
-                x1={toX(nowX)} x2={toX(nowX)} y1="0" y2="100"
-                stroke="var(--clr-ink-subtle)" strokeWidth="1" strokeDasharray="2 3"
-                vectorEffect="non-scaling-stroke" opacity="0.5"
-              />
-            )}
+              {/* Today. */}
+              {nowX != null && (
+                <line
+                  x1={toX(nowX)} x2={toX(nowX)} y1="0" y2="100"
+                  stroke="var(--clr-ink-subtle)" strokeWidth="1" strokeDasharray="2 3"
+                  vectorEffect="non-scaling-stroke" opacity="0.5"
+                />
+              )}
 
-            {/* Her line. First frame, no delay — it is what she came to see. */}
-            <motion.path
-              d={linePath}
-              fill="none"
-              stroke="var(--clr-brand)"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              vectorEffect="non-scaling-stroke"
-              initial={reduce ? false : { pathLength: 0 }}
-              animate={{ pathLength: 1 }}
-              transition={{ duration: reduce ? 0 : 0.65, ease: EXPO }}
-            />
-          </g>
-        </svg>
+              {/* Her line. First frame, no delay — it is what she came to see. */}
+              <g clipPath={`url(#wc-reveal-${uid})`}>
+                <path
+                  d={linePath}
+                  fill="none"
+                  stroke="var(--clr-brand)"
+                  strokeWidth="2.5"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  vectorEffect="non-scaling-stroke"
+                />
+              </g>
+            </g>
+          </svg>
+        </div>
 
         {/* The scrub hairline. Outside the SVG so it stays 1px under the
             non-uniform stretch. */}
