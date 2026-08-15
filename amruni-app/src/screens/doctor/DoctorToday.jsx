@@ -108,10 +108,21 @@ export default function DoctorToday() {
                     {nextIsLive ? '● Ready to join' : minutesToNext > 60 ? `in ${Math.floor(minutesToNext / 60)}h ${minutesToNext % 60}m` : `in ${minutesToNext}m`}
                   </span>
                 </div>
-                <p className="doc-next__patient">
-                  {nextUp.patient?.name}
-                  {nextUp.patient?.age != null && <span style={{ fontWeight: 400, color: 'var(--clr-ink-muted-on-dark)' }}> · {nextUp.patient.age} yrs</span>}
-                </p>
+                {nextUp.patient?.id ? (
+                  <button
+                    className="doc-next__patient"
+                    style={{ display: 'block', textAlign: 'left', background: 'none', border: 'none', padding: 0, cursor: 'pointer', color: 'inherit', textDecoration: 'underline', textDecorationColor: 'var(--clr-dark-border)', textUnderlineOffset: 3 }}
+                    onClick={() => navigate(`/patients/${nextUp.patient.id}`)}
+                  >
+                    {nextUp.patient?.name}
+                    {nextUp.patient?.age != null && <span style={{ fontWeight: 400, color: 'var(--clr-ink-muted-on-dark)' }}> · {nextUp.patient.age} yrs</span>}
+                  </button>
+                ) : (
+                  <p className="doc-next__patient">
+                    {nextUp.patient?.name}
+                    {nextUp.patient?.age != null && <span style={{ fontWeight: 400, color: 'var(--clr-ink-muted-on-dark)' }}> · {nextUp.patient.age} yrs</span>}
+                  </p>
+                )}
                 <p className="doc-next__meta">{nextUp.consultMode === 'chat' ? 'Chat consultation' : 'Video consultation'} · {nextUp.fee}</p>
                 {nextUp.reason && <p className="doc-next__reason">“{nextUp.reason}”</p>}
                 <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-4)' }}>
@@ -168,6 +179,14 @@ export default function DoctorToday() {
                       <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{appt.patient?.name}</p>
                       <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>{appt.consultMode === 'chat' ? 'Chat' : 'Video'} · {appt.fee}</p>
                     </div>
+                    {appt.patient?.id && (
+                      <button
+                        className="chip chip--sm"
+                        onClick={() => navigate(`/patients/${appt.patient.id}`)}
+                      >
+                        History
+                      </button>
+                    )}
                     <button
                       className="chip chip--sm"
                       onClick={() => navigate(`/record/${appt.appointmentId}`)}
@@ -191,6 +210,11 @@ export default function DoctorToday() {
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink-muted)' }}>{appt.patient?.name}</p>
                     </div>
+                    {appt.patient?.id && (
+                      <button className="chip chip--sm" onClick={() => navigate(`/patients/${appt.patient.id}`)}>
+                        History
+                      </button>
+                    )}
                     <button className="chip chip--sm" onClick={() => navigate(`/record/${appt.appointmentId}`)}>
                       {appt.hasRecord ? 'View record' : 'Add record'}
                     </button>
