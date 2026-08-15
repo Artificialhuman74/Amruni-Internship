@@ -140,6 +140,70 @@ export function personalRange(logs, { windowDays = 90, minHalfKg = 1.2 } = {}) {
   return { low: median - half, high: median + half, median, samples: sample.length };
 }
 
+/**
+ * The pregnancy-corridor chart: gain against the IOM/ACOG band for her
+ * pre-pregnancy BMI category, mapped onto weeks-of-pregnancy. Returns the
+ * {band, points, nowX, domain} shape WeightCorridor expects, or null when
+ * there isn't enough to plot — no baseline, or no plausible readings.
+ *
+ * Shared between her own weight screen and the doctor's chart view, which
+ * read the same logs and must draw the same corridor from them.
+ */
+export function pregnancyWeightView(logs, { prePregnancyWeightKg, heightCm, currentWeek }) {
+  if (!prePregnancyWeightKg || !heightCm || currentWeek == null) return null;
+  const category = bmiCategory(prePregnancyWeightKg, heightCm);
+  const clean = (logs ?? [])
+    .filter((l) => isPlausibleWeight(l.weightKg))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const band = gainCorridorBand(category, TERM_WEEKS).map((b) => ({ x: b.week, low: b.low, high: b.high }));
+  const points = clean.map((l) => {
+    const weeks = Math.max(0, Math.min(TERM_WEEKS,
+      currentWeek - Math.round((Date.now() - new Date(l.date).getTime()) / 604800000)));
+    return { x: weeks, value: l.weightKg - prePregnancyWeightKg, label: `Week ${weeks}`, signed: true };
+  }).filter((p) => isPlausibleGain(p.value));
+  if (!points.length) return null;   // one point is enough; zero is not
+  const ys = [...band.map((b) => b.low), ...band.map((b) => b.high), ...points.map((p) => p.value)];
+  const pad = 1.5;
+  return {
+    band, points, nowX: currentWeek,
+    domain: { xMin: 0, xMax: TERM_WEEKS, yMin: Math.min(...ys) - pad, yMax: Math.max(...ys) + pad },
+  };
+}
+
+/**
+ * Her own steady range outside pregnancy: no target, just a band around
+ * where she has actually been. `labelFor` formats a YYYY-MM-DD date for the
+ * point readout — kept out of this module so locale/formatting choices stay
+ * with the screen, not the data.
+ */
+export function personalWeightView(logs, labelFor) {
+  const clean = (logs ?? [])
+    .filter((l) => isPlausibleWeight(l.weightKg))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (clean.length < 1) return null;
+  const range = personalRange(clean);
+  const t0 = new Date(clean[0].date).getTime();
+  const span = Math.max(1, new Date(clean[clean.length - 1].date).getTime() - t0);
+  const points = clean.map((l) => ({
+    // A single reading has no span to sit in, so it goes to the middle.
+    x: clean.length === 1 ? 50 : ((new Date(l.date).getTime() - t0) / span) * 100,
+    value: l.weightKg,
+    label: labelFor(l.date),
+  }));
+  // A range needs at least two readings to mean anything. With one we draw
+  // the point and no band, rather than withholding the whole chart on the
+  // very first log.
+  const band = range
+    ? [{ x: 0, low: range.low, high: range.high }, { x: 100, low: range.low, high: range.high }]
+    : [];
+  const ys = [...(range ? [range.low, range.high] : []), ...points.map((p) => p.value)];
+  const pad = range ? 1.2 : 2.5;
+  return {
+    band, points, nowX: null,
+    domain: { xMin: 0, xMax: 100, yMin: Math.min(...ys) - pad, yMax: Math.max(...ys) + pad },
+  };
+}
+
 /** Which way it has been going, stated only when the run is long enough to mean it. */
 export function trendOf(logs, { minPoints = 3 } = {}) {
   const usable = (logs ?? [])

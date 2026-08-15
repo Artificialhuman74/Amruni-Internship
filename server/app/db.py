@@ -162,11 +162,12 @@ CREATE INDEX IF NOT EXISTS idx_records_user ON consultation_records(user_id);
 CREATE INDEX IF NOT EXISTS idx_records_doctor ON consultation_records(doctor_id);
 
 CREATE TABLE IF NOT EXISTS patient_charts (
-  user_id     INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  allergies   TEXT NOT NULL DEFAULT '[]',
-  conditions  TEXT NOT NULL DEFAULT '[]',
-  blood_group TEXT,
-  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+  user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  allergies      TEXT NOT NULL DEFAULT '[]',
+  conditions     TEXT NOT NULL DEFAULT '[]',
+  blood_group    TEXT,
+  family_history TEXT,
+  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
 CREATE TABLE IF NOT EXISTS documents (
@@ -510,6 +511,9 @@ def init_db():
         # speaks; this is the finer grain the slider now offers, kept so
         # reopening an entry returns her thumb to where she left it.
         _ensure_column(db, "mood_logs", "intensity", "REAL")
+        # Family and genetic history — a doctor's own note, not derived from
+        # anything she logs, so it needed a column rather than a computed field.
+        _ensure_column(db, "patient_charts", "family_history", "TEXT")
         if db.execute("SELECT COUNT(*) AS n FROM doctors").fetchone()["n"] == 0:
             for d in SEED_DOCTORS:
                 db.execute(
@@ -527,7 +531,7 @@ def init_db():
 # own.
 ENCRYPTED_COLUMNS = {
     "users": ["name", "dob", "phone"],
-    "patient_charts": ["allergies", "conditions", "blood_group"],
+    "patient_charts": ["allergies", "conditions", "blood_group", "family_history"],
     "consultation_records": ["diagnosis", "notes", "vitals", "prescription"],
     "journal_entries": ["text", "context"],
     "mood_logs": ["word", "factors"],
