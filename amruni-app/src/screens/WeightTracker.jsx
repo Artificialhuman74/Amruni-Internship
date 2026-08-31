@@ -5,8 +5,9 @@ import { useToast } from '../components/Toast';
 import BottomSheet from '../components/BottomSheet';
 import WeightCorridor from '../components/WeightCorridor';
 import {
-  bmiFrom, bmiCategory, categoryLabel, gainCorridorBand,
-  personalRange, trendOf, isPlausibleWeight, isPlausibleGain,
+  bmiFrom, bmiCategory, categoryLabel,
+  trendOf, isPlausibleWeight, isPlausibleGain,
+  pregnancyWeightView, personalWeightView,
 } from '../lib/pregnancyWeight';
 import { tap, confirm as confirmHaptic } from '../lib/haptics';
 import { IconWeight } from '../icons.jsx';
@@ -68,54 +69,16 @@ export default function WeightTracker() {
 
   const pregView = useMemo(() => {
     if (!pregnancyMode || !category || !prePregnancyWeightKg) return null;
-    const band = gainCorridorBand(category, 40).map((b) => ({ x: b.week, low: b.low, high: b.high }));
-    const points = clean.map((l) => {
-      const weeks = Math.max(0, Math.min(40,
-        preg.weeks - Math.round((new Date(todayStr()) - new Date(l.date)) / 604800000)));
-      return {
-        x: weeks,
-        value: l.weightKg - prePregnancyWeightKg,
-        label: `Week ${weeks}`,
-        signed: true,
-      };
-    }).filter((p) => isPlausibleGain(p.value));
-    if (!points.length) return null;   // one point is enough; zero is not
-    const ys = [...band.map((b) => b.low), ...band.map((b) => b.high), ...points.map((p) => p.value)];
-    const pad = 1.5;
-    return {
-      band, points, nowX: preg.weeks,
-      domain: { xMin: 0, xMax: 40, yMin: Math.min(...ys) - pad, yMax: Math.max(...ys) + pad },
-    };
-  }, [pregnancyMode, category, prePregnancyWeightKg, clean, preg.weeks]);
+    return pregnancyWeightView(clean, { prePregnancyWeightKg, heightCm, currentWeek: preg.weeks });
+  }, [pregnancyMode, category, prePregnancyWeightKg, heightCm, clean, preg.weeks]);
 
   // ── Everyone else: her own range, no target ──
-  const range = useMemo(() => personalRange(clean), [clean]);
   const trend = useMemo(() => trendOf(clean), [clean]);
 
   const personalView = useMemo(() => {
-    if (pregnancyMode || clean.length < 1) return null;
-    const t0 = new Date(clean[0].date).getTime();
-    const span = Math.max(1, new Date(clean[clean.length - 1].date).getTime() - t0);
-    const points = clean.map((l) => ({
-      // A single reading has no span to sit in, so it goes to the middle.
-      x: clean.length === 1 ? 50 : ((new Date(l.date).getTime() - t0) / span) * 100,
-      value: l.weightKg,
-      label: shortDate(l.date),
-    }));
-
-    // A range needs at least two readings to mean anything. With one we draw
-    // the point and no band, rather than withholding the whole chart on the
-    // very first log — which is the try where seeing something matters most.
-    const band = range
-      ? [{ x: 0, low: range.low, high: range.high }, { x: 100, low: range.low, high: range.high }]
-      : [];
-    const ys = [...(range ? [range.low, range.high] : []), ...points.map((p) => p.value)];
-    const pad = range ? 1.2 : 2.5;
-    return {
-      band, points, nowX: null,
-      domain: { xMin: 0, xMax: 100, yMin: Math.min(...ys) - pad, yMax: Math.max(...ys) + pad },
-    };
-  }, [pregnancyMode, clean, range]);
+    if (pregnancyMode) return null;
+    return personalWeightView(clean, shortDate);
+  }, [pregnancyMode, clean]);
 
   const view = pregnancyMode ? pregView : personalView;
 

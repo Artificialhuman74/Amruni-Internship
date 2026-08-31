@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { doctorApi, doctorApiError } from '../../services/doctorApi';
 import { useToast } from '../../components/Toast';
 import { IconLab, IconReport, IconScan, IconAttachment, IconAlert, IconClose } from '../../icons.jsx';
+import WeightCorridor from '../../components/WeightCorridor';
+import { pregnancyWeightView, personalWeightView } from '../../lib/pregnancyWeight';
 import { FORMS } from '../../data/intake';
 
 const STAGE_LABEL = {
@@ -87,6 +89,8 @@ export default function DoctorPatientChart() {
   const [flagInput, setFlagInput] = useState({ kind: null, value: '' }); // kind: allergy | condition
   const [docKind, setDocKind] = useState('lab');
   const [uploading, setUploading] = useState(false);
+  const [editingHistory, setEditingHistory] = useState(false);
+  const [historyDraft, setHistoryDraft] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -101,12 +105,23 @@ export default function DoctorPatientChart() {
     setData({ ...data, chart: next });
     try {
       await doctorApi.updateChart(userId, {
-        allergies: next.allergies, conditions: next.conditions, bloodGroup: next.bloodGroup,
+        allergies: next.allergies, conditions: next.conditions,
+        bloodGroup: next.bloodGroup, familyHistory: next.familyHistory,
       });
     } catch (err) {
       setData((d) => ({ ...d, chart: prev }));
       toast(doctorApiError(err, 'Could not update the chart.'), { icon: 'warning' });
     }
+  }
+
+  function editHistory() {
+    setHistoryDraft(data.chart.familyHistory || '');
+    setEditingHistory(true);
+  }
+
+  async function saveHistory() {
+    await saveFlags({ ...data.chart, familyHistory: historyDraft.trim() || null });
+    setEditingHistory(false);
   }
 
   function addFlag() {
@@ -163,6 +178,21 @@ export default function DoctorPatientChart() {
       toast(doctorApiError(err, 'Could not open that document.'), { icon: 'warning' });
     }
   }
+
+  // What she has logged herself between visits — read the same way her own
+  // weight screen reads it, so the corridor a doctor sees is the one she sees.
+  const weightView = useMemo(() => {
+    if (!data) return null;
+    const selfWeight = data.selfWeight || { logs: [], prePregnancyWeightKg: null, heightCm: null };
+    if (data.context?.kind === 'pregnant') {
+      return pregnancyWeightView(selfWeight.logs, {
+        prePregnancyWeightKg: selfWeight.prePregnancyWeightKg,
+        heightCm: selfWeight.heightCm,
+        currentWeek: data.context.weeks,
+      });
+    }
+    return personalWeightView(selfWeight.logs, fmtShort);
+  }, [data]);
 
   async function removeDocument(doc) {
     if (!window.confirm(`Remove “${doc.title}” from this chart?`)) return;
@@ -340,6 +370,46 @@ export default function DoctorPatientChart() {
         </AnimatePresence>
       </section>
 
+      {/* Family & genetic history — a doctor's own running note, not derived
+          from anything logged elsewhere. What runs in the family (a mother's
+          diabetes, a BRCA result, a sibling's thyroid disorder) changes what
+          this doctor screens for, and until now had nowhere to live except
+          memory or a paper file that doesn't travel with her to the next
+          doctor she sees. */}
+      <section style={{ marginTop: 'var(--sp-6)' }} aria-label="Family and genetic history">
+        <h2 className="doc-section-title">Family & genetic history</h2>
+        {editingHistory ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+            <textarea
+              autoFocus
+              rows={4}
+              style={{
+                padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)',
+                border: '1.5px solid var(--clr-border)', background: 'var(--clr-surface)',
+                color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', width: '100%',
+                fontFamily: 'inherit', lineHeight: 1.5, resize: 'none',
+              }}
+              placeholder="e.g. Mother: type 2 diabetes. Father: hypertension. Sibling: thyroid disorder."
+              value={historyDraft}
+              onChange={(e) => setHistoryDraft(e.target.value)}
+            />
+            <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+              <button className="btn btn--primary btn--sm" style={{ width: 'auto' }} onClick={saveHistory}>Save</button>
+              <button className="btn btn--secondary btn--sm" style={{ width: 'auto' }} onClick={() => setEditingHistory(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <>
+            <p style={{ fontSize: 'var(--text-sm)', color: chart.familyHistory ? 'var(--clr-ink)' : 'var(--clr-ink-subtle)', lineHeight: 'var(--leading-base)', whiteSpace: 'pre-wrap' }}>
+              {chart.familyHistory || 'No family or genetic history recorded.'}
+            </p>
+            <button className="chip chip--sm" style={{ marginTop: 'var(--sp-3)' }} onClick={editHistory}>
+              {chart.familyHistory ? 'Edit' : '+ Add'}
+            </button>
+          </>
+        )}
+      </section>
+
       {/* Vitals */}
       <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Vitals">
         <h2 className="doc-section-title">Vitals {latestVitals && <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— last taken {fmtDate(latestVitals.date)}</span>}</h2>
@@ -373,6 +443,27 @@ export default function DoctorPatientChart() {
           </p>
         )}
       </section>
+
+      {/* Her own weight trend, logged between visits — not the vitals a
+          doctor once took, which is the section above this one. */}
+      {weightView && (
+        <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Self-tracked weight">
+          <h2 className="doc-section-title">
+            Weight — self-tracked
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {' '}— {weightView.points.length} reading{weightView.points.length === 1 ? '' : 's'} logged by her
+            </span>
+          </h2>
+          <WeightCorridor
+            band={weightView.band}
+            points={weightView.points}
+            domain={weightView.domain}
+            nowX={weightView.nowX}
+            unit="kg"
+            height={180}
+          />
+        </section>
+      )}
 
       {/* Medicines.
           High in the chart, directly under vitals, because it is the section

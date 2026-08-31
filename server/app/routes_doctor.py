@@ -403,6 +403,7 @@ class ChartBody(BaseModel):
     allergies: list[str] = []
     conditions: list[str] = []
     bloodGroup: str | None = None
+    familyHistory: str | None = None
 
 
 @router.get("/doctor/patients/{user_id}/chart")
@@ -411,6 +412,7 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
         _require_relationship(db, doctor["id"], user_id)
         user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         chart = db.execute("SELECT * FROM patient_charts WHERE user_id = ?", (user_id,)).fetchone()
+        preg = db.execute("SELECT * FROM pregnancy_state WHERE user_id = ?", (user_id,)).fetchone()
         records = db.execute(
             """SELECT r.*, a.date AS appt_date, a.time AS appt_time, d.name AS doctor_name
                FROM consultation_records r
@@ -480,9 +482,18 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
                 # list cannot. A doctor reading "PCOS" should know whether that
                 # is a diagnosis or something she was told once and repeated.
                 "selfDeclared": crypto.dec_json(chart["self_declared"], []) if chart else [],
+                "familyHistory": crypto.dec(chart["family_history"]) if chart else None,
             },
             "medications": medications,
             "vitalsHistory": vitals_history,
+            # What she has logged herself between visits, separate from the
+            # weight a doctor takes and writes into vitalsHistory above — the
+            # only place this trend existed before was her own phone.
+            "selfWeight": {
+                "logs": json.loads(preg["weight_logs"] or "[]") if preg else [],
+                "prePregnancyWeightKg": preg["pre_pregnancy_weight_kg"] if preg else None,
+                "heightCm": preg["height_cm"] if preg else None,
+            },
             "records": [
                 {**record_json(r), "date": r["appt_date"], "time": r["appt_time"], "doctorName": r["doctor_name"]}
                 for r in records
@@ -512,16 +523,18 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
 def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_doctor)):
     allergies = [a.strip() for a in body.allergies if a.strip()][:30]
     conditions = [c.strip() for c in body.conditions if c.strip()][:30]
+    family_history = body.familyHistory.strip()[:2000] if body.familyHistory else None
     with get_db() as db:
         _require_relationship(db, doctor["id"], user_id)
         db.execute(
-            """INSERT INTO patient_charts (user_id, allergies, conditions, blood_group, updated_at)
-               VALUES (?, ?, ?, ?, ?)
+            """INSERT INTO patient_charts (user_id, allergies, conditions, blood_group, family_history, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?)
                ON CONFLICT(user_id) DO UPDATE SET
                  allergies = excluded.allergies, conditions = excluded.conditions,
-                 blood_group = excluded.blood_group, updated_at = excluded.updated_at""",
+                 blood_group = excluded.blood_group, family_history = excluded.family_history,
+                 updated_at = excluded.updated_at""",
             (user_id, crypto.enc_json(allergies), crypto.enc_json(conditions),
-             crypto.enc(body.bloodGroup), utcnow_iso()),
+             crypto.enc(body.bloodGroup), crypto.enc(family_history), utcnow_iso()),
         )
     return {"success": True}
 
