@@ -9,6 +9,7 @@ import CommunityPostCard from '../components/CommunityPostCard';
 import CommunityPostComposer from '../components/CommunityPostComposer';
 import { tap } from '../lib/haptics';
 import { IconHeart } from '../icons.jsx';
+import { tagLabel } from '../lib/presentation';
 
 const PAGE_SIZE = 15;
 
@@ -159,7 +160,7 @@ export default function Community() {
               aria-pressed={activeTag === t.id}
               onClick={() => selectTag(t.id)}
             >
-              {t.label}
+              {tagLabel(t.id, t.label)}
             </button>
           ))}
         </motion.div>

@@ -4,6 +4,7 @@ import { apiError } from '../services/api';
 import { useToast } from './Toast';
 import { useIdentityWarning } from '../lib/useIdentityWarning';
 import IdentityWarningSheet from './IdentityWarningSheet';
+import { tagLabel } from '../lib/presentation';
 
 /**
  * Shared composer for both a new root post (Community feed) and a reply
@@ -161,7 +162,7 @@ export default function CommunityPostComposer({ replyToId = null, onCreated, onC
                 aria-pressed={tags.includes(t.id)}
                 onClick={() => toggleTag(t.id)}
               >
-                {t.label}
+                {tagLabel(t.id, t.label)}
               </button>
             ))}
           </div>

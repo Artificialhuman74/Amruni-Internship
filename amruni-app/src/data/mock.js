@@ -7,7 +7,13 @@ import {
 
 export const DOCTORS = [];
 
-export const SPECIALTIES = ['All', 'Gynaecology', 'Fertility', 'Mental Health', 'Pregnancy', 'Menopause', 'Homeopathy'];
+export const SPECIALTIES = [
+  'All', 'Gynaecology', 'Fertility', 'Mental Health', 'Pregnancy', 'Menopause',
+  // The traditional-care tracks. Kept at the end of the row rather than mixed
+  // in: a woman looking for an obstetrician should not have to scroll past a
+  // reiki practitioner to find one.
+  'Homeopathy', 'Ayurveda', 'Yoga', 'Reiki',
+];
 
 export const PHQ9_QUESTIONS = [
   'Little interest or pleasure in doing things',
@@ -67,7 +73,7 @@ function oklch(l, c, h) {
 
 export const LIFE_STAGES = [
   { id: 'adolescent', label: 'Adolescent', Icon: IconSprout, desc: 'Ages 10–19 · Navigating hormonal changes, PCOS, body image' },
-  { id: 'reproductive', label: 'Reproductive Age', Icon: IconBlossom, desc: 'Ages 20–40 · Fertility, cycle health, sexual wellness' },
+  { id: 'reproductive', label: 'Reproductive Age', Icon: IconBlossom, desc: 'Ages 20–40 · Fertility, cycle health, hobbies and time for yourself' },
   { id: 'postpartum', label: 'Post-partum', Icon: IconBaby, desc: 'After childbirth · PPD support, lactation, recovery' },
   { id: 'menopause', label: 'Menopause', Icon: IconCamellia, desc: 'Perimenopause & beyond · Hormonal balance, bone health' },
   { id: 'elderly', label: 'Elderly Care', Icon: IconHome, desc: 'Set up by a family member · Appointment tracking, care coordination' },

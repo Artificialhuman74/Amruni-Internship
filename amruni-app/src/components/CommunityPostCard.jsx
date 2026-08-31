@@ -5,9 +5,11 @@ import { useToast } from './Toast';
 import BottomSheet from './BottomSheet';
 import { tap, confirm as confirmHaptic } from '../lib/haptics';
 import { IconHeart, IconChat } from '../icons.jsx';
+import { tagLabel } from '../lib/presentation';
 
 const TAG_LABELS = {
   'menstruation': 'Menstruation',
+  // Renamed for display by lib/presentation; the id never changes.
   'sex-pleasure': 'Sex & pleasure',
   'taboo': 'Taboo',
   'pcos-hormones': 'PCOS & hormones',
@@ -131,7 +133,7 @@ export default function CommunityPostCard({ post, onOpen, onChange, onRemoved })
         <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
           {post.tags.map((t) => (
             <span key={t} className="chip chip--sm" style={{ cursor: 'default' }}>
-              {TAG_LABELS[t] || t}
+              {tagLabel(t, TAG_LABELS[t])}
             </span>
           ))}
         </div>
