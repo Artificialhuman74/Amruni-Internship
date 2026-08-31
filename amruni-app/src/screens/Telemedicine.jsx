@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { SPECIALTIES } from '../data/mock';
 import { appointmentApi } from '../services/appointmentApi';
 import BottomSheet from '../components/BottomSheet';
@@ -20,7 +20,13 @@ const fadeUp = {
 
 export default function Telemedicine() {
   const navigate = useNavigate();
-  const [specialty, setSpecialty] = useState('All');
+  // A therapy page links straight to its practitioners (/consult?specialty=Ayurveda).
+  // Anything unrecognised falls back to All rather than filtering to nothing.
+  const [searchParams] = useSearchParams();
+  const requested = searchParams.get('specialty');
+  const [specialty, setSpecialty] = useState(
+    SPECIALTIES.includes(requested) ? requested : 'All',
+  );
   const [selected, setSelected] = useState(null);
   const [bookMode, setBookMode] = useState(null); // null | 'video' | 'chat'
   const [booked, setBooked] = useState(false);

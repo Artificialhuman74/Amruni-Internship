@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from . import auth
 from .auth import current_doctor
 from .routes_community import get_or_create_anon_handle
+from .routes_insurance import intake_for_doctor, policy_for_doctor
 from .routes_meds import medication_history, sync_from_prescription
 from . import crypto
 from .db import (
@@ -68,7 +69,11 @@ def _patient_summary(user_row) -> dict:
         "name": crypto.dec(user_row["name"]) or "Unnamed patient",
         "phone": crypto.dec(user_row["phone"]),
         "age": _age(crypto.dec(user_row["dob"])),
+        "dob": crypto.dec(user_row["dob"]),
         "lifeStage": user_row["life_stage"],
+        # Why she signed up. Chosen at onboarding and, until now, never stored
+        # anywhere the person it is most useful to could read it.
+        "goal": crypto.dec(user_row["goal"]) if "goal" in user_row.keys() else None,
         "anonymous": False,
     }
 
@@ -469,6 +474,12 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
                 "allergies": crypto.dec_json(chart["allergies"], []) if chart else [],
                 "conditions": crypto.dec_json(chart["conditions"], []) if chart else [],
                 "bloodGroup": crypto.dec(chart["blood_group"]) if chart else None,
+                # What she reported herself, at sign-up and since. The same
+                # entries also appear in `conditions` — this says which of them
+                # are her account rather than a clinician's, which one merged
+                # list cannot. A doctor reading "PCOS" should know whether that
+                # is a diagnosis or something she was told once and repeated.
+                "selfDeclared": crypto.dec_json(chart["self_declared"], []) if chart else [],
             },
             "medications": medications,
             "vitalsHistory": vitals_history,
@@ -477,6 +488,13 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
                 for r in records
             ],
             "documents": [document_json(d) for d in documents],
+            # The intake form she filled in before this consultation, and who
+            # is paying for it. Both come through the same relationship gate as
+            # the rest of the chart. Coverage arrives masked: a practitioner
+            # writing a summary needs to know a claim is being made and against
+            # which insurer, and does not need the policy number to do it.
+            "intakeForms": intake_for_doctor(db, user_id),
+            "coverage": policy_for_doctor(db, user_id),
             "sharedJournal": [
                 {
                     "id": j["id"],

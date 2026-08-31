@@ -18,11 +18,19 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import init_db
-from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care
+from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance
 
 IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
 
 init_db()
+
+if auth.DOCTOR_OTP_DISABLED:
+    print(
+        "[startup] WARNING: DOCTOR_OTP_DISABLED is set. The practitioner console "
+        "accepts any code for a registered practitioner number. Patient charts "
+        "are one known phone number away. Unset it to restore the second factor.",
+        flush=True,
+    )
 
 app = FastAPI(title="Amruni API", docs_url=None if IS_PROD else "/api/docs",
               openapi_url=None if IS_PROD else "/api/openapi.json")
@@ -81,7 +89,7 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care):
+for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance):
     app.include_router(module.router, prefix="/api")
 
 

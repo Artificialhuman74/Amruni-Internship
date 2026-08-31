@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useState, useEffect } from 'react';
 import { useApp, useCycleData, usePregnancyData } from '../context/AppContext';
 import { PHASE_INFO } from '../data/mock';
+import { THERAPIES } from '../data/therapies';
 import { appointmentApi } from '../services/appointmentApi';
 import DoctorAvatar from '../components/DoctorAvatar';
 import DailyMoodCheckIn from '../components/DailyMoodCheckIn';
@@ -11,7 +12,7 @@ import CareActivityCard from '../components/CareActivityCard';
 import {
   IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
   IconPregnant, IconBaby, IconStar, IconCamellia, IconSprout, IconBlossom,
-  IconHome, IconUser,
+  IconHome, IconUser, IconLeaf, IconWellness,
 } from '../icons.jsx';
 
 const stagger = {
@@ -247,6 +248,40 @@ export default function Home() {
                 Anonymous threads &amp; support
               </span>
             </button>
+          </div>
+        </motion.div>
+
+        {/* Traditional care. One row, three doors — the hub explains each one
+            properly, and the evidence badge lives there rather than here,
+            because a badge on a 90px tile is decoration, not information. */}
+        <motion.div variants={fadeUp}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--sp-3)' }}>
+            <p className="section-title" style={{ margin: 0 }}>Traditional care</p>
+            <button
+              onClick={() => navigate('/therapies')}
+              style={{ background: 'none', border: 'none', color: 'var(--clr-brand)', fontSize: 'var(--text-xs)', fontWeight: 700, cursor: 'pointer' }}
+            >
+              See All
+            </button>
+          </div>
+          <div className="therapy-row">
+            {THERAPIES.map((t) => {
+              const Icon = { leaf: IconLeaf, sprout: IconSprout, wellness: IconWellness }[t.icon];
+              return (
+                <button
+                  key={t.id}
+                  className="therapy-pill"
+                  onClick={() => navigate(`/therapies/${t.id}`)}
+                  aria-label={`${t.name} — ${t.tagline}`}
+                >
+                  <span className="therapy-pill__icon" style={{ background: t.soft, color: t.color }}>
+                    <Icon size={20} />
+                  </span>
+                  <span className="therapy-pill__name">{t.name}</span>
+                  <span className="therapy-pill__tagline">{t.tagline}</span>
+                </button>
+              );
+            })}
           </div>
         </motion.div>
 

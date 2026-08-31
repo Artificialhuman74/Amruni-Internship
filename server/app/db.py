@@ -339,6 +339,53 @@ CREATE TABLE IF NOT EXISTS care_events (
 );
 CREATE INDEX IF NOT EXISTS idx_care_events_user ON care_events(user_id, created_at);
 
+-- Consultation intake forms for the traditional-medicine tracks.
+--
+-- Append-only, and deliberately so. She fills the homeopathic case-taking form
+-- again before a later consultation, and the practitioner who saw her in March
+-- must still be able to read what she said in March — not an answer she has
+-- since revised. Editing in place would quietly rewrite the record a
+-- prescription was reasoned from.
+--
+-- `answers` is one encrypted JSON blob rather than a column per question. The
+-- questions are versioned product content (see amruni-app/src/data/intake.js);
+-- pinning forty of them into a schema means a migration every time a
+-- practitioner rewords one.
+CREATE TABLE IF NOT EXISTS intake_submissions (
+  id             TEXT PRIMARY KEY,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  form_id        TEXT NOT NULL,                    -- homeopathy | ayurveda
+  appointment_id TEXT REFERENCES appointments(id) ON DELETE SET NULL,
+  answers        TEXT NOT NULL DEFAULT '{}',
+  skipped        TEXT NOT NULL DEFAULT '[]',       -- sections she declined
+  prakriti       TEXT,                              -- ayurveda dosha sketch
+  submitted_at   TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_intake_user ON intake_submissions(user_id, form_id, submitted_at);
+
+-- Who pays, and what a reimbursement claim needs.
+--
+-- One row per user: a second policy sounds harmless until a claim goes out
+-- under the wrong one. Every field that identifies the policy is encrypted —
+-- a policy number is the credential an insurer answers to over the phone, and
+-- a leaked table of them is a fraud kit, not a nuisance.
+CREATE TABLE IF NOT EXISTS insurance_policies (
+  user_id        INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+  country        TEXT NOT NULL,
+  payer_type     TEXT NOT NULL,                    -- private | employer | government | self
+  insurer        TEXT,
+  plan_name      TEXT,
+  policy_number  TEXT,
+  member_id      TEXT,
+  group_number   TEXT,
+  policy_holder  TEXT,
+  relationship   TEXT,
+  valid_till     TEXT,
+  tpa            TEXT,
+  notes          TEXT,
+  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+
 CREATE TABLE IF NOT EXISTS anon_handles (
   user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
   handle  TEXT NOT NULL UNIQUE
@@ -401,6 +448,14 @@ SEED_DOCTORS = [
     dict(name="Dr. Clara Oswald", specialty="Menopause", exp="16 yrs exp", fee=650, phone="9876543219", lang=["English", "French"], photo="https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&q=80&w=300&h=300", rating=4.7, reviews=132),
     dict(name="Dr. Hitesh Shah", specialty="Homeopathy", exp="12 yrs exp", fee=350, phone="9876543220", lang=["English", "Hindi", "Gujarati"], photo="https://images.unsplash.com/photo-1622902046580-2b47f47fdb47?auto=format&fit=crop&q=80&w=300&h=300", rating=4.8, reviews=115),
     dict(name="Dr. Neeta Rao", specialty="Homeopathy", exp="10 yrs exp", fee=300, phone="9876543221", lang=["English", "Hindi", "Marathi"], photo="https://images.unsplash.com/photo-1591604021695-0c69b7c05981?auto=format&fit=crop&q=80&w=300&h=300", rating=4.6, reviews=89),
+    # The traditional-care tracks. Ayurveda and yoga carry a registration or a
+    # certification in `exp` because both are regulated in India and a woman
+    # choosing between practitioners should see it on the card, not have to ask.
+    dict(name="Dr. Lakshmi Varma", specialty="Ayurveda", exp="16 yrs exp · BAMS", fee=550, phone="9876543222", lang=["English", "Malayalam", "Hindi"], photo="https://images.unsplash.com/photo-1651008011680-7798363717df?auto=format&fit=crop&q=80&w=300&h=300", rating=4.9, reviews=163),
+    dict(name="Dr. Anand Kulkarni", specialty="Ayurveda", exp="11 yrs exp · BAMS, MD (Ayu)", fee=650, phone="9876543223", lang=["English", "Marathi", "Hindi"], photo="https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=300&h=300", rating=4.7, reviews=94),
+    dict(name="Kavitha Iyer", specialty="Yoga", exp="9 yrs · YCB Level 2", fee=400, phone="9876543224", lang=["English", "Tamil", "Kannada"], photo="https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=300&h=300", rating=4.9, reviews=207),
+    dict(name="Ritu Bhatnagar", specialty="Yoga", exp="13 yrs · Prenatal specialist", fee=450, phone="9876543225", lang=["English", "Hindi"], photo="https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=300&h=300", rating=4.8, reviews=138),
+    dict(name="Meenakshi Rao", specialty="Reiki", exp="8 yrs · Level 3 practitioner", fee=300, phone="9876543226", lang=["English", "Kannada", "Hindi"], photo="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=300&h=300", rating=4.7, reviews=61),
 ]
 
 # Default consulting-hour template used to seed demo availability. In real use
@@ -497,6 +552,14 @@ def init_db():
         # Set when a caretaker paid through a care link. It is what makes the
         # confirm endpoint safe: a token may only settle payments it created.
         _ensure_column(db, "payments", "share_token", "TEXT")
+        # What she told us herself, at sign-up and since. Kept beside the
+        # clinical list rather than instead of it: the doctor needs to know
+        # which entries are her report and which are a clinician's, and one
+        # merged list cannot say.
+        _ensure_column(db, "patient_charts", "self_declared", "TEXT")
+        # Why she is here, chosen at onboarding. It was client-only, so it
+        # never reached the person it is most useful to.
+        _ensure_column(db, "users", "goal", "TEXT")
         # Her phone is stored encrypted like everything else that names her, so
         # sign-in cannot look it up directly. This is the deterministic index it
         # looks up instead — see app/crypto.blind_index.
@@ -513,14 +576,7 @@ def init_db():
         # speaks; this is the finer grain the slider now offers, kept so
         # reopening an entry returns her thumb to where she left it.
         _ensure_column(db, "mood_logs", "intensity", "REAL")
-        if db.execute("SELECT COUNT(*) AS n FROM doctors").fetchone()["n"] == 0:
-            for d in SEED_DOCTORS:
-                db.execute(
-                    """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, photo, rating, reviews)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                    (d["name"], d["specialty"], d["exp"], d["fee"], round(d["fee"] / 3),
-                     d["phone"], json.dumps(d["lang"]), d["photo"], d["rating"], d["reviews"]),
-                )
+        seed_doctors(db)
         seed_slots(db)
 
 
@@ -529,8 +585,8 @@ def init_db():
 # database needs to answer a query at all, and none of it identifies her on its
 # own.
 ENCRYPTED_COLUMNS = {
-    "users": ["name", "dob", "phone"],
-    "patient_charts": ["allergies", "conditions", "blood_group"],
+    "users": ["name", "dob", "phone", "goal"],
+    "patient_charts": ["allergies", "conditions", "blood_group", "self_declared"],
     "consultation_records": ["diagnosis", "notes", "vitals", "prescription"],
     "journal_entries": ["text", "context"],
     "mood_logs": ["word", "factors"],
@@ -542,6 +598,16 @@ ENCRYPTED_COLUMNS = {
     "documents": ["title", "data"],
     "care_shares": ["label"],
     "care_events": ["summary", "actor_label"],
+    # The most self-disclosing thing in the database. The homeopathic form's
+    # last section holds her account of abuse, bereavement and humiliation in
+    # her own words; there is nothing else here that would do more damage read
+    # by the wrong person.
+    "intake_submissions": ["answers"],
+    # A policy number is a credential, not a reference. See the table comment.
+    "insurance_policies": [
+        "insurer", "plan_name", "policy_number", "member_id",
+        "group_number", "policy_holder", "tpa", "notes",
+    ],
 }
 
 
@@ -577,6 +643,27 @@ def encrypt_existing_rows(db: sqlite3.Connection):
                     "UPDATE users SET phone_bidx = ? WHERE rowid = ?",
                     (crypto.blind_index(row["phone"]), row["_rid"]),
                 )
+
+
+def seed_doctors(db: sqlite3.Connection):
+    """Insert any seed practitioner not already present, matched by name.
+
+    Was "seed only when the table is empty", which meant adding the ayurveda,
+    yoga and reiki practitioners to SEED_DOCTORS did nothing on any database
+    that had already booted once — including every deployed one. Matching per
+    row instead makes a new specialty appear on the next restart, and leaves
+    every doctor an admin has edited exactly as they edited them.
+    """
+    existing = {row["name"] for row in db.execute("SELECT name FROM doctors").fetchall()}
+    for d in SEED_DOCTORS:
+        if d["name"] in existing:
+            continue
+        db.execute(
+            """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, photo, rating, reviews)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            (d["name"], d["specialty"], d["exp"], d["fee"], round(d["fee"] / 3),
+             d["phone"], json.dumps(d["lang"]), d["photo"], d["rating"], d["reviews"]),
+        )
 
 
 def seed_slots(db: sqlite3.Connection):
@@ -711,6 +798,68 @@ def document_json(row, include_data=False) -> dict:
         # and it is stored as one long data URL — so it is encrypted whole.
         out["data"] = crypto.dec(row["data"])
     return out
+
+
+def intake_json(row, include_answers=True) -> dict:
+    """A submitted intake form.
+
+    `include_answers=False` gives the listing form — enough to show "you filled
+    this on 3 August", without shipping the whole case history to a screen that
+    only draws a row.
+    """
+    out = {
+        "id": row["id"],
+        "formId": row["form_id"],
+        "appointmentId": row["appointment_id"],
+        "skipped": json.loads(row["skipped"] or "[]"),
+        "prakriti": json.loads(row["prakriti"]) if row["prakriti"] else None,
+        "submittedAt": row["submitted_at"],
+    }
+    if include_answers:
+        out["answers"] = crypto.dec_json(row["answers"], {})
+    return out
+
+
+def insurance_json(row, full=False) -> dict:
+    """Her coverage.
+
+    `full=False` masks the policy and member numbers to their last four
+    characters. The unmasked form is returned by exactly two callers: the
+    editor she typed them into, and the claim receipt she sends her insurer.
+    Everything else — a booking summary, a doctor's chart — gets the mask, so
+    a screenshot of any of those is not a credential.
+    """
+    policy_number = crypto.dec(row["policy_number"]) or ""
+    member_id = crypto.dec(row["member_id"]) or ""
+    out = {
+        "country": row["country"],
+        "payerType": row["payer_type"],
+        "insurer": crypto.dec(row["insurer"]),
+        "planName": crypto.dec(row["plan_name"]),
+        "groupNumber": crypto.dec(row["group_number"]) if full else None,
+        "policyHolder": crypto.dec(row["policy_holder"]),
+        "relationship": row["relationship"],
+        "validTill": row["valid_till"],
+        "tpa": crypto.dec(row["tpa"]),
+        "notes": crypto.dec(row["notes"]) if full else None,
+        "updatedAt": row["updated_at"],
+    }
+    if full:
+        out["policyNumber"] = policy_number
+        out["memberId"] = member_id
+    else:
+        out["policyNumberMasked"] = mask_credential(policy_number)
+        out["memberIdMasked"] = mask_credential(member_id)
+    return out
+
+
+def mask_credential(value: str) -> str:
+    value = (value or "").strip()
+    if not value:
+        return ""
+    if len(value) <= 4:
+        return "•" * len(value)
+    return f"•••• {value[-4:]}"
 
 
 def new_id(prefix: str) -> str:
