@@ -6,12 +6,28 @@ import { useToast } from '../../components/Toast';
 import { IconLab, IconReport, IconScan, IconAttachment, IconAlert, IconClose } from '../../icons.jsx';
 import WeightCorridor from '../../components/WeightCorridor';
 import { pregnancyWeightView, personalWeightView } from '../../lib/pregnancyWeight';
+import { FORMS } from '../../data/intake';
 
 const STAGE_LABEL = {
   adolescent: 'Adolescent', reproductive: 'Reproductive age',
   postpartum: 'Post-partum', menopause: 'Menopause', elderly: 'Elderly care',
 };
 const KIND_ICON = { lab: IconLab, report: IconReport, scan: IconScan, other: IconAttachment };
+
+// What she chose at sign-up, in her words rather than the id it is stored as.
+// Kept as a plain map so the console does not pull the whole onboarding module.
+const GOAL_LABEL = {
+  cycle: 'Track her cycle',
+  conceive: 'Trying to conceive',
+  pregnancy: 'Pregnancy',
+  menopause: 'Menopause support',
+  mental: 'Mental wellbeing',
+  pcos: 'Managing PCOS or a condition',
+  weight: 'Managing her weight',
+  sleep: 'Sleep',
+  body: 'Understanding her body',
+  caretaker: 'Set up for a family member',
+};
 
 function fmtDate(iso) {
   if (!iso) return '';
@@ -209,7 +225,10 @@ export default function DoctorPatientChart() {
     );
   }
 
-  const { patient, chart, vitalsHistory, records, documents, sharedJournal = [], context } = data;
+  const {
+    patient, chart, vitalsHistory, records, documents, sharedJournal = [], context,
+    intakeForms = [], coverage = null,
+  } = data;
   const latestVitals = vitalsHistory[vitalsHistory.length - 1] || null;
   const meds = data.medications || { current: [], past: [], adherence: null };
 
@@ -235,6 +254,14 @@ export default function DoctorPatientChart() {
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', marginTop: 1 }}>
             {[patient.age != null ? `${patient.age} yrs` : null, STAGE_LABEL[patient.lifeStage], chart.bloodGroup].filter(Boolean).join(' · ') || 'Profile pending'}
           </p>
+          {/* What she came for. Chosen at sign-up and, until now, stored only
+              on her phone — so the one line explaining why she is here never
+              reached the consultation. */}
+          {patient.goal && GOAL_LABEL[patient.goal] && (
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginTop: 2 }}>
+              Signed up for: {GOAL_LABEL[patient.goal]}
+            </p>
+          )}
         </div>
       </header>
 
@@ -249,6 +276,42 @@ export default function DoctorPatientChart() {
         </section>
       )}
 
+      {/* Who is paying, if anyone but her.
+          Above the clinical sections because it changes what the doctor writes
+          rather than what she prescribes: a consultation being claimed back
+          needs a diagnosis recorded in terms an insurer will accept, and that
+          is a decision made while writing the record, not afterwards. The
+          policy number is not here and is not available to this screen. */}
+      {coverage && coverage.payerType !== 'self' && (
+        <section className="doc-coverage" aria-label="Insurance coverage">
+          <p className="doc-coverage__label">Claiming through insurance</p>
+          <p className="doc-coverage__value">
+            {[coverage.insurer, coverage.planName].filter(Boolean).join(' · ')}
+            {coverage.policyNumberMasked ? ` · ${coverage.policyNumberMasked}` : ''}
+          </p>
+          <p className="doc-coverage__note">
+            Record a diagnosis on the consultation — her reimbursement claim needs one.
+          </p>
+        </section>
+      )}
+
+      {/* The intake form she filled in before this consultation. */}
+      {intakeForms.length > 0 && (
+        <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Intake forms">
+          <h2 className="doc-section-title">
+            Intake forms
+            <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>
+              {' '}— filled by the patient before consulting
+            </span>
+          </h2>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+            {intakeForms.map((form) => (
+              <IntakeCard key={form.id} form={form} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Clinical flags */}
       <section style={{ marginTop: 'var(--sp-6)' }} aria-label="Clinical flags">
         <h2 className="doc-section-title">Allergies & conditions</h2>
@@ -259,16 +322,29 @@ export default function DoctorPatientChart() {
               <button onClick={() => removeFlag('allergies', a)} aria-label={`Remove allergy ${a}`}><IconClose size={13} /></button>
             </span>
           ))}
-          {chart.conditions.map((c) => (
-            <span key={c} className="flag-chip flag-chip--condition">
-              {c}
-              <button onClick={() => removeFlag('conditions', c)} aria-label={`Remove condition ${c}`}><IconClose size={13} /></button>
-            </span>
-          ))}
+          {chart.conditions.map((c) => {
+            // Hers or a clinician's. "PCOS" that she reported once and "PCOS"
+            // that was diagnosed are different facts, and a merged list reads
+            // as though both were confirmed.
+            const declared = (chart.selfDeclared || []).includes(c);
+            return (
+              <span key={c} className={`flag-chip flag-chip--condition${declared ? ' flag-chip--declared' : ''}`}>
+                {c}
+                {declared && <span className="flag-chip__src" title="Reported by the patient at sign-up">self-reported</span>}
+                <button onClick={() => removeFlag('conditions', c)} aria-label={`Remove condition ${c}`}><IconClose size={13} /></button>
+              </span>
+            );
+          })}
           {chart.allergies.length === 0 && chart.conditions.length === 0 && flagInput.kind === null && (
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>No known allergies or conditions recorded.</span>
           )}
         </div>
+        {(chart.selfDeclared || []).length > 0 && (
+          <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginTop: 'var(--sp-2)' }}>
+            Marked entries are what she reported herself when she signed up — worth confirming
+            rather than reading as diagnosed.
+          </p>
+        )}
         <AnimatePresence initial={false} mode="wait">
           {flagInput.kind === null ? (
             <motion.div key="btns" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.15 }}
@@ -596,4 +672,106 @@ export default function DoctorPatientChart() {
       </section>
     </div>
   );
+}
+
+/**
+ * One submitted intake form, read the way a practitioner reads a case.
+ *
+ * Collapsed by default and grouped by the form's own sections, because a
+ * homeopathic case runs to forty answers and a chart that opens with all of
+ * them buries the allergies underneath. Expanding gives the whole thing in the
+ * published order — complaint, concomitants, past, family, personal, mind —
+ * which is the order a repertorisation is worked up in.
+ *
+ * Sections the patient declined are named rather than omitted. "She skipped
+ * this" and "she was never asked" are different clinical facts, and a form
+ * that silently drops the difference invites the second reading of the first.
+ */
+function IntakeCard({ form }) {
+  const [open, setOpen] = useState(false);
+  const spec = FORMS[form.formId];
+  if (!spec) return null;
+
+  const answered = spec.sections.reduce(
+    (n, s) => n + s.fields.filter((f) => {
+      const v = form.answers[f.id];
+      return Array.isArray(v) ? v.length > 0 : v != null && String(v).trim() !== '';
+    }).length,
+    0,
+  );
+
+  return (
+    <div className="doc-intake">
+      <button className="doc-intake__head" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+        <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+          <p className="doc-intake__title">{spec.label}</p>
+          <p className="doc-intake__meta">
+            {fmtShort(form.submittedAt)} · {answered} answers
+            {form.prakriti ? ` · prakriti ${form.prakriti.label}` : ''}
+            {form.skipped.length ? ` · ${form.skipped.length} section skipped` : ''}
+          </p>
+        </div>
+        <span className={`doc-intake__chev${open ? ' is-open' : ''}`} aria-hidden="true">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+            <path d="M4 6l4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </span>
+      </button>
+
+      <AnimatePresence initial={false}>
+        {open && (
+          <motion.div
+            initial={{ height: 0, opacity: 0 }}
+            animate={{ height: 'auto', opacity: 1 }}
+            exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
+            style={{ overflow: 'hidden' }}
+          >
+            <div className="doc-intake__body">
+              {form.prakriti && (
+                <p className="doc-intake__prakriti">
+                  Prakriti sketch: <strong>{form.prakriti.label}</strong> — vata {form.prakriti.percent.vata}%,
+                  pitta {form.prakriti.percent.pitta}%, kapha {form.prakriti.percent.kapha}%
+                  <span> (self-reported, {form.prakriti.answered}/{form.prakriti.total} items — confirm on examination)</span>
+                </p>
+              )}
+
+              {spec.sections.map((section) => {
+                if (form.skipped.includes(section.id)) {
+                  return (
+                    <div key={section.id} className="doc-intake__section">
+                      <p className="doc-intake__section-title">{section.title}</p>
+                      <p className="doc-intake__skipped">Patient chose not to answer this section.</p>
+                    </div>
+                  );
+                }
+                const rows = section.fields
+                  .map((f) => [f, form.answers[f.id]])
+                  .filter(([, v]) => (Array.isArray(v) ? v.length > 0 : v != null && String(v).trim() !== ''));
+                if (!rows.length) return null;
+                return (
+                  <div key={section.id} className="doc-intake__section">
+                    <p className="doc-intake__section-title">{section.title}</p>
+                    {rows.map(([field, value]) => (
+                      <div key={field.id} className="doc-intake__row">
+                        <p className="doc-intake__q">{field.label}</p>
+                        <p className="doc-intake__a">{renderAnswer(field, value)}</p>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
+
+function renderAnswer(field, value) {
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'boolean') return value ? 'Yes' : 'No';
+  if (field.kind === 'scale') return `${value} of ${field.max} — ${field.ends[1].toLowerCase()} end is ${field.max}`;
+  return String(value);
 }

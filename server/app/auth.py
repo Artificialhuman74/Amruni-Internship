@@ -154,6 +154,18 @@ def verify_otp(phone: str, code: str) -> dict:
     return {"token": token, "user_id": uid}
 
 
+# Skips the code check on the practitioner console. One variable, off unless
+# it is set, so it can never arrive by accident in a later deploy.
+#
+# What it does NOT remove: the number must still belong to a registered
+# practitioner, and every patient-scoped endpoint still checks that she has an
+# appointment with that doctor. What it does remove is the second factor — so
+# with this on, anyone who knows a practitioner's phone number can read the
+# charts of that practitioner's patients. That is the whole of the trade, and
+# it is the reason this is a variable rather than a deletion.
+DOCTOR_OTP_DISABLED = os.environ.get("DOCTOR_OTP_DISABLED", "").lower() in ("1", "true", "yes")
+
+
 def verify_doctor_otp(phone: str, code: str) -> dict:
     """Doctor sign-in: the phone must belong to a registered practitioner.
     Never creates an account."""
@@ -161,7 +173,8 @@ def verify_doctor_otp(phone: str, code: str) -> dict:
         doctor = db.execute("SELECT * FROM doctors WHERE phone = ?", (phone,)).fetchone()
         if not doctor:
             raise HTTPException(403, "This number isn't registered as a practitioner on Amruni.")
-        _consume_otp(db, phone, code)
+        if not DOCTOR_OTP_DISABLED:
+            _consume_otp(db, phone, code)
 
     token = jwt.encode(
         {"role": "doctor", "did": doctor["id"], "phone": phone, "exp": int(time.time()) + TOKEN_TTL},

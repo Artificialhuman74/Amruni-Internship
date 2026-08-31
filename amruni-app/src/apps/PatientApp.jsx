@@ -24,10 +24,16 @@ import ComingSoon from '../screens/ComingSoon';
 import Journal from '../screens/Journal';
 import Medicines from '../screens/Medicines';
 import CareView from '../screens/CareView';
+import CareActivity from '../screens/CareActivity';
 import JournalComposer from '../screens/JournalComposer';
 import JournalEntry from '../screens/JournalEntry';
 import Community from '../screens/Community';
 import CommunityThread from '../screens/CommunityThread';
+import Therapies from '../screens/Therapies';
+import TherapyDetail from '../screens/TherapyDetail';
+import IntakeForm from '../screens/IntakeForm';
+import Insurance from '../screens/Insurance';
+import ClaimReceipt from '../screens/ClaimReceipt';
 
 import DoctorProfile from '../screens/DoctorProfile';
 import BookAppointment from '../screens/BookAppointment';
@@ -81,10 +87,21 @@ export default function PatientApp() {
               <Route path="/pcos-check" element={<PcosCheck />} />
               <Route path="/coming-soon" element={<ComingSoon />} />
               <Route path="/settings" element={<Settings />} />
+              {/* Her side of the care thread. Distinct from /care/:token, which
+                  is the recipient's unauthenticated view of the same events. */}
+              <Route path="/care-activity" element={<CareActivity />} />
               <Route path="/medicines" element={<Medicines />} />
             <Route path="/journal" element={<Journal />} />
               <Route path="/community" element={<Community />} />
               <Route path="/community/:id" element={<CommunityThread />} />
+
+              {/* Traditional care: ayurveda, yoga, reiki */}
+              <Route path="/therapies" element={<Therapies />} />
+              <Route path="/therapies/:id" element={<TherapyDetail />} />
+
+              {/* Who pays, and what a reimbursement claim needs */}
+              <Route path="/insurance" element={<Insurance />} />
+              <Route path="/receipt/:appointmentId" element={<ClaimReceipt />} />
 
               {/* Booking journey */}
               <Route path="/doctor/:id" element={<DoctorProfile />} />
@@ -111,6 +128,18 @@ export default function PatientApp() {
             path="/journal/:id"
             element={isAuthenticated && isOnboarded
               ? <JournalEntry />
+              : <Navigate to="/phone" replace />}
+          />
+
+          {/* Intake forms sit outside the shell for the same reason the journal
+              composer does. This one runs to forty questions and ends with a
+              section about being hurt as a child; a tab bar and a floating
+              emergency button over that page are chrome interrupting something
+              that deserves the whole screen. Its own footer owns the bottom. */}
+          <Route
+            path="/intake/:formId"
+            element={isAuthenticated && isOnboarded
+              ? <IntakeForm />
               : <Navigate to="/phone" replace />}
           />
 

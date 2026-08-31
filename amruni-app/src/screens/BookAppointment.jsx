@@ -9,7 +9,14 @@ import { useSosLift } from '../lib/useSosLift';
 import BottomSheet from '../components/BottomSheet';
 import SuccessCheck from '../components/SuccessCheck';
 import { confirm as confirmHaptic } from '../lib/haptics';
-import { IconChat, IconVideo } from '../icons.jsx';
+import { insuranceApi } from '../services/insuranceApi';
+import { intakeApi } from '../services/intakeApi';
+import { summaryLine, expiryState, isInternational, countryName } from '../lib/insurance';
+import { FORMS } from '../data/intake';
+import { IconChat, IconVideo, IconShield, IconRecords, IconAlert } from '../icons.jsx';
+
+// Specialties that have an intake form worth filling before the consultation.
+const INTAKE_BY_SPECIALTY = { Homeopathy: 'homeopathy', Ayurveda: 'ayurveda' };
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -23,7 +30,7 @@ export default function BookAppointment() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const { currentDoctor, setActiveAppointment } = useVideoCall();
+  const { currentDoctor, setActiveAppointment, initiateBooking } = useVideoCall();
   useSosLift(); // this screen has a fixed bottom CTA — keep SOS clear of it
 
   const consultMode = searchParams.get('mode') || 'video';
@@ -41,6 +48,24 @@ export default function BookAppointment() {
   const [payStep, setPayStep] = useState('idle');
   const [booking, setBooking] = useState(null);             // { appointmentId, payment }
 
+  /**
+   * The doctor, when we did not arrive from her profile.
+   *
+   * `currentDoctor` lives in React context, which is emptied by a refresh, a
+   * shared link, or a return from the payment app. Without this the screen
+   * renders "Doctor · Specialist", prices a chat consultation at ₹0, and —
+   * since both the anonymity notice and the intake-form prompt key off the
+   * specialty — silently drops two things the woman is entitled to see.
+   */
+  useEffect(() => {
+    if (currentDoctor?.id === Number(id)) return;
+    let cancelled = false;
+    appointmentApi.getDoctorById(id)
+      .then((doc) => { if (!cancelled && doc) initiateBooking(doc); })
+      .catch(() => { if (!cancelled) setError('Could not load this practitioner.'); });
+    return () => { cancelled = true; };
+  }, [id, currentDoctor, initiateBooking]);
+
   useEffect(() => {
     if (consultMode !== 'video') return;
     let cancelled = false;
@@ -50,6 +75,32 @@ export default function BookAppointment() {
       .finally(() => { if (!cancelled) setSlotsLoading(false); });
     return () => { cancelled = true; };
   }, [id, consultMode]);
+
+  // Coverage on file, and whether she has filled this practitioner's intake
+  // form. Both are advisory — neither blocks a booking, because a woman who
+  // wants to be seen today should not be stopped by paperwork she can do
+  // afterwards. They are shown before payment so the choice is hers.
+  const [coverage, setCoverage] = useState(null);
+  const [intakeDone, setIntakeDone] = useState(null);
+
+  const intakeFormId = INTAKE_BY_SPECIALTY[currentDoctor?.specialty] ?? null;
+
+  useEffect(() => {
+    let cancelled = false;
+    insuranceApi.get()
+      .then((res) => { if (!cancelled && res?.payerType) setCoverage(res); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!intakeFormId) return;
+    let cancelled = false;
+    intakeApi.latest(intakeFormId)
+      .then((res) => { if (!cancelled) setIntakeDone(Boolean(res?.submittedAt)); })
+      .catch(() => { if (!cancelled) setIntakeDone(null); });
+    return () => { cancelled = true; };
+  }, [intakeFormId]);
 
   const dates = useMemo(() => [...new Set(slots.map((s) => s.date))], [slots]);
   const daySlots = useMemo(() => slots.filter((s) => s.date === selectedDate), [slots, selectedDate]);
@@ -252,6 +303,82 @@ export default function BookAppointment() {
           </div>
         )}
 
+        {/* Her practitioner's intake form, offered where it is useful: after
+            she has picked a slot, before she pays. Never a gate. */}
+        {intakeFormId && intakeDone === false && (
+          <button
+            className="booking-prompt"
+            onClick={() => navigate(`/intake/${intakeFormId}`)}
+            type="button"
+          >
+            <span className="booking-prompt__icon"><IconRecords size={18} /></span>
+            <span className="booking-prompt__body">
+              <span className="booking-prompt__title">
+                Fill the {FORMS[intakeFormId].short.toLowerCase()} form first?
+              </span>
+              <span className="booking-prompt__desc">
+                {doctorName} reads it before you meet, which gives you back most of the
+                consultation. About {FORMS[intakeFormId].minutes} minutes — and you can do it after
+                booking instead.
+              </span>
+            </span>
+          </button>
+        )}
+
+        {/* Who is paying. Stated before payment, in the terms that are actually
+            true: she pays, and she claims it back. */}
+        <div className="coverage-block">
+          <div className="coverage-block__head">
+            <span className="coverage-block__icon"><IconShield size={17} /></span>
+            <span className="coverage-block__title">
+              {coverage ? 'Your coverage' : 'Claiming this back?'}
+            </span>
+            <button
+              type="button"
+              className="coverage-block__edit"
+              onClick={() => navigate('/insurance')}
+            >
+              {coverage ? 'Change' : 'Add policy'}
+            </button>
+          </div>
+
+          {coverage ? (
+            <>
+              <p className="coverage-block__line">{summaryLine(coverage)}</p>
+              <p className="coverage-block__note">
+                {coverage.payerType === 'self'
+                  ? 'You will get a full receipt after the consultation.'
+                  : 'You pay now. Your receipt and consultation summary carry every field your insurer asks for, ready to submit for reimbursement — Amruni does not bill them directly.'}
+              </p>
+              {isInternational(coverage) && (
+                <p className="coverage-block__note">
+                  Consulting from {countryName(coverage.country)}: check that your policy covers overseas
+                  teleconsultations before you rely on the claim.
+                </p>
+              )}
+              {(() => {
+                const expiry = expiryState(coverage);
+                if (!expiry || expiry.state === 'ok') return null;
+                return (
+                  <p className={`coverage-expiry coverage-expiry--${expiry.state}`} role="alert">
+                    <IconAlert size={15} />
+                    <span>
+                      {expiry.state === 'expired'
+                        ? 'The policy on file has expired — a claim against it will be refused.'
+                        : `${expiry.label}.`}
+                    </span>
+                  </p>
+                );
+              })()}
+            </>
+          ) : (
+            <p className="coverage-block__note">
+              Add your insurance once and every consultation receipt comes claim-ready. Not needed to
+              book — you can add it later.
+            </p>
+          )}
+        </div>
+
         {/* Reason / Symptoms input */}
         <div style={{ marginBottom: 'var(--sp-6)' }}>
           <h3 style={{ fontSize: 'var(--text-sm)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-3)' }}>Reason for Visit</h3>
@@ -277,13 +404,14 @@ export default function BookAppointment() {
         )}
       </div>
 
-      {/* Booking CTA Footer */}
-      <div style={{
-        position: 'fixed', bottom: 0, left: '50%', transform: 'translateX(-50%)',
-        width: '100%', maxWidth: 430, background: 'var(--clr-surface)',
-        borderTop: '1px solid var(--clr-border)', padding: 'var(--sp-4) var(--sp-6) calc(env(safe-area-inset-top) + var(--sp-4))',
-        zIndex: 'var(--z-sticky)'
-      }}>
+      {/* Booking CTA Footer.
+          Uses the shared .action-footer, which sits above the tab bar. Pinned
+          at bottom: 0 by its own inline style, this button was 96% hidden
+          behind the bar and its centre point belonged to the SOS orb — so the
+          tap meant to pay for a consultation raised an emergency alert. Its
+          padding also read env(safe-area-inset-top) for a bottom inset, which
+          left nothing clear of the home indicator on a notched phone. */}
+      <div className="action-footer">
         <button
           className="btn btn--primary"
           onClick={handleProceedToPay}
@@ -322,7 +450,25 @@ export default function BookAppointment() {
                   <SummaryRow label="Slot" value={`${dateLabel(selectedSlot.date).dayName} ${dateLabel(selectedSlot.date).dayNum} ${dateLabel(selectedSlot.date).month}, ${selectedSlot.time}`} />
                 )}
                 <SummaryRow label="Amount" value={feeLabel} strong />
+                {booking?.anonymous === true && <SummaryRow label="Booked as" value="A nickname" />}
               </div>
+
+              {/* The server says what it actually did, and the screen believes
+                  it rather than its own intention.
+                  An older API silently ignores the anonymous flag, which would
+                  leave this screen promising a woman that her counsellor cannot
+                  see her name while her name is being stored — the precise
+                  failure the setting was fixed to end. She is told before she
+                  pays, while cancelling still costs her nothing. */}
+              {bookAnonymously && booking && booking.anonymous !== true && (
+                <p role="alert" className="anon-note anon-note--warn">
+                  <span className="anon-note__title">This booking will carry your name</span>
+                  <span className="anon-note__body">
+                    Anonymous booking is not available on this server yet, so {doctorName} will
+                    see your name and phone number. Go back if you would rather not continue.
+                  </span>
+                </p>
+              )}
               <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginBottom: 'var(--sp-4)' }}>
                 Your slot is reserved for 10 minutes while you pay. Your video meeting link is generated
                 automatically the moment payment succeeds.

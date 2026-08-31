@@ -29,6 +29,7 @@ def me_payload(user_id: int) -> dict:
             "name": crypto.dec(user["name"]),
             "dob": crypto.dec(user["dob"]),
             "lifeStage": user["life_stage"],
+            "goal": crypto.dec(user["goal"]) if "goal" in user.keys() else None,
             "isOnboarded": bool(user["is_onboarded"]),
         },
         "cycle": {
@@ -91,6 +92,7 @@ class UserSlice(BaseModel):
     name: str | None = None
     dob: str | None = None
     lifeStage: str | None = None
+    goal: str | None = None
     isOnboarded: bool | None = None
 
 
@@ -151,15 +153,21 @@ def put_health(body: HealthBody, user: dict = Depends(current_user)):
     """
     with get_db() as db:
         db.execute(
-            """INSERT INTO patient_charts (user_id, conditions, allergies, blood_group, updated_at)
-               VALUES (?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+            """INSERT INTO patient_charts
+                 (user_id, conditions, allergies, blood_group, self_declared, updated_at)
+               VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))
                ON CONFLICT(user_id) DO UPDATE SET
                  conditions = excluded.conditions,
                  allergies = excluded.allergies,
                  blood_group = excluded.blood_group,
+                 self_declared = excluded.self_declared,
                  updated_at = excluded.updated_at""",
             (user["id"], crypto.enc_json(body.conditions), crypto.enc_json(body.allergies),
-             crypto.enc(body.bloodGroup)),
+             crypto.enc(body.bloodGroup),
+             # Only this endpoint is hers. Recording the same list here is what
+             # lets the chart say "she told us" rather than leaving her report
+             # indistinguishable from a diagnosis.
+             crypto.enc_json(body.conditions)),
         )
     return me_payload(user["id"])
 
@@ -193,11 +201,12 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
     with get_db() as db:
         if u:
             db.execute(
-                "UPDATE users SET name = ?, dob = ?, life_stage = ?, is_onboarded = ? WHERE id = ?",
+                "UPDATE users SET name = ?, dob = ?, life_stage = ?, goal = ?, is_onboarded = ? WHERE id = ?",
                 (
                     crypto.enc(u["name"]) if "name" in u else user["name"],
                     crypto.enc(u["dob"]) if "dob" in u else user["dob"],
                     u.get("lifeStage", user["life_stage"]),
+                    crypto.enc(u["goal"]) if "goal" in u else user["goal"],
                     int(u["isOnboarded"]) if "isOnboarded" in u else user["is_onboarded"],
                     user["id"],
                 ),

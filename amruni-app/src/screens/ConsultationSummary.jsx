@@ -222,6 +222,16 @@ export default function ConsultationSummary() {
         >
           Book Follow-up Session
         </button>
+        {/* Offered to everyone, not only to women with a policy on file. A
+            receipt is proof of payment whether or not anyone is reimbursing
+            it, and the screen behind this button is where she finds out that
+            adding her insurance would put more on it. */}
+        <button
+          className="btn btn--secondary"
+          onClick={() => navigate(`/receipt/${id}`)}
+        >
+          Get receipt for my insurer
+        </button>
         <button
           className="btn btn--secondary"
           onClick={() => navigate('/home')}

@@ -5,19 +5,22 @@ import { useApp } from '../context/AppContext';
 import { LIFE_STAGES } from '../data/mock';
 import BottomSheet from '../components/BottomSheet';
 import ConditionPicker from '../components/ConditionPicker';
-import CareShares from '../components/CareShares';
 import PregnancyBloom from '../components/PregnancyBloom';
 import { AnimatePresence } from 'framer-motion';
 import { useToast } from '../components/Toast';
 import { confirm } from '../lib/haptics';
 import { getContacts, addContact, deleteContact } from '../lib/sosService';
 import { meApi } from '../services/api';
+import { insuranceApi } from '../services/insuranceApi';
+import { intakeApi } from '../services/intakeApi';
+import { summaryLine } from '../lib/insurance';
+import { FORM_LIST } from '../data/intake';
 import { permissionState, requestPermission, notificationsSupported } from '../lib/reminders';
 import { useEffect } from 'react';
 import {
   IconUser, IconSprout, IconRecords, IconHospital, IconBell, IconLock,
   IconShield, IconPregnant, IconHome, IconPlus, IconClose, IconSettings,
-  IconStar, IconSend, IconLogout, FlagIN, IconStethoscope,
+  IconStar, IconSend, IconLogout, FlagIN, IconStethoscope, IconLeaf,
 } from '../icons.jsx';
 
 export default function Settings() {
@@ -43,7 +46,6 @@ export default function Settings() {
   const [caretakerSheet, setCaretakerSheet] = useState(false);
   const [logoutSheet, setLogoutSheet] = useState(false);
   const [selectedStage, setSelectedStage] = useState(lifeStage);
-  const [careSheet, setCareSheet] = useState(false);
   const [healthSheet, setHealthSheet] = useState(false);
   const [conditions, setConditions] = useState(state.health?.conditions ?? []);
   const [savingHealth, setSavingHealth] = useState(false);
@@ -55,6 +57,35 @@ export default function Settings() {
 
   const sosContacts = state.sos?.contacts ?? [];
   const phoneId = state.auth?.phone;
+
+  // Coverage and intake summaries. Both are read-only glances — the rows they
+  // label say what is on file, never a policy number, and both degrade to the
+  // "not set up" copy when the request fails rather than showing an error in a
+  // settings list.
+  const [coverage, setCoverage] = useState(null);
+  const [intakeDates, setIntakeDates] = useState({});
+
+  useEffect(() => {
+    let cancelled = false;
+    insuranceApi.get()
+      .then((res) => { if (!cancelled && res?.payerType) setCoverage(res); })
+      .catch(() => {});
+    intakeApi.list()
+      .then((rows) => {
+        if (cancelled) return;
+        const latest = {};
+        for (const row of rows) {
+          if (!latest[row.formId]) {
+            latest[row.formId] = new Date(row.submittedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+          }
+        }
+        setIntakeDates(latest);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [phoneId]);
+
+  const coverageLine = coverage ? summaryLine(coverage) : 'Add your policy to claim consultations back';
 
   useEffect(() => {
     async function loadContacts() {
@@ -152,6 +183,24 @@ export default function Settings() {
               <ChevronRight />
             </div>
 
+            {/* Sits in Account rather than under a heading of its own: to the
+                woman filling it in this is a fact about her, alongside her life
+                stage and her records — not a feature. */}
+            <div
+              className="settings-item"
+              onClick={() => navigate('/insurance')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && navigate('/insurance')}
+            >
+              <div className="settings-item__icon" style={{ background: 'var(--clr-sky-soft)', color: 'var(--clr-sky)' }}><IconShield size={20} /></div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label">Insurance & coverage</div>
+                <div className="settings-item__desc">{coverageLine}</div>
+              </div>
+              <ChevronRight />
+            </div>
+
             <div className="settings-item" role="button" tabIndex={0}>
               <div className="settings-item__icon"><IconHospital size={20} /></div>
               <div style={{ flex: 1 }}>
@@ -160,6 +209,51 @@ export default function Settings() {
               </div>
               <ChevronRight />
             </div>
+          </div>
+        </motion.div>
+
+        {/* Traditional care */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.11, ease: [0.16, 1, 0.3, 1] }}>
+          <div className="settings-group">
+            <div className="settings-group__title">Traditional care</div>
+            <div
+              className="settings-item"
+              onClick={() => navigate('/therapies')}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === 'Enter' && navigate('/therapies')}
+            >
+              <div className="settings-item__icon" style={{ background: 'var(--clr-sage-soft)', color: 'var(--clr-sage)' }}><IconLeaf size={20} /></div>
+              <div style={{ flex: 1 }}>
+                <div className="settings-item__label">Ayurveda, yoga & reiki</div>
+                <div className="settings-item__desc">What each one is for, and who practises it</div>
+              </div>
+              <ChevronRight />
+            </div>
+            {FORM_LIST.map((form) => {
+              const done = intakeDates[form.id];
+              return (
+                <div
+                  key={form.id}
+                  className="settings-item"
+                  onClick={() => navigate(`/intake/${form.id}`)}
+                  role="button"
+                  tabIndex={0}
+                  onKeyDown={(e) => e.key === 'Enter' && navigate(`/intake/${form.id}`)}
+                >
+                  <div className="settings-item__icon"><IconRecords size={20} /></div>
+                  <div style={{ flex: 1 }}>
+                    <div className="settings-item__label">{form.label}</div>
+                    <div className="settings-item__desc">
+                      {done
+                        ? `Filled ${done} — fill it again before your next consultation`
+                        : `${form.minutes} minutes · your practitioner reads it before you meet`}
+                    </div>
+                  </div>
+                  <ChevronRight />
+                </div>
+              );
+            })}
           </div>
         </motion.div>
 
@@ -307,17 +401,20 @@ export default function Settings() {
         <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.38, delay: 0.14, ease: [0.16, 1, 0.3, 1] }}>
           <div className="settings-group">
             <div className="settings-group__title">Caretaker</div>
+            {/* One home for care. Creating a link and seeing what was done with
+                it are the same subject, and splitting them left the ledger with
+                nowhere she could reach it. */}
             <div
               className="settings-item"
-              onClick={() => setCareSheet(true)}
+              onClick={() => navigate('/care-activity')}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && setCareSheet(true)}
+              onKeyDown={(e) => e.key === 'Enter' && navigate('/care-activity')}
             >
               <div className="settings-item__icon" style={{ background: 'var(--clr-sage-soft)', color: 'var(--clr-sage)' }}><IconSend size={20} /></div>
               <div style={{ flex: 1 }}>
-                <div className="settings-item__label">Share with family</div>
-                <div className="settings-item__desc">A link for a daughter or caretaker — no app needed</div>
+                <div className="settings-item__label">Care sharing</div>
+                <div className="settings-item__desc">Who can see your record, and what they have done</div>
               </div>
               <ChevronRight />
             </div>
@@ -460,9 +557,6 @@ export default function Settings() {
       </div>
 
       {/* Life stage sheet */}
-      <BottomSheet open={careSheet} onClose={() => setCareSheet(false)} title="Share with family">
-        <CareShares />
-      </BottomSheet>
 
       <BottomSheet open={healthSheet} onClose={() => !savingHealth && setHealthSheet(false)} title="Health background">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)', minHeight: '52dvh' }}>

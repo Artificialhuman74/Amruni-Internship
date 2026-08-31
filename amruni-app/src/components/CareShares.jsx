@@ -28,6 +28,9 @@ const DURATIONS = [
   { days: 7, label: '7 days' },
   { days: 30, label: '30 days' },
   { days: 90, label: '90 days' },
+  // No expiry. Right for the daughter who manages her mother's care
+  // indefinitely, and the one option worth a word of caution — see below.
+  { days: null, label: 'Forever' },
 ];
 
 export default function CareShares() {
@@ -137,11 +140,11 @@ export default function CareShares() {
       </div>
 
       <div>
-        <p className="input-label" style={{ marginBottom: 'var(--sp-2)' }}>Stops working after</p>
-        <div style={{ display: 'flex', gap: 'var(--sp-2)' }}>
+        <p className="input-label" style={{ marginBottom: 'var(--sp-2)' }}>How long it works</p>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--sp-2)' }}>
           {DURATIONS.map((d) => (
             <button
-              key={d.days}
+              key={d.label}
               type="button"
               className={`chip${days === d.days ? ' chip--active' : ''}`}
               aria-pressed={days === d.days}
@@ -152,6 +155,14 @@ export default function CareShares() {
           ))}
         </div>
       </div>
+
+      {days === null && (
+        <p className="cs__forever-note">
+          A link with no end date keeps working until you turn it off — so it is worth
+          checking this list now and then. Every link can be switched off at any time,
+          and you can see how often each one has been opened.
+        </p>
+      )}
 
       <button className="btn btn--primary" onClick={create} disabled={creating || scopes.length === 0}>
         {creating ? 'Creating…' : 'Create link'}
@@ -183,9 +194,11 @@ export default function CareShares() {
                   </span>
                 </div>
                 <p className="cs__share-meta">
-                  {s.expiresAt && !s.revoked
-                    ? `Works until ${new Date(s.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
-                    : 'No longer active'}
+                  {s.revoked || s.expired
+                    ? 'No longer active'
+                    : s.expiresAt
+                      ? `Works until ${new Date(s.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`
+                      : 'Works until you turn it off'}
                 </p>
                 <div className="cs__share-scopes">
                   {s.scopes.map((sc) => (

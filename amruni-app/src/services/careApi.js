@@ -11,6 +11,10 @@ export const careApi = {
   slots: async (token) => (await api.get(`/care/${token}/slots`)).data,
   book: async (token, { slotId, reason }) =>
     (await api.post(`/care/${token}/book`, { slotId, reason })).data,
+  // The caretaker settles it from her own card. Only ever a payment this link
+  // created — the server checks the token owns it.
+  confirmPayment: async (token, paymentId, details = {}) =>
+    (await api.post(`/care/${token}/payments/${paymentId}/confirm`, details)).data,
   // What a caretaker can actually do, beyond reading.
   markDose: async (token, medId, { slot, date }) =>
     (await api.post(`/care/${token}/medicines/${medId}/taken`, { slot, date })).data,
