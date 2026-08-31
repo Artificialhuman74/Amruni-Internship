@@ -17,12 +17,20 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from .db import init_db
+from .db import get_db, init_db
 from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance
 
 IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
 
 init_db()
+
+# One-time repair for posts published as ciphertext before share_journal
+# decrypted on the way out. Cheap after the first run — the LIKE matches
+# nothing once they are fixed.
+with get_db() as _db:
+    _repaired = routes_community.repair_ciphertext_posts(_db)
+if _repaired:
+    print(f"[startup] repaired {_repaired} community post(s) that held ciphertext, and re-moderated them.", flush=True)
 
 if auth.DOCTOR_OTP_DISABLED:
     print(
