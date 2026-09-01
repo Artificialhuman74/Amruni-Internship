@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { LIFE_STAGES } from '../data/mock';
-import BottomSheet from '../components/BottomSheet';
-import ConditionPicker from '../components/ConditionPicker';
-import CareShares from '../components/CareShares';
-import PregnancyBloom from '../components/PregnancyBloom';
+import BottomSheet from '../components/ui/BottomSheet';
+import ConditionPicker from '../components/onboarding/ConditionPicker';
+import CareShares from '../components/care/CareShares';
+import PregnancyBloom from '../components/pregnancy/PregnancyBloom';
 import { AnimatePresence } from 'framer-motion';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/ui/Toast';
 import { confirm } from '../lib/haptics';
 import { getContacts, addContact, deleteContact } from '../lib/sosService';
 import { meApi } from '../services/api';
@@ -325,7 +325,9 @@ export default function Settings() {
               <div className="settings-item__icon"><IconHome size={20} /></div>
               <div style={{ flex: 1 }}>
                 <div className="settings-item__label">Elderly care mode</div>
-                <div className="settings-item__desc">Set up on behalf of a family member</div>
+                <div className="settings-item__desc">
+                  {lifeStage === 'elderly' ? 'Active · Set up on behalf of a family member' : 'Set up on behalf of a family member'}
+                </div>
               </div>
               <ChevronRight />
             </div>
@@ -532,15 +534,36 @@ export default function Settings() {
           <div style={{ background: 'var(--clr-surface-2)', borderRadius: 'var(--radius-md)', padding: 'var(--sp-5)', textAlign: 'center' }}>
             <div style={{ color: 'var(--clr-brand)', display: 'flex', justifyContent: 'center', marginBottom: 'var(--sp-3)' }}><IconHome size={40} /></div>
             <p style={{ fontSize: 'var(--text-base)', fontWeight: 600, color: 'var(--clr-ink)', marginBottom: 'var(--sp-2)' }}>
-              Setting up for a family member?
+              {lifeStage === 'elderly' ? 'Elderly care mode is active' : 'Setting up for a family member?'}
             </p>
             <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', lineHeight: 1.6, textWrap: 'pretty' }}>
-              Caretaker mode lets you manage appointments and health tracking for an elderly parent or relative. Their data stays private.
+              {lifeStage === 'elderly'
+                ? 'You are currently in caretaker mode, managing health and appointments on behalf of an elderly relative.'
+                : 'Caretaker mode lets you manage appointments and health tracking for an elderly parent or relative. Their data stays private.'}
             </p>
           </div>
-          <button className="btn btn--primary" onClick={() => { dispatch({ type: 'SET_USER', payload: { lifeStage: 'elderly' } }); setSelectedStage('elderly'); setCaretakerSheet(false); confirm(); toast('Elderly care mode is on', { icon: 'home' }); }}>
-            Switch to elderly care mode
-          </button>
+          {lifeStage === 'elderly' ? (
+            <button className="btn btn--primary" style={{ background: 'var(--clr-brand)' }} onClick={() => {
+              const baseStage = age == null ? 'reproductive' : (age <= 19 ? 'adolescent' : (age <= 44 ? 'reproductive' : (age <= 64 ? 'menopause' : 'elderly')));
+              dispatch({ type: 'SET_USER', payload: { lifeStage: baseStage } });
+              setSelectedStage(baseStage);
+              setCaretakerSheet(false);
+              confirm();
+              toast('Elderly care mode is off', { icon: 'settings' });
+            }}>
+              Turn off elderly care mode
+            </button>
+          ) : (
+            <button className="btn btn--primary" onClick={() => {
+              dispatch({ type: 'SET_USER', payload: { lifeStage: 'elderly' } });
+              setSelectedStage('elderly');
+              setCaretakerSheet(false);
+              confirm();
+              toast('Elderly care mode is on', { icon: 'home' });
+            }}>
+              Switch to elderly care mode
+            </button>
+          )}
           <button className="btn btn--secondary" onClick={() => setCaretakerSheet(false)}>
             Cancel
           </button>

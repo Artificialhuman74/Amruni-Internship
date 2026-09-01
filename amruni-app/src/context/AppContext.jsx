@@ -51,10 +51,12 @@ const initialState = {
 // current client state; fields the server doesn't yet persist (goal,
 // pregnancyMode) are carried over from it so hydration never wipes them.
 export function stateFromServer(payload, phone, prev = {}) {
+  const isDifferentUser = prev.auth?.phone && payload.user.phone && prev.auth.phone !== payload.user.phone;
+  const isNotOnboardedYet = !payload.user.isOnboarded;
   return {
     auth: { phone: payload.user.phone || phone, isAuthenticated: true },
     user: {
-      goal: prev.user?.goal ?? null,
+      goal: (isDifferentUser || isNotOnboardedYet) ? null : (prev.user?.goal ?? null),
       name: payload.user.name,
       dob: payload.user.dob,
       lifeStage: payload.user.lifeStage,

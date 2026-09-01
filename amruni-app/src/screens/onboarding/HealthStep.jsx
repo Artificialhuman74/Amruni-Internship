@@ -4,7 +4,7 @@ import { motion } from 'framer-motion';
 import { useApp } from '../../context/AppContext';
 import { meApi } from '../../services/api';
 import { OnboardHeader } from './NameStep';
-import ConditionPicker from '../../components/ConditionPicker';
+import ConditionPicker from '../../components/onboarding/ConditionPicker';
 import { CYCLE_AFFECTING } from '../../data/conditions';
 import { tap, confirm as confirmHaptic } from '../../lib/haptics';
 

@@ -1,5 +1,5 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { tap } from '../lib/haptics';
+import { tap } from '../../lib/haptics';
 
 /**
  * The switch at the top of Track.

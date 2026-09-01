@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { careApi } from '../services/careApi';
-import { useApp } from '../context/AppContext';
-import { permissionState } from '../lib/reminders';
-import { tap } from '../lib/haptics';
-import { IconSend } from '../icons.jsx';
+import { careApi } from '../../services/careApi';
+import { useApp } from '../../context/AppContext';
+import { permissionState } from '../../lib/reminders';
+import { tap } from '../../lib/haptics';
+import { IconSend } from '../../icons.jsx';
 
 /**
  * "Someone did something for you."

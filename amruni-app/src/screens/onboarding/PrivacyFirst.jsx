@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import CamelliaHero from '../../components/CamelliaHero';
+import CamelliaHero from '../../components/onboarding/CamelliaHero';
 import { tap, confirm as confirmHaptic } from '../../lib/haptics';
 
 const CONSENTS = [

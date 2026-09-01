@@ -4,7 +4,7 @@ import { mapsLink, smsBod, waLink, fireSmsBurst, watchLocation } from './sos';
 import { conditionLabel } from '../data/conditions';
 import { saveAlert } from './sosService';
 import { warn } from './haptics';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/ui/Toast';
 
 export function useSOSActivation() {
   const { state, dispatch } = useApp();

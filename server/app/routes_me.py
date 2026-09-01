@@ -172,6 +172,14 @@ def get_me(user: dict = Depends(current_user)):
 @router.patch("/me")
 def patch_me(body: ProfilePatch, user: dict = Depends(current_user)):
     patch = body.model_dump(exclude_unset=True)
+    is_onboarded = patch.get("isOnboarded", bool(user["is_onboarded"]))
+    if is_onboarded:
+        name_val = patch.get("name")
+        if "name" not in patch:
+            name_val = crypto.dec(user["name"])
+        if not name_val or not name_val.strip():
+            raise HTTPException(400, "Name is mandatory for registration/onboarding.")
+
     with get_db() as db:
         db.execute(
             "UPDATE users SET name = ?, dob = ?, life_stage = ?, is_onboarded = ? WHERE id = ?",
@@ -192,6 +200,14 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
     u = body.user.model_dump(exclude_unset=True)
     with get_db() as db:
         if u:
+            is_onboarded = u.get("isOnboarded", bool(user["is_onboarded"]))
+            if is_onboarded:
+                name_val = u.get("name")
+                if "name" not in u:
+                    name_val = crypto.dec(user["name"])
+                if not name_val or not name_val.strip():
+                    raise HTTPException(400, "Name is mandatory for registration/onboarding.")
+
             db.execute(
                 "UPDATE users SET name = ?, dob = ?, life_stage = ?, is_onboarded = ? WHERE id = ?",
                 (

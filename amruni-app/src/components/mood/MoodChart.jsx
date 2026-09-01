@@ -2,10 +2,10 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import MoodFlower from './MoodFlower';
-import { BANDS } from '../lib/moodScale';
-import { useBodyOverlay } from '../lib/useBodyOverlay';
-import { tap } from '../lib/haptics';
-import { IconClose } from '../icons.jsx';
+import { BANDS } from '../../lib/moodScale';
+import { useBodyOverlay } from '../../lib/useBodyOverlay';
+import { tap } from '../../lib/haptics';
+import { IconClose } from '../../icons.jsx';
 
 /**
  * The mood log as a chart, full screen.

@@ -1,4 +1,4 @@
-import { useApp } from '../context/AppContext';
+import { useApp } from '../../context/AppContext';
 import BottomSheet from './BottomSheet';
 
 // A live before/after of the user's OWN post, not a generic stock graphic —

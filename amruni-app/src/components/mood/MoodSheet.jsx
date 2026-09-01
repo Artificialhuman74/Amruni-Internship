@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
 import MoodFlower from './MoodFlower';
-import { visualAt, labelAt, clampBand } from '../lib/moodScale';
+import { visualAt, labelAt, clampBand } from '../../lib/moodScale';
 import {
   orderedWords, orderedFactorGroups, cleanCustom, loadUsage, refreshMoodVocabulary,
   CUSTOM_MAX_LENGTH,
-} from '../lib/moodVocabulary';
-import { useBodyOverlay } from '../lib/useBodyOverlay';
-import { tap, confirm } from '../lib/haptics';
-import { IconClose, IconPlus } from '../icons.jsx';
+} from '../../lib/moodVocabulary';
+import { useBodyOverlay } from '../../lib/useBodyOverlay';
+import { tap, confirm } from '../../lib/haptics';
+import { IconClose, IconPlus } from '../../icons.jsx';
 
 /**
  * State of Mind — one surface, two scopes.

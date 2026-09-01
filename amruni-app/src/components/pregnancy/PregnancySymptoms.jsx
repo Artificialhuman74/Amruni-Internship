@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { useApp } from '../context/AppContext';
-import BottomSheet from './BottomSheet';
+import { useApp } from '../../context/AppContext';
+import BottomSheet from '../ui/BottomSheet';
 
 // Must stay in exact sync with the Home-screen mood-logging card — both read
 // and write state.pregnancy.loggedDays[date].mood/valence.

@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import BottomNav from './BottomNav';
-import SOSButton from './SOSButton';
-import SOSBanner from './SOSBanner';
-import { useApp } from '../context/AppContext';
-import { useSosDock } from '../lib/useSosDock';
-import { useFertileAlerts } from '../lib/useFertileAlerts';
+import SOSButton from '../sos/SOSButton';
+import SOSBanner from '../sos/SOSBanner';
+import { useApp } from '../../context/AppContext';
+import { useSosDock } from '../../lib/useSosDock';
+import { useFertileAlerts } from '../../lib/useFertileAlerts';
 
 export default function AppShell() {
   const location = useLocation();

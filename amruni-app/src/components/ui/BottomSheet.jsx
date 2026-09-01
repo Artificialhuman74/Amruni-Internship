@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useBodyOverlay } from '../lib/useBodyOverlay';
+import { useBodyOverlay } from '../../lib/useBodyOverlay';
 
 /**
  * The app's modal sheet.

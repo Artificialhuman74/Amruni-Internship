@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { IconStethoscope, IconCycle } from '../icons.jsx';
+import { IconStethoscope, IconCycle } from '../../icons.jsx';
 
 // ACOG-ordered: a doctor-given date (usually from a dating scan) is the most
 // accurate and is offered first; LMP is the fallback for someone early on who

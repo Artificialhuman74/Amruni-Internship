@@ -1,15 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { useApp } from '../context/AppContext';
-import { useMood } from '../context/MoodContext';
-import { useToast } from './Toast';
+import { useApp } from '../../context/AppContext';
+import { useMood } from '../../context/MoodContext';
+import { useToast } from '../ui/Toast';
 import MoodSheet from './MoodSheet';
 import MoodChart from './MoodChart';
 import MoodFlower from './MoodFlower';
-import { BANDS } from '../lib/moodScale';
-import { tap } from '../lib/haptics';
-import { IconTrend, IconChat } from '../icons.jsx';
+import { BANDS } from '../../lib/moodScale';
+import { tap } from '../../lib/haptics';
+import { IconTrend, IconChat } from '../../icons.jsx';
 
 /**
  * Your moods — the log, in Track.

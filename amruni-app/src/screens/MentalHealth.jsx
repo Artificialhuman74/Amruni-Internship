@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { meApi } from '../services/api';
-import BottomSheet from '../components/BottomSheet';
+import BottomSheet from '../components/ui/BottomSheet';
 import { TOOLS, optionsFor, bandFor, hasRiskFlag } from '../data/screening';
 import { IconBrain, IconMind, IconHospital, IconLock, IconUser, IconPhone } from '../icons.jsx';
 import { tap } from '../lib/haptics';

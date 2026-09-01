@@ -3,10 +3,10 @@ import {
   motion, AnimatePresence, useMotionValue, animate, useReducedMotion,
 } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import { useSOSActivation } from '../lib/useSOSActivation';
-import { positionFor, resolveDrop, isNearDock, SOS_SIZE } from '../lib/useSosDock';
-import { tap, warn, confirm } from '../lib/haptics';
+import { useApp } from '../../context/AppContext';
+import { useSOSActivation } from '../../lib/useSOSActivation';
+import { positionFor, resolveDrop, isNearDock, SOS_SIZE } from '../../lib/useSosDock';
+import { tap, warn, confirm } from '../../lib/haptics';
 
 /**
  * The emergency button.

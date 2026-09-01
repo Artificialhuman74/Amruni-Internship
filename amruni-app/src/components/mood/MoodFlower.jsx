@@ -1,6 +1,6 @@
 import { useEffect, useId } from 'react';
 import { motion, useMotionValue, useSpring, useTransform, useReducedMotion } from 'framer-motion';
-import { bloomPathAt, visualAt, clampBand } from '../lib/moodScale';
+import { bloomPathAt, visualAt, clampBand } from '../../lib/moodScale';
 
 /**
  * The mood bloom.

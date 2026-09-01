@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { careApi } from '../services/careApi';
-import CareLedger from '../components/CareLedger';
+import CareLedger from '../components/care/CareLedger';
 import { conditionLabel } from '../data/conditions';
 import { IconPill, IconAppointment, IconPhone, IconStethoscope } from '../icons.jsx';
 

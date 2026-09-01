@@ -4,10 +4,10 @@ import { useVideoCall } from '../hooks/useVideoCall';
 import { useApp } from '../context/AppContext';
 import { appointmentApi } from '../services/appointmentApi';
 import { apiError } from '../services/api';
-import DoctorAvatar from '../components/DoctorAvatar';
+import DoctorAvatar from '../components/ui/DoctorAvatar';
 import { useSosLift } from '../lib/useSosLift';
-import BottomSheet from '../components/BottomSheet';
-import SuccessCheck from '../components/SuccessCheck';
+import BottomSheet from '../components/ui/BottomSheet';
+import SuccessCheck from '../components/ui/SuccessCheck';
 import { confirm as confirmHaptic } from '../lib/haptics';
 import { IconChat, IconVideo } from '../icons.jsx';
 

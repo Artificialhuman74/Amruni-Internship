@@ -8,15 +8,18 @@ export default function NameStep() {
   const { state, dispatch } = useApp();
   const [name, setName] = useState(state.user.name || '');
 
+  const isValid = name.trim().length > 0;
+
   function next() {
-    dispatch({ type: 'SET_USER', payload: { name: name.trim() || null } });
+    if (!isValid) return;
+    dispatch({ type: 'SET_USER', payload: { name: name.trim() } });
     navigate('/onboarding/dob');
   }
 
   return (
     <div className="screen screen--light">
       <div className="onb-page">
-        <OnboardHeader step={1} onBack={() => navigate('/onboarding/privacy')} onSkip={next} />
+        <OnboardHeader step={1} onBack={() => navigate('/onboarding/privacy')} />
 
         <div className="onb-body">
           <motion.div
@@ -42,12 +45,12 @@ export default function NameStep() {
             placeholder="Your name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') next(); }}
+            onKeyDown={(e) => { if (e.key === 'Enter' && isValid) next(); }}
             aria-label="Your name"
           />
         </div>
 
-        <button className="btn btn--primary" onClick={next}>Continue</button>
+        <button className="btn btn--primary" onClick={next} disabled={!isValid} style={{ opacity: isValid ? 1 : 0.5 }}>Continue</button>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { motion, useReducedMotion } from 'framer-motion';
 import { journalApi } from '../services/journalApi';
 import { communityApi } from '../services/communityApi';
 import { apiError } from '../services/api';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/ui/Toast';
 import { BANDS } from '../lib/moodScale';
 import { IconJournal } from '../icons.jsx';
 import { tap } from '../lib/haptics';

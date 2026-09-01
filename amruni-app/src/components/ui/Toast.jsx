@@ -3,7 +3,7 @@ import { AnimatePresence, motion, useReducedMotion } from 'framer-motion';
 import {
   IconHeart, IconBlossom, IconLeaf, IconTrash, IconAlert, IconCheck,
   IconCheckCircle, IconTrend, IconAppointment, IconReport, IconDaisy, IconHome,
-} from '../icons.jsx';
+} from '../../icons.jsx';
 
 /*
   Confirmation toasts speak in one small icon vocabulary. Callers pass a

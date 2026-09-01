@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
-import { medsApi } from '../services/medsApi';
-import { useApp } from '../context/AppContext';
-import { startReminders, stopReminders, permissionState } from '../lib/reminders';
-import { tap } from '../lib/haptics';
-import { IconPill } from '../icons.jsx';
+import { medsApi } from '../../services/medsApi';
+import { useApp } from '../../context/AppContext';
+import { startReminders, stopReminders, permissionState } from '../../lib/reminders';
+import { tap } from '../../lib/haptics';
+import { IconPill } from '../../icons.jsx';
 
 /**
  * Today's doses, on Home.

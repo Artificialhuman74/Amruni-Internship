@@ -3,10 +3,10 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { SPECIALTIES } from '../data/mock';
 import { appointmentApi } from '../services/appointmentApi';
-import BottomSheet from '../components/BottomSheet';
-import SuccessCheck from '../components/SuccessCheck';
+import BottomSheet from '../components/ui/BottomSheet';
+import SuccessCheck from '../components/ui/SuccessCheck';
 import { confirm } from '../lib/haptics';
-import DoctorAvatar from '../components/DoctorAvatar';
+import DoctorAvatar from '../components/ui/DoctorAvatar';
 import { IconSearch, IconStar, IconVideo, IconChat } from '../icons.jsx';
 
 const stagger = {

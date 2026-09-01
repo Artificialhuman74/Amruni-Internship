@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useVideoCall } from '../../hooks/useVideoCall';
 import ParticipantCard from './ParticipantCard';
-import DoctorAvatar from '../DoctorAvatar';
+import DoctorAvatar from '../ui/DoctorAvatar';
 import { IconUser } from '../../icons.jsx';
 
 export default function VideoPlayer() {

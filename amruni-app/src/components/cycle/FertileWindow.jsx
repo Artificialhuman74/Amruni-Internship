@@ -1,6 +1,6 @@
 import { useId } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
-import { tierWeight } from '../lib/fertility';
+import { tierWeight } from '../../lib/fertility';
 
 /**
  * Six days, drawn as one thing.

@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
-import { communityApi } from '../services/communityApi';
-import { apiError } from '../services/api';
-import { useToast } from './Toast';
-import { useIdentityWarning } from '../lib/useIdentityWarning';
-import IdentityWarningSheet from './IdentityWarningSheet';
+import { communityApi } from '../../services/communityApi';
+import { apiError } from '../../services/api';
+import { useToast } from '../ui/Toast';
+import { useIdentityWarning } from '../../lib/useIdentityWarning';
+import IdentityWarningSheet from '../ui/IdentityWarningSheet';
 
 /**
  * Shared composer for both a new root post (Community feed) and a reply

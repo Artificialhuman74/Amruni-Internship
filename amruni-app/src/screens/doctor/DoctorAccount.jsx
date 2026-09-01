@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { doctorApi, getCachedDoctor, setDoctorSession } from '../../services/doctorApi';
-import DoctorAvatar from '../../components/DoctorAvatar';
+import DoctorAvatar from '../../components/ui/DoctorAvatar';
 
 export default function DoctorAccount() {
   const navigate = useNavigate();

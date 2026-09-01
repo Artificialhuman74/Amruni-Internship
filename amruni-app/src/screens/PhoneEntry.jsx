@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { authApi, apiError } from '../services/api';
-import Logo from '../components/Logo';
+import Logo from '../components/ui/Logo';
 import { doctorAppHref } from '../lib/siteLinks';
 import { FlagIN } from '../icons.jsx';
 

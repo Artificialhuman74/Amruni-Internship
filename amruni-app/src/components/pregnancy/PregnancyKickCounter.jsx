@@ -1,7 +1,7 @@
 import { motion, useReducedMotion } from 'framer-motion';
-import { useApp } from '../context/AppContext';
-import { tap } from '../lib/haptics';
-import { IconFootprints } from '../icons.jsx';
+import { useApp } from '../../context/AppContext';
+import { tap } from '../../lib/haptics';
+import { IconFootprints } from '../../icons.jsx';
 
 // Medically, ten kicks in a couple of hours is the commonly cited reassuring
 // benchmark — but this component intentionally doesn't time or gate on that.

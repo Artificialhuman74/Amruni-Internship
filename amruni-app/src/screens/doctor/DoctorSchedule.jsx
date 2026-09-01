@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { motion, useReducedMotion } from 'framer-motion';
 import { doctorApi, doctorApiError, getCachedDoctor } from '../../services/doctorApi';
-import BottomSheet from '../../components/BottomSheet';
-import { useToast } from '../../components/Toast';
+import BottomSheet from '../../components/ui/BottomSheet';
+import { useToast } from '../../components/ui/Toast';
 import { confirm as confirmHaptic } from '../../lib/haptics';
 import { IconClose } from '../../icons.jsx';
 

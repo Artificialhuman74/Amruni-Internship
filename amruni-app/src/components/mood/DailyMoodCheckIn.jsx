@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { useApp } from '../context/AppContext';
-import { useMood } from '../context/MoodContext';
-import { useToast } from './Toast';
-import { tap } from '../lib/haptics';
+import { useApp } from '../../context/AppContext';
+import { useMood } from '../../context/MoodContext';
+import { useToast } from '../ui/Toast';
+import { tap } from '../../lib/haptics';
 import MoodFlower from './MoodFlower';
-import { BANDS } from '../lib/moodScale';
+import { BANDS } from '../../lib/moodScale';
 import MoodSheet from './MoodSheet';
 
 /**

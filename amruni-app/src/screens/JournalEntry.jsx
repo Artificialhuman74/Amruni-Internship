@@ -4,15 +4,15 @@ import { motion, useReducedMotion, useScroll, useTransform } from 'framer-motion
 import { journalApi } from '../services/journalApi';
 import { communityApi } from '../services/communityApi';
 import { apiError } from '../services/api';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/ui/Toast';
 import { useIdentityWarning } from '../lib/useIdentityWarning';
-import IdentityWarningSheet from '../components/IdentityWarningSheet';
-import BottomSheet from '../components/BottomSheet';
-import MoodFlower from '../components/MoodFlower';
+import IdentityWarningSheet from '../components/ui/IdentityWarningSheet';
+import BottomSheet from '../components/ui/BottomSheet';
+import MoodFlower from '../components/mood/MoodFlower';
 import { BANDS } from '../lib/moodScale';
 import { describeContext } from '../lib/journalContext';
 import { weatherLine, devSky } from '../lib/weather';
-import WeatherScene from '../components/WeatherScene';
+import WeatherScene from '../components/mood/WeatherScene';
 import { tap, warn, confirm as confirmHaptic } from '../lib/haptics';
 import { IconClose, IconCheck } from '../icons.jsx';
 

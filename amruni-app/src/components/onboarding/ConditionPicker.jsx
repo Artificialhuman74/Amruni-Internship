@@ -1,8 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
-import { CONDITION_GROUPS, searchConditions, conditionLabel } from '../data/conditions';
-import { tap } from '../lib/haptics';
-import { IconCheck, IconClose } from '../icons.jsx';
+import { CONDITION_GROUPS, searchConditions, conditionLabel } from '../../data/conditions';
+import { tap } from '../../lib/haptics';
+import { IconCheck, IconClose } from '../../icons.jsx';
 
 /**
  * Choosing what she already lives with.

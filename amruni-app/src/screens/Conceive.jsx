@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
-import FertileWindow from '../components/FertileWindow';
+import FertileWindow from '../components/cycle/FertileWindow';
 import { ageFromDob } from '../lib/lifeStage';
 import {
   fertilityModel, windowHeadline, todayIso,

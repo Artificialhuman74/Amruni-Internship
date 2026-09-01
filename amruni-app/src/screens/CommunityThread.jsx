@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, useReducedMotion } from 'framer-motion';
 import { communityApi } from '../services/communityApi';
 import { apiError } from '../services/api';
-import { useToast } from '../components/Toast';
-import CommunityPostCard from '../components/CommunityPostCard';
-import CommunityPostComposer from '../components/CommunityPostComposer';
+import { useToast } from '../components/ui/Toast';
+import CommunityPostCard from '../components/community/CommunityPostCard';
+import CommunityPostComposer from '../components/community/CommunityPostComposer';
 import { IconHeart } from '../icons.jsx';
 
 /** Single-post thread, X-style: the root post in full, flat replies below it

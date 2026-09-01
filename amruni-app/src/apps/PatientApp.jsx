@@ -4,7 +4,7 @@ import { useApp } from '../context/AppContext';
 import { VideoProvider } from '../context/VideoContext';
 import { MoodProvider } from '../context/MoodContext';
 
-import AppShell from '../components/AppShell';
+import AppShell from '../components/layout/AppShell';
 import Splash from '../screens/Splash';
 import PhoneEntry from '../screens/PhoneEntry';
 import OTPVerify from '../screens/OTPVerify';

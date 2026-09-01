@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { useApp } from '../context/AppContext';
-import { useSOSActivation } from '../lib/useSOSActivation';
-import { IconSOS } from '../icons.jsx';
+import { useApp } from '../../context/AppContext';
+import { useSOSActivation } from '../../lib/useSOSActivation';
+import { IconSOS } from '../../icons.jsx';
 
 export default function SOSBanner() {
   const { state } = useApp();

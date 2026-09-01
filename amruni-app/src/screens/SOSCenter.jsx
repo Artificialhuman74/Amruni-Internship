@@ -5,7 +5,7 @@ import { useApp } from '../context/AppContext';
 import { getAlerts } from '../lib/sosService';
 import { useSOSActivation } from '../lib/useSOSActivation';
 import { medicalSummary } from '../lib/sos';
-import { useToast } from '../components/Toast';
+import { useToast } from '../components/ui/Toast';
 import { tap } from '../lib/haptics';
 import { IconPhone, IconShield } from '../icons.jsx';
 

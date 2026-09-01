@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { communityApi } from '../services/communityApi';
-import { apiError } from '../services/api';
-import { useToast } from './Toast';
-import BottomSheet from './BottomSheet';
-import { tap, confirm as confirmHaptic } from '../lib/haptics';
-import { IconHeart, IconChat } from '../icons.jsx';
+import { communityApi } from '../../services/communityApi';
+import { apiError } from '../../services/api';
+import { useToast } from '../ui/Toast';
+import BottomSheet from '../ui/BottomSheet';
+import { tap, confirm as confirmHaptic } from '../../lib/haptics';
+import { IconHeart, IconChat } from '../../icons.jsx';
 
 const TAG_LABELS = {
   'menstruation': 'Menstruation',

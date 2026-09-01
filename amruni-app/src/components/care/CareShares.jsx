@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { careApi, shareUrl } from '../services/careApi';
+import { careApi, shareUrl } from '../../services/careApi';
 import CareLedger from './CareLedger';
-import { useToast } from './Toast';
-import { tap, confirm as confirmHaptic } from '../lib/haptics';
+import { useToast } from '../ui/Toast';
+import { tap, confirm as confirmHaptic } from '../../lib/haptics';
 
 /**
  * Links she can hand to family.

@@ -2,9 +2,9 @@ import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { doctorApi, doctorApiError } from '../../services/doctorApi';
-import { useToast } from '../../components/Toast';
+import { useToast } from '../../components/ui/Toast';
 import { IconLab, IconReport, IconScan, IconAttachment, IconAlert, IconClose } from '../../icons.jsx';
-import WeightCorridor from '../../components/WeightCorridor';
+import WeightCorridor from '../../components/pregnancy/WeightCorridor';
 import { pregnancyWeightView, personalWeightView } from '../../lib/pregnancyWeight';
 
 const STAGE_LABEL = {
