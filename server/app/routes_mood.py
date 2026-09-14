@@ -44,12 +44,18 @@ class MoodBody(BaseModel):
     valence: int = Field(ge=-3, le=3)
     intensity: float | None = Field(default=None, ge=-3, le=3)
     word: str | None = None
+    # Every word she picked, lead first. Capped because the offered vocabulary
+    # is twelve per band plus anything she writes — a list longer than this is
+    # not a feeling being described, it is a column being used as storage.
+    words: list[str] = Field(default_factory=list, max_length=24)
     factors: list[str] = []
     source: str = "checkin"
     journalId: str | None = None
 
 
 def _mood_json(row) -> dict:
+    lead = crypto.dec(row["word"])
+    words = [w for w in crypto.dec_json(row["words"], []) if isinstance(w, str) and w.strip()]
     return {
         "id": row["id"],
         "date": row["date"],
@@ -57,7 +63,11 @@ def _mood_json(row) -> dict:
         "scope": row["scope"],
         "valence": row["valence"],
         "intensity": row["intensity"] if row["intensity"] is not None else row["valence"],
-        "word": crypto.dec(row["word"]),
+        "word": lead,
+        # Rows written before more than one word was possible have no `words`
+        # blob. The single word they do have is the whole answer they were
+        # able to give, so it is returned as the one-item list it is.
+        "words": words or ([lead] if lead else []),
         "factors": crypto.dec_json(row["factors"], []),
         "source": row["source"],
         "journalId": row["journal_id"],
@@ -97,6 +107,16 @@ def create_mood(body: MoodBody, user: dict = Depends(current_user)):
     if body.scope not in ("moment", "day"):
         raise HTTPException(422, "scope must be 'moment' or 'day'.")
 
+    # One answer, reconciled from either shape a client may send. An older
+    # build posts `word` alone; the check-in posts `words` with `word` as the
+    # lead. Deduplicated while keeping her order, because the first word she
+    # reached for is the one the one-line readers will show.
+    picked = [w.strip() for w in body.words if isinstance(w, str) and w.strip()]
+    if body.word and body.word.strip():
+        picked = [body.word.strip()] + picked
+    picked = list(dict.fromkeys(picked))
+    lead = picked[0] if picked else None
+
     logged_at = body.loggedAt or utcnow_iso()
     with get_db() as db:
         if body.scope == "day":
@@ -112,11 +132,12 @@ def create_mood(body: MoodBody, user: dict = Depends(current_user)):
         mood_id = new_id("mood")
         db.execute(
             """INSERT INTO mood_logs
-                 (id, user_id, date, logged_at, scope, valence, intensity, word, factors, source, journal_id)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                 (id, user_id, date, logged_at, scope, valence, intensity, word, words, factors, source, journal_id)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (mood_id, user["id"], body.date, logged_at, body.scope, body.valence,
              body.intensity if body.intensity is not None else float(body.valence),
-             crypto.enc(body.word), crypto.enc_json(body.factors), body.source, body.journalId),
+             crypto.enc(lead), crypto.enc_json(picked),
+             crypto.enc_json(body.factors), body.source, body.journalId),
         )
 
         if body.scope == "day":
@@ -126,7 +147,7 @@ def create_mood(body: MoodBody, user: dict = Depends(current_user)):
                    VALUES (?, ?, ?, ?, ?)
                    ON CONFLICT(user_id, date) DO UPDATE SET
                      mood = excluded.mood, valence = excluded.valence""",
-                (user["id"], body.date, crypto.enc(body.word), body.valence, crypto.enc_json(body.factors)),
+                (user["id"], body.date, crypto.enc(lead), body.valence, crypto.enc_json(body.factors)),
             )
 
         row = db.execute("SELECT * FROM mood_logs WHERE id = ?", (mood_id,)).fetchone()
@@ -159,14 +180,20 @@ def mood_vocabulary(user: dict = Depends(current_user)):
     """
     with get_db() as db:
         rows = db.execute(
-            "SELECT valence, word, factors FROM mood_logs WHERE user_id = ?", (user["id"],)
+            "SELECT valence, word, words, factors FROM mood_logs WHERE user_id = ?", (user["id"],)
         ).fetchall()
 
     words: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
     factors: dict[str, int] = defaultdict(int)
     for row in rows:
-        word = crypto.dec(row["word"])
-        if word:
+        # Every word she picked counts, not only the lead — otherwise the
+        # second and third words she reaches for most would never rise to the
+        # front of her own list, which is the whole point of the tally.
+        picked = [w for w in crypto.dec_json(row["words"], []) if isinstance(w, str) and w.strip()]
+        if not picked:
+            lead = crypto.dec(row["word"])
+            picked = [lead] if lead else []
+        for word in dict.fromkeys(picked):
             words[str(row["valence"])][word] += 1
         for factor in crypto.dec_json(row["factors"], []):
             if isinstance(factor, str) and factor.strip():

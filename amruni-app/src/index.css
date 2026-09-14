@@ -1998,6 +1998,14 @@ body[data-overlay='true'] .sos-orb {
   margin-top: var(--sp-4); font-size: var(--text-xs);
   color: currentColor; opacity: 0.62; text-align: center;
 }
+/* The question keeps its own spacing when nothing follows it; when the hint
+   does, the two belong together and the gap moves below the pair. Losing
+   `:has()` costs a slightly roomier gap and nothing else. */
+.mood-sheet__question:has(+ .mood-sheet__hint) { margin-bottom: var(--sp-1); }
+.mood-sheet__hint {
+  font-size: var(--text-xs); font-weight: 600; letter-spacing: 0.01em;
+  color: currentColor; opacity: 0.64; margin-bottom: var(--sp-4);
+}
 
 /* ── Valence slider ── */
 .mood-slider { margin-top: var(--sp-6); }
@@ -4818,6 +4826,19 @@ button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
   text-wrap: pretty;
   padding: 0;
 }
+/* The Kannada line. Quieter than the English above it but not faint — this is
+   the line many of these women will actually read, so it is a second label,
+   not a caption. Kannada sits on a taller line than Latin and gets clipped
+   descenders at a snug leading. */
+.intake-field__sub {
+  display: block;
+  margin-top: 2px;
+  font-size: var(--text-base);
+  font-weight: 500;
+  line-height: 1.6;
+  color: var(--clr-ink-muted);
+  text-wrap: pretty;
+}
 .intake-field__optional {
   display: inline-block;
   margin-left: var(--sp-2);
@@ -5435,4 +5456,71 @@ button.ml__ribbon:active { border-color: var(--clr-brand-muted); }
   text-transform: uppercase;
   opacity: 0.7;
   padding-left: 2px;
+}
+
+/* ── SRQ-20 result ──────────────────────────────────────────────
+   A score card that must not look like a verdict. It borrows the surface of
+   the other result cards rather than the red of an alert, because the number
+   on it is a reason to talk to someone, not a finding. */
+.srq-card {
+  padding: var(--sp-5);
+  border-radius: var(--radius-lg);
+  background: var(--clr-surface);
+  border: 1px solid var(--clr-border);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+.srq-card__head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: var(--sp-4);
+}
+.srq-card__eyebrow {
+  font-size: var(--text-xs); font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--clr-ink-muted);
+}
+.srq-card__title {
+  margin-top: 2px; font-size: var(--text-lg); font-weight: 700;
+  color: var(--clr-ink); line-height: var(--leading-snug); text-wrap: balance;
+}
+.srq-card__score {
+  flex-shrink: 0; display: flex; align-items: baseline; gap: 2px;
+  padding: var(--sp-2) var(--sp-3); border-radius: var(--radius-md);
+  background: var(--clr-surface-2);
+}
+.srq-card__num { font-size: var(--text-xl); font-weight: 700; line-height: 1; }
+.srq-card__den { font-size: var(--text-xs); font-weight: 600; color: var(--clr-ink-muted); }
+/* The tint shifts with the band, but never to an alarm colour — the urgent
+   case has its own card above this one, and doubling the alarm here would
+   make the number look like the emergency instead of the answer that is. */
+.srq-card__score--low    { background: var(--clr-sage-soft);  color: var(--clr-ink); }
+.srq-card__score--moderate { background: var(--clr-surface-2); color: var(--clr-ink); }
+.srq-card__score--high   { background: var(--clr-brand-soft); color: var(--clr-ink); }
+.srq-card__body {
+  font-size: var(--text-base); color: var(--clr-ink-muted);
+  line-height: var(--leading-base); text-wrap: pretty;
+}
+.srq-card__foot {
+  padding-top: var(--sp-3); border-top: 1px solid var(--clr-border);
+  font-size: var(--text-xs); color: var(--clr-ink-muted);
+  line-height: var(--leading-base); text-wrap: pretty;
+}
+/* The number is in the card visually; this says it in words for a screen
+   reader, which would otherwise hear the aria-hidden score as nothing. */
+.srq-card__sr {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+
+/* Item 17, in the collapsed header. Red here is correct — this is the one
+   place in the app where a counsellor must not be able to scroll past. */
+.doc-intake__urgent {
+  margin-top: var(--sp-2);
+  padding: var(--sp-1) var(--sp-2);
+  border-radius: var(--radius-sm);
+  background: var(--clr-emergency-soft);
+  color: var(--clr-emergency);
+  font-size: var(--text-xs);
+  font-weight: 700;
+  line-height: var(--leading-snug);
 }

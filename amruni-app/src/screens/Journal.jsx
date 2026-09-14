@@ -5,7 +5,7 @@ import { journalApi } from '../services/journalApi';
 import { communityApi } from '../services/communityApi';
 import { apiError } from '../services/api';
 import { useToast } from '../components/Toast';
-import { BANDS } from '../lib/moodScale';
+import { BANDS, wordsOf } from '../lib/moodScale';
 import { IconJournal } from '../icons.jsx';
 import { tap } from '../lib/haptics';
 
@@ -155,7 +155,14 @@ export default function Journal() {
                     <span className="jl__row-body">
                       <span className="jl__row-head">
                         <span className="jl__row-date">{dayLabel(entry.date)}</span>
-                        {entry.mood?.word && <span className="jl__row-word">{entry.mood.word}</span>}
+                        {wordsOf(entry.mood).length > 0 && (
+                          <span className="jl__row-word">
+                            {/* One line here, so the lead carries it and the
+                                count says there was more to it. */}
+                            {wordsOf(entry.mood)[0]}
+                            {wordsOf(entry.mood).length > 1 && ` +${wordsOf(entry.mood).length - 1}`}
+                          </span>
+                        )}
                         {entry.bringToAppointment && <span className="jl__row-flag">For my doctor</span>}
                         {entry.sharedAsPostId && <span className="jl__row-shared">Shared</span>}
                       </span>

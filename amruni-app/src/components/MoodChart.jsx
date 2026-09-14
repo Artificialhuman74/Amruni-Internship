@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import MoodFlower from './MoodFlower';
-import { BANDS } from '../lib/moodScale';
+import { BANDS, wordsOf } from '../lib/moodScale';
 import { useBodyOverlay } from '../lib/useBodyOverlay';
 import { tap } from '../lib/haptics';
 import { IconClose } from '../icons.jsx';
@@ -359,7 +359,9 @@ export default function MoodChart({ open, onClose, logs }) {
                   <div key={m.id} className="mc__detail-row">
                     <MoodFlower band={m.valence} size={40} breathe={false} />
                     <div>
-                      <p className="mc__detail-word">{m.word || BANDS[String(m.valence)].label}</p>
+                      <p className="mc__detail-word">
+                        {wordsOf(m).join(" · ") || BANDS[String(m.valence)].label}
+                      </p>
                       <p className="mc__detail-meta">
                         {m.scope === 'day' ? 'How the day felt' : timeOf(m.loggedAt)}
                         {m.source === 'journal' ? ' · from a journal entry' : ''}

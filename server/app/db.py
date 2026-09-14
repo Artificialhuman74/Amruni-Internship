@@ -577,6 +577,12 @@ def init_db():
         # speaks; this is the finer grain the slider now offers, kept so
         # reopening an entry returns her thumb to where she left it.
         _ensure_column(db, "mood_logs", "intensity", "REAL")
+        # Every word she picked, not just the lead. A feeling is rarely one
+        # word, and asking her to rank three true ones threw two away. `word`
+        # stays the lead so the one-line readers (a journal row, the doctor's
+        # chart) need no change, and rows written before this existed are read
+        # as the single-word list they are.
+        _ensure_column(db, "mood_logs", "words", "TEXT")
         # Family and genetic history — a doctor's own note, not derived from
         # anything she logs, so it needed a column rather than a computed field.
         _ensure_column(db, "patient_charts", "family_history", "TEXT")
@@ -593,7 +599,7 @@ ENCRYPTED_COLUMNS = {
     "patient_charts": ["allergies", "conditions", "blood_group", "self_declared", "family_history"],
     "consultation_records": ["diagnosis", "notes", "vitals", "prescription"],
     "journal_entries": ["text", "context"],
-    "mood_logs": ["word", "factors"],
+    "mood_logs": ["word", "words", "factors"],
     "pregnancy_logs": ["mood", "symptoms"],
     "cycle_logs": ["symptoms"],
     "medications": ["name", "dose", "frequency", "doctor_name"],

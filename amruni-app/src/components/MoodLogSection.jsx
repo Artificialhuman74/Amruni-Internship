@@ -71,10 +71,10 @@ export default function MoodLogSection() {
 
   const logged = days.filter((d) => d.entries.length > 0).length;
 
-  async function handleSave({ valence, intensity, word, factors, scope }) {
+  async function handleSave({ valence, intensity, word, words, factors, scope }) {
     setSaving(true);
     try {
-      await log({ valence, intensity, word, factors, scope, source: 'track' });
+      await log({ valence, intensity, word, words, factors, scope, source: 'track' });
       toast(scope === 'day' ? 'Today is logged. Thank you.' : 'Logged. Thank you for sharing.', { icon: 'heart' });
       setSheet(null);
     } catch {
