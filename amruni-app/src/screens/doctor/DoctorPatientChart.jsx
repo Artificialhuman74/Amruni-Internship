@@ -7,6 +7,8 @@ import { IconLab, IconReport, IconScan, IconAttachment, IconAlert, IconClose } f
 import WeightCorridor from '../../components/WeightCorridor';
 import { pregnancyWeightView, personalWeightView } from '../../lib/pregnancyWeight';
 import { FORMS } from '../../data/intake';
+import { wordsOf } from '../../lib/moodScale';
+import { srqResult, SRQ_CUTOFF } from '../../data/counselling';
 
 const STAGE_LABEL = {
   adolescent: 'Adolescent', reproductive: 'Reproductive age',
@@ -539,7 +541,7 @@ export default function DoctorPatientChart() {
                   <span className="doc-shared__date">{fmtDate(entry.date)}</span>
                   {entry.mood && (
                     <span className="doc-shared__mood">
-                      {entry.mood.word || `Mood ${entry.mood.valence > 0 ? '+' : ''}${entry.mood.valence}`}
+                      {wordsOf(entry.mood).join(' · ') || `Mood ${entry.mood.valence > 0 ? '+' : ''}${entry.mood.valence}`}
                       <span className="doc-shared__scale"> ({entry.mood.valence > 0 ? '+' : ''}{entry.mood.valence} of ±3)</span>
                     </span>
                   )}
@@ -692,6 +694,12 @@ function IntakeCard({ form }) {
   const spec = FORMS[form.formId];
   if (!spec) return null;
 
+  // The counselling form carries a scored instrument. A counsellor reading a
+  // list of submissions needs the total and the item-17 flag before deciding
+  // which to open — burying either behind a disclosure is how an urgent one
+  // gets read third.
+  const srq = form.formId === 'counselling' ? srqResult(form.answers) : null;
+
   const answered = spec.sections.reduce(
     (n, s) => n + s.fields.filter((f) => {
       const v = form.answers[f.id];
@@ -708,8 +716,14 @@ function IntakeCard({ form }) {
           <p className="doc-intake__meta">
             {fmtShort(form.submittedAt)} · {answered} answers
             {form.prakriti ? ` · prakriti ${form.prakriti.label}` : ''}
+            {srq?.scoreable ? ` · SRQ-20 ${srq.score}/${srq.total}` : ''}
             {form.skipped.length ? ` · ${form.skipped.length} section skipped` : ''}
           </p>
+          {srq?.urgent && (
+            <p className="doc-intake__urgent">
+              Answered yes to item 17 — thoughts of ending her life
+            </p>
+          )}
         </div>
         <span className={`doc-intake__chev${open ? ' is-open' : ''}`} aria-hidden="true">
           <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
@@ -728,6 +742,17 @@ function IntakeCard({ form }) {
             style={{ overflow: 'hidden' }}
           >
             <div className="doc-intake__body">
+              {srq?.scoreable && (
+                <p className="doc-intake__prakriti">
+                  SRQ-20: <strong>{srq.score} of {srq.total}</strong>
+                  {srq.score >= SRQ_CUTOFF ? ' — at or above the usual follow-up threshold' : ''}
+                  <span>
+                    {' '}({srq.answered}/{srq.total} items answered; screening only, not diagnostic.
+                    Threshold {SRQ_CUTOFF} is the commonly used cut-off and varies by population.)
+                  </span>
+                </p>
+              )}
+
               {form.prakriti && (
                 <p className="doc-intake__prakriti">
                   Prakriti sketch: <strong>{form.prakriti.label}</strong> — vata {form.prakriti.percent.vata}%,
