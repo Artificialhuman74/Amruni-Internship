@@ -1,0 +1,37 @@
+# Local run of the production image, so the thing you ship is the thing you
+# tested. Not the AWS deployment — that is deploy/aws/.
+#
+#   docker compose up --build        # http://localhost:8000/api/health
+#   docker compose down              # stops; the database survives
+#   docker compose down -v           # also destroys the database
+#
+# ENV is deliberately NOT set to production here. Outside production app/crypto.py
+# falls back to a development key written into the data volume, which means this
+# stack runs with no secrets to manage and its data stays readable across
+# restarts. That fallback is exactly what refuses to happen in production.
+
+services:
+  api:
+    build:
+      context: ./server
+    image: amruni-api:local
+    ports:
+      - "8000:8000"
+    environment:
+      PORT: 8000
+      DB_PATH: /data/amruni.db
+      # Local frontends. The deployed origins live in the AWS environment, not
+      # here — see deploy/aws/README.md.
+      ALLOWED_ORIGINS: http://localhost:5173,http://127.0.0.1:5173
+      # No SMS gateway locally, so the OTP comes back in the response body.
+      EXPOSE_OTP: "true"
+      JWT_SECRET: local-development-only-not-a-real-secret
+    volumes:
+      # A named volume, not a bind mount: the container runs as uid 10001 and a
+      # bind mount would arrive owned by your host user, leaving the process
+      # unable to write to its own database.
+      - amruni-data:/data
+    restart: unless-stopped
+
+volumes:
+  amruni-data:

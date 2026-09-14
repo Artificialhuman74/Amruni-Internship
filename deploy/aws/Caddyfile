@@ -1,0 +1,30 @@
+# TLS for the API.
+#
+# Caddy obtains and renews a Let's Encrypt certificate automatically. Two
+# things must be true before it can, and both fail quietly if they are not:
+#
+#   · API_DOMAIN resolves to this instance's public IP (an A record)
+#   · ports 80 AND 443 are open in the security group — 80 is not optional,
+#     it is how the ACME HTTP challenge is answered
+#
+# Set API_DOMAIN in /opt/amruni/.env.
+
+{$API_DOMAIN} {
+	encode gzip
+
+	# CORS is handled by the application, which knows the allow-list from
+	# ALLOWED_ORIGINS. Doing it here as well would produce two
+	# Access-Control-Allow-Origin headers on every response, which browsers
+	# reject as invalid — the failure mode looks exactly like CORS not being
+	# configured at all.
+	reverse_proxy api:8000 {
+		header_up X-Forwarded-Proto https
+	}
+}
+
+# Plain HTTP is answered only long enough to redirect. The app binds 0.0.0.0
+# inside the container but is never published to the host, so this is the only
+# door.
+http://{$API_DOMAIN} {
+	redir https://{host}{uri} permanent
+}
