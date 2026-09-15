@@ -17,6 +17,10 @@ import { IconChat, IconVideo, IconShield, IconRecords, IconAlert } from '../icon
 
 // Specialties that have an intake form worth filling before the consultation.
 const INTAKE_BY_SPECIALTY = { Homeopathy: 'homeopathy', Ayurveda: 'ayurveda' };
+// Keyed by practitioner rather than specialty: the counselling form belongs to
+// Samadhana Center, not to every "Mental Health" listing.
+const INTAKE_BY_PRACTITIONER = { 'Samadhana Center': 'counselling' };
+const INTAKE_ROUTE = { counselling: '/samadhana' };
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -83,7 +87,7 @@ export default function BookAppointment() {
   const [coverage, setCoverage] = useState(null);
   const [intakeDone, setIntakeDone] = useState(null);
 
-  const intakeFormId = INTAKE_BY_SPECIALTY[currentDoctor?.specialty] ?? null;
+  const intakeFormId = INTAKE_BY_PRACTITIONER[currentDoctor?.name] ?? INTAKE_BY_SPECIALTY[currentDoctor?.specialty] ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -308,7 +312,7 @@ export default function BookAppointment() {
         {intakeFormId && intakeDone === false && (
           <button
             className="booking-prompt"
-            onClick={() => navigate(`/intake/${intakeFormId}`)}
+            onClick={() => navigate(INTAKE_ROUTE[intakeFormId] ?? `/intake/${intakeFormId}`)}
             type="button"
           >
             <span className="booking-prompt__icon"><IconRecords size={18} /></span>

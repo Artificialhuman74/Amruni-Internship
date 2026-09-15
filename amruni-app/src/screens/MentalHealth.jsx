@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { meApi } from '../services/api';
@@ -9,6 +10,7 @@ import { tap } from '../lib/haptics';
 
 export default function MentalHealth() {
   const { state, dispatch } = useApp();
+  const navigate = useNavigate();
   const anonymous = state.settings.anonymousMode;
   // Pregnancy counts too — EPDS is validated antenatally as well as after birth.
   const postnatal = state.user.lifeStage === 'postpartum' || state.settings.pregnancyMode;
@@ -220,6 +222,29 @@ export default function MentalHealth() {
           <p style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginTop: 'var(--sp-3)' }}>
             {helpPressed ? 'Connecting to NIMHANS support…' : 'Connects you to NIMHANS 24/7 support'}
           </p>
+        </motion.div>
+
+        {/* A counsellor, not a helpline and not a score: the one thing on this
+            screen that ends with a person who will see her again. Placed
+            right after the crisis button because that is the next-most
+            serious thing someone opening this screen might need. */}
+        <motion.div initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}>
+          <p className="section-title">Talk to a counsellor</p>
+          <button className="sam-entry" onClick={() => { tap(); navigate('/samadhana'); }}>
+            <span className="sam-entry__mark" aria-hidden="true" lang="kn">ಸ</span>
+            <span className="sam-entry__body">
+              <span className="sam-entry__name">Samadhana Center</span>
+              <span className="sam-entry__kn" lang="kn">ಸಮಾಧಾನ ಆಪ್ತ ಸಲಹಾ ಕೇಂದ್ರ</span>
+              <span className="sam-entry__desc">
+                Book a counselling session. It starts with a short, private conversation so your counsellor
+                knows what you are carrying before you meet.
+              </span>
+              <span className="sam-entry__meta">About 10 minutes · Kannada & English · Confidential</span>
+            </span>
+            <span className="sam-entry__go" aria-hidden="true">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+            </span>
+          </button>
         </motion.div>
 
         {/* Anonymous toggle */}
