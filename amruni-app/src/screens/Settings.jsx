@@ -174,15 +174,6 @@ export default function Settings() {
               <ChevronRight />
             </div>
 
-            <div className="settings-item" role="button" tabIndex={0}>
-              <div className="settings-item__icon"><IconRecords size={20} /></div>
-              <div style={{ flex: 1 }}>
-                <div className="settings-item__label">Health records</div>
-                <div className="settings-item__desc">Prescriptions, reports, history</div>
-              </div>
-              <ChevronRight />
-            </div>
-
             {/* Sits in Account rather than under a heading of its own: to the
                 woman filling it in this is a fact about her, alongside her life
                 stage and her records — not a feature. */}
