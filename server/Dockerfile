@@ -73,8 +73,16 @@ COPY --chown=amruni:amruni datasets/ ./datasets/
 # the image's ownership onto an empty volume at first mount; without this the
 # directory arrives owned by root and the unprivileged process cannot open the
 # database for writing.
+#
+# Deliberately no VOLUME instruction. Railway builds this same Dockerfile and
+# rejects the build outright if one is present ("docker VOLUME is not
+# supported, use Railway Volumes"), and it adds nothing anywhere else: the
+# volume is attached at run time by compose, ECS or Railway regardless.
+#
+# On Railway the volume is mounted root-owned, so the service sets
+# RAILWAY_RUN_UID=0 to run as root there. Without it the unprivileged user
+# cannot write the existing production database.
 RUN mkdir -p /data && chown -R amruni:amruni /data
-VOLUME ["/data"]
 
 USER amruni
 EXPOSE 8000
