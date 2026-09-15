@@ -101,7 +101,7 @@ ADMIN_PASSWORD=
 
 # The Netlify sites, comma separated, no trailing slash. A browser blocks the
 # request when this is wrong; the server logs nothing, because it never sees it.
-ALLOWED_ORIGINS=https://amruni-patient.netlify.app,https://amruni-doctor.netlify.app,https://amruni-admin.netlify.app
+ALLOWED_ORIGINS=https://harmonybliss.amruni.com,https://harmonycare.amruni.com,https://harmonydesk.amruni.com,https://amruni-patient.netlify.app,https://amruni-doctor.netlify.app,https://amruni-admin.netlify.app
 
 # The domain this API answers on. Caddy gets its TLS certificate for this name,
 # and cannot get one until the DNS A record points here.
