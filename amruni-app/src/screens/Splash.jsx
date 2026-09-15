@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
 // Camellia petal: narrow base at (0,4), swells outward, tapers to rounded tip at (0,-82)
@@ -38,7 +38,10 @@ export default function Splash() {
   const navigate = useNavigate();
   const { state } = useApp();
 
+  const signedOut = !state.auth.isAuthenticated;
+
   useEffect(() => {
+    if (signedOut) return undefined;
     const timer = setTimeout(
       () => {
         if (state.auth.isAuthenticated && state.user.isOnboarded) {
@@ -53,6 +56,10 @@ export default function Splash() {
     );
     return () => clearTimeout(timer);
   }, []);
+
+  // Signed out, sign-in opens with its own camellia bloom (see PhoneEntry).
+  // Playing this splash first would put two flower animations back to back.
+  if (signedOut) return <Navigate to="/phone" replace />;
 
   return (
     <div
