@@ -103,6 +103,34 @@ CREATE TABLE IF NOT EXISTS history_requests (
 );
 CREATE INDEX IF NOT EXISTS idx_request_user ON history_requests(user_id, status);
 
+-- Health camps: a day (or a few) when doctors see people in person at a venue.
+-- Organised by the admin; shown to patients as a notice while one is coming
+-- up, running, or has just been held.
+CREATE TABLE IF NOT EXISTS camps (
+  id          TEXT PRIMARY KEY,
+  camp_type   TEXT NOT NULL,
+  title       TEXT NOT NULL,
+  description TEXT,
+  starts_on   TEXT NOT NULL,            -- YYYY-MM-DD
+  ends_on     TEXT NOT NULL,            -- YYYY-MM-DD, same as starts_on for a one-day camp
+  start_time  TEXT,                     -- HH:MM
+  end_time    TEXT,
+  venue       TEXT NOT NULL,
+  address     TEXT,
+  city        TEXT NOT NULL,
+  fee_inr     INTEGER NOT NULL DEFAULT 0,
+  cancelled   INTEGER NOT NULL DEFAULT 0,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_camps_dates ON camps(starts_on, ends_on);
+
+CREATE TABLE IF NOT EXISTS camp_doctors (
+  camp_id    TEXT NOT NULL REFERENCES camps(id) ON DELETE CASCADE,
+  doctor_id  INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  PRIMARY KEY (camp_id, doctor_id)
+);
+
 -- A practitioner's licences to practise, one row per jurisdiction.
 --
 -- One row per jurisdiction rather than a single licence field, because a
