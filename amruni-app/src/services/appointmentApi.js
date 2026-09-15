@@ -54,4 +54,6 @@ export const appointmentApi = {
   addDoctor: async (doctor) => (await api.post('/doctors', doctor)).data,
 
   deleteDoctor: async (id) => (await api.delete(`/doctors/${id}`)).data,
+  addLicence: async (doctorId, licence) => (await api.post(`/doctors/${doctorId}/licences`, licence)).data,
+  deleteLicence: async (doctorId, licenceId) => (await api.delete(`/doctors/${doctorId}/licences/${licenceId}`)).data,
 };

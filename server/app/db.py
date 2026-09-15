@@ -54,6 +54,26 @@ CREATE TABLE IF NOT EXISTS doctors (
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- A practitioner's licences to practise, one row per jurisdiction.
+--
+-- One row per jurisdiction rather than a single licence field, because a
+-- licence is only valid where it was issued. In the US a doctor licensed in
+-- New York and Tennessee may not consult a patient in Ohio; in India a State
+-- Medical Council registration and an NMC registration are different
+-- documents, and AYUSH and psychology practitioners register with different
+-- bodies again. A single text box cannot say any of that.
+CREATE TABLE IF NOT EXISTS doctor_licences (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  doctor_id   INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  country     TEXT NOT NULL,              -- ISO 3166 alpha-2: IN, US, ...
+  region      TEXT,                       -- state / union territory, if the licence is regional
+  authority   TEXT NOT NULL,              -- issuing body, e.g. Karnataka Medical Council
+  number      TEXT NOT NULL,
+  expires_on  TEXT,                       -- YYYY-MM-DD; NULL where the registration does not lapse
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_licence_doctor ON doctor_licences(doctor_id);
+
 CREATE TABLE IF NOT EXISTS slots (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   doctor_id  INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
@@ -456,6 +476,12 @@ SEED_DOCTORS = [
     dict(name="Dr. Anand Kulkarni", specialty="Ayurveda", exp="11 yrs exp · BAMS, MD (Ayu)", fee=650, phone="9876543223", lang=["English", "Marathi", "Hindi"], photo="https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=300&h=300", rating=4.7, reviews=94),
     dict(name="Kavitha Iyer", specialty="Yoga", exp="9 yrs · YCB Level 2", fee=400, phone="9876543224", lang=["English", "Tamil", "Kannada"], photo="https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=300&h=300", rating=4.9, reviews=207),
     dict(name="Ritu Bhatnagar", specialty="Yoga", exp="13 yrs · Prenatal specialist", fee=450, phone="9876543225", lang=["English", "Hindi"], photo="https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=300&h=300", rating=4.8, reviews=138),
+    # A counselling centre rather than a single practitioner. Specialty is
+    # "Mental Health" on purpose: that is the one specialty where booking
+    # anonymously is honoured, and a woman seeking counselling is exactly who
+    # that exists for. The fee is a placeholder until the centre confirms it.
+    dict(name="Samadhana Center", specialty="Mental Health", exp="Counselling centre · ಸಮಾಧಾನ ಆಪ್ತ ಸಲಹಾ ಕೇಂದ್ರ", fee=300, phone="9876543227", lang=["Kannada", "English", "Hindi"], photo=None, rating=4.9, reviews=0,
+         bio="A counselling centre offering confidential support for stress, worry, low mood, family difficulties and more. Your counsellor reads your intake form before you meet."),
     dict(name="Meenakshi Rao", specialty="Reiki", exp="8 yrs · Level 3 practitioner", fee=300, phone="9876543226", lang=["English", "Kannada", "Hindi"], photo="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=300&h=300", rating=4.7, reviews=61),
 ]
 
@@ -681,10 +707,10 @@ def seed_doctors(db: sqlite3.Connection):
         if d["name"] in existing:
             continue
         db.execute(
-            """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, photo, rating, reviews)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, photo, bio, rating, reviews)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (d["name"], d["specialty"], d["exp"], d["fee"], round(d["fee"] / 3),
-             d["phone"], json.dumps(d["lang"]), d["photo"], d["rating"], d["reviews"]),
+             d["phone"], json.dumps(d["lang"]), d["photo"], d.get("bio"), d["rating"], d["reviews"]),
         )
 
 
@@ -747,6 +773,40 @@ def doctor_json(row) -> dict:
         "rating": row["rating"],
         "reviews": row["reviews"],
     }
+
+
+def licence_json(row) -> dict:
+    return {
+        "id": row["id"],
+        "country": row["country"],
+        "region": row["region"],
+        "authority": row["authority"],
+        "number": row["number"],
+        "expiresOn": row["expires_on"],
+        "expired": bool(row["expires_on"]) and row["expires_on"] < date.today().isoformat(),
+    }
+
+
+def licences_for(db, doctor_id: int) -> list[dict]:
+    rows = db.execute(
+        "SELECT * FROM doctor_licences WHERE doctor_id = ? ORDER BY country, region, id", (doctor_id,)
+    ).fetchall()
+    return [licence_json(r) for r in rows]
+
+
+def licence_status(licences: list[dict]) -> str:
+    """'current' if any licence is in force, 'expired' if every one has lapsed,
+    'none' if nothing is on file.
+
+    'none' and 'expired' are deliberately different. A doctor seeded before
+    licences existed has nothing on file, and treating that as expired would
+    make every existing practitioner unbookable the moment this shipped. A
+    doctor whose licences are on file and have all lapsed is a known fact, and
+    is the case that must stop a booking.
+    """
+    if not licences:
+        return "none"
+    return "current" if any(not l["expired"] for l in licences) else "expired"
 
 
 def slot_json(row) -> dict:

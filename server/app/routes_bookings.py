@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from . import meet, payments
 from .auth import current_user
 from . import crypto
+from .db import licence_status, licences_for
 from .db import get_db, appointment_json, doctor_json, new_id, payment_json, record_json, to_12h, utcnow_iso
 from .routes_doctors import release_expired_locks
 
@@ -96,6 +97,12 @@ def create_booking(body: BookingBody, user: dict = Depends(current_user)):
                 raise HTTPException(404, "Doctor not found")
             doctor_id, amount = doctor["id"], doctor["chat_fee_inr"]
             appt_date, appt_time, slot_id = date.today().isoformat(), "Instant", None
+
+        # A practitioner whose every licence on file has lapsed cannot be booked.
+        # Checked after the slot lock so the lock is released by the rollback
+        # the HTTPException triggers, rather than left held for LOCK_TTL.
+        if licence_status(licences_for(db, doctor_id)) == "expired":
+            raise HTTPException(409, "This practitioner's licence to practise has expired, so they cannot take bookings right now.")
 
         # Anonymity is confined to mental health, which is the only place the
         # product ever offered it and the only place it is safe. A woman hiding
