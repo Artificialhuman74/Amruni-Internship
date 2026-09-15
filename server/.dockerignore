@@ -1,0 +1,33 @@
+# The build context is server/. Everything the image does not need at build or
+# runtime is excluded here — most importantly the local database, which would
+# otherwise be baked into the image and shipped to production.
+
+# Local SQLite database, cached ML models, and the development encryption key.
+# `data/.datakey` is the development fallback key written by app/crypto.py.
+# Copying it into an image would put a real decryption key in every layer of
+# every registry that image is ever pushed to.
+data/
+
+# Local virtualenv — dependencies are installed from requirements.txt
+.venv/
+venv/
+
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Platform files the image does not use
+Procfile
+railway.json
+runtime.txt
+README.md
+Dockerfile
+.dockerignore
+
+.DS_Store
+*.log
+.env
+.env.*

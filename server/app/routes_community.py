@@ -71,6 +71,36 @@ def moderate_text(text: str | None) -> str:
     return "approved"
 
 
+def repair_ciphertext_posts(db) -> int:
+    """Undoes the posts that were published as ciphertext.
+
+    A journal entry shared to the community used to be copied across with its
+    stored value rather than its text, so the feed showed `enc:v1:...` where her
+    words should have been. Those rows are still on the feed, so they are
+    repaired in place rather than left for someone to find.
+
+    Re-moderated on the way through, and that is the important half. The
+    original moderation ran the blocklist against ciphertext, which matches
+    nothing — so every one of these was auto-approved without ever being read.
+    Decrypting without re-checking would leave that standing.
+    """
+    rows = db.execute(
+        "SELECT id, text FROM community_posts WHERE text LIKE 'enc:v1:%'"
+    ).fetchall()
+    for row in rows:
+        text = crypto.dec(row["text"])
+        if text is None:
+            # Written under a key we no longer hold. Left alone rather than
+            # blanked: a post nobody can read is still hers, and destroying it
+            # is not this function's decision to make.
+            continue
+        db.execute(
+            "UPDATE community_posts SET text = ?, moderation_status = ? WHERE id = ?",
+            (text, moderate_text(text), row["id"]),
+        )
+    return len(rows)
+
+
 # ---------- anon handles ----------
 
 _ADJECTIVES = ["Violet", "Amber", "Quiet", "Coral", "Golden", "Misty", "Rosy", "Sage",
@@ -322,12 +352,19 @@ def share_journal(entry_id: str, body: ShareJournalBody, user: dict = Depends(cu
             raise HTTPException(404, "Journal entry not found.")
         tags = json.loads(entry["tags"] or "[]")
         validate_tags(tags, user["life_stage"])
-        status = moderate_text(entry["text"])
+
+        # Decrypted before it crosses. A journal entry is stored encrypted; a
+        # community post is published content and is not. Copying the column
+        # across verbatim put ciphertext on the public feed — and, far worse,
+        # ran the moderation blocklist against that ciphertext, which matches
+        # nothing, so every shared entry passed moderation without being read.
+        text = crypto.dec(entry["text"]) or ""
+        status = moderate_text(text)
         db.execute(
             """INSERT INTO community_posts
                  (id, author_id, is_anonymous, tags, type, text, reply_to_id, moderation_status, created_at)
                VALUES (?, ?, ?, ?, 'text', ?, NULL, ?, ?)""",
-            (post_id, user["id"], int(body.isAnonymous), json.dumps(tags), entry["text"], status, now),
+            (post_id, user["id"], int(body.isAnonymous), json.dumps(tags), text, status, now),
         )
         db.execute("UPDATE journal_entries SET shared_as_post_id = ? WHERE id = ?", (post_id, entry_id))
         row = db.execute("SELECT * FROM community_posts WHERE id = ?", (post_id,)).fetchone()

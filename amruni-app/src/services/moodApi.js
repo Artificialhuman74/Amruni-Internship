@@ -13,9 +13,14 @@ export const moodApi = {
     if (until) params.until = until;
     return (await api.get('/mood', { params })).data;
   },
-  create: async ({ date, loggedAt, scope, valence, intensity, word, factors, source, journalId }) =>
+  create: async ({ date, loggedAt, scope, valence, intensity, word, words, factors, source, journalId }) =>
     (await api.post('/mood', {
-      date, loggedAt, scope, valence, word,
+      date, loggedAt, scope, valence,
+      // `word` is the lead and `words` the whole answer. Both go, because
+      // every one-line reader in the app already speaks `word` and a feeling
+      // is rarely one word.
+      word: word ?? (words?.length ? words[0] : null),
+      words: words ?? (word ? [word] : []),
       // Where on the scale she actually stopped. `valence` is the named band
       // it rounds to and stays the unit everything else reasons about.
       intensity: intensity ?? valence,

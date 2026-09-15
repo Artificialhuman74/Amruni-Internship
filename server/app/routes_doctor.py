@@ -490,7 +490,7 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
             # weight a doctor takes and writes into vitalsHistory above — the
             # only place this trend existed before was her own phone.
             "selfWeight": {
-                "logs": json.loads(preg["weight_logs"] or "[]") if preg else [],
+                "logs": crypto.dec_json(preg["weight_logs"], []) if preg else [],
                 "prePregnancyWeightKg": preg["pre_pregnancy_weight_kg"] if preg else None,
                 "heightCm": preg["height_cm"] if preg else None,
             },

@@ -103,7 +103,7 @@ def list_alerts(user: dict = Depends(current_user)):
         {
             "id": r["id"],
             "message": crypto.dec(r["message"]),
-            "sentTo": json.loads(r["sent_to"] or "[]"),
+            "sentTo": crypto.dec_json(r["sent_to"], []),
             "isTest": bool(r["is_test"]),
             "timestamp": r["timestamp"],
         }
@@ -118,7 +118,7 @@ def save_alert(body: AlertBody, user: dict = Depends(current_user)):
         db.execute(
             """INSERT INTO sos_alerts (id, user_id, message, sent_to, is_test, timestamp)
                VALUES (?, ?, ?, ?, ?, ?)""",
-            (alert_id, user["id"], crypto.enc(body.message), json.dumps(body.sentTo),
+            (alert_id, user["id"], crypto.enc(body.message), crypto.enc_json(body.sentTo),
              int(body.isTest), utcnow_iso()),
         )
     return {"id": alert_id}

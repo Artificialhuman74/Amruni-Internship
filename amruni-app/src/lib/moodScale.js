@@ -267,3 +267,17 @@ export function visualAt(value) {
 export function labelAt(value) {
   return BANDS[String(Math.round(clampBand(value)))].label;
 }
+
+/**
+ * Every word on a log, in the order she picked them.
+ *
+ * Logs written before a feeling could be more than one word carry a single
+ * `word` and no list. That word is the whole of what she was able to say, so
+ * it comes back as the one-item list it is, and no caller needs to know which
+ * era an entry is from.
+ */
+export function wordsOf(mood) {
+  if (!mood) return [];
+  if (Array.isArray(mood.words) && mood.words.length) return mood.words;
+  return mood.word ? [mood.word] : [];
+}

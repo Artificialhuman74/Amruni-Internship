@@ -114,9 +114,21 @@ export default function MoodSheet({
   const reduce = useReducedMotion();
   const bloomSize = useBloomSize();
 
-  const [step, setStep] = useState(0);   // 0 feel · 1 word · 2 factors
+  const [step, setStep] = useState(0);   // 0 feel · 1 words · 2 factors
   const [value, setValue] = useState(0); // continuous, −3…3
-  const [word, setWord] = useState(null);
+  /**
+   * The words she picked, in the order she picked them.
+   *
+   * A feeling is rarely one word. "Trapped" and "Exhausted" and "Ashamed" can
+   * all be true at 7pm on the same Tuesday, and asking her to rank them —
+   * which is what a single choice does — makes her throw two of them away to
+   * answer a question the app only asked because it was easier to store.
+   *
+   * Order carries meaning: the first one she reaches for is the lead, and it
+   * is what the one-line places show (a journal row, the doctor's chart) where
+   * there is genuinely only room for one.
+   */
+  const [picked, setPicked] = useState([]);
   const [factors, setFactors] = useState([]);
   const [usage, setUsage] = useState({ words: {}, factors: {} });
   // Written this session and not yet saved, so a new word stays on screen as a
@@ -160,7 +172,9 @@ export default function MoodSheet({
       // Reopening an entry should show where she left it, already arrived.
       raw.jump(start);
       springed.jump(start);
-      setWord(initial?.word ?? null);
+      // Reopening an older entry, written before more than one word was
+      // possible, still returns the one word it has.
+      setPicked(initial?.words?.length ? initial.words : initial?.word ? [initial.word] : []);
       setFactors(initial?.factors ?? []);
       setMinted([]);
       setWriting(null);
@@ -188,6 +202,18 @@ export default function MoodSheet({
   const tone = visualAt(value);
   const label = labelAt(value);
   const words = orderedWords(band, { pregnancyMode, usage: usage.words });
+  /**
+   * Her answer in one line, for the crown above the next question.
+   *
+   * Two fit; beyond that the count carries it. Joining five words here would
+   * wrap to three lines and push the question it is meant to introduce off
+   * the screen on a small phone.
+   */
+  const pickedLabel = picked.length === 0
+    ? label
+    : picked.length <= 2
+      ? picked.join(' · ')
+      : `${picked[0]} · ${picked[1]} +${picked.length - 2}`;
   const factorGroups = orderedFactorGroups({
     pregnancyMode, usage: usage.factors, extra: minted,
   });
@@ -244,13 +270,18 @@ export default function MoodSheet({
     if (!value) { setWriting(null); setDraft(''); return; }
     confirm();
     if (writing === 'word') {
-      setWord(value);
+      setPicked((prev) => (prev.includes(value) ? prev : [...prev, value]));
     } else {
       setMinted((prev) => (prev.includes(value) ? prev : [...prev, value]));
       setFactors((prev) => (prev.includes(value) ? prev : [...prev, value]));
     }
     setWriting(null);
     setDraft('');
+  }
+
+  function toggleWord(w) {
+    tap();
+    setPicked((prev) => (prev.includes(w) ? prev.filter((x) => x !== w) : [...prev, w]));
   }
 
   function toggleFactor(f) {
@@ -265,7 +296,10 @@ export default function MoodSheet({
     // returns her thumb to where she left it.
     // Next open should already know about the word she just chose.
     refreshMoodVocabulary();
-    onSave({ valence: band, intensity: value, word, factors, scope });
+    // `word` is the lead — the first one she reached for — and stays in the
+    // payload because every one-line reader in the app already speaks it.
+    // `words` is the whole answer.
+    onSave({ valence: band, intensity: value, word: picked[0] ?? null, words: picked, factors, scope });
   }
 
   if (typeof document === 'undefined') return null;
@@ -395,34 +429,49 @@ export default function MoodSheet({
                       <p className="mood-sheet__verdict mood-sheet__verdict--sm">{label}</p>
                     </div>
 
-                    <h3 className="mood-sheet__question">Which word fits it best?</h3>
+                    <h3 className="mood-sheet__question">Which words fit it best?</h3>
+                    {/* Said once, plainly. Chips that fill on tap read as a
+                        single choice to most people until a second one stays
+                        lit, and the woman who assumes she gets one pick will
+                        never find out she had more. */}
+                    <p className="mood-sheet__hint">
+                      {picked.length > 1
+                        ? `${picked.length} chosen — ${picked[0]} leads.`
+                        : 'Pick as many as are true.'}
+                    </p>
                     <div className="mood-chips" role="group" aria-label={`Words for ${label}`}>
                       {/* Her own words lead. Anything she has written before is
                           simply a word she has used, so it arrives here with
                           the rest of them and needs no special case. */}
-                      {words.map((w) => (
+                      {words.map((w) => {
+                        const on = picked.includes(w);
+                        return (
+                          <button
+                            key={w}
+                            type="button"
+                            className={`mood-chip${on ? ' mood-chip--on' : ''}`}
+                            aria-pressed={on}
+                            onClick={() => toggleWord(w)}
+                            style={on ? { background: tone.btn, borderColor: tone.btn } : undefined}
+                          >
+                            {w}
+                          </button>
+                        );
+                      })}
+                      {/* Written this session, so not in the offered list yet.
+                          Tapping one takes it back off, the same as any other. */}
+                      {picked.filter((w) => !words.includes(w)).map((w) => (
                         <button
                           key={w}
                           type="button"
-                          className={`mood-chip${word === w ? ' mood-chip--on' : ''}`}
-                          aria-pressed={word === w}
-                          onClick={() => { tap(); setWord(w); }}
-                          style={word === w ? { background: tone.btn, borderColor: tone.btn } : undefined}
+                          className="mood-chip mood-chip--on"
+                          aria-pressed="true"
+                          onClick={() => toggleWord(w)}
+                          style={{ background: tone.btn, borderColor: tone.btn }}
                         >
                           {w}
                         </button>
                       ))}
-                      {word && !words.includes(word) && (
-                        <button
-                          type="button"
-                          className="mood-chip mood-chip--on"
-                          aria-pressed="true"
-                          onClick={() => { tap(); setWord(null); }}
-                          style={{ background: tone.btn, borderColor: tone.btn }}
-                        >
-                          {word}
-                        </button>
-                      )}
                       <CustomChip
                         open={writing === 'word'}
                         label="Another word"
@@ -448,7 +497,7 @@ export default function MoodSheet({
                   >
                     <div className="mood-step__crown">
                       <MoodFlower band={value} size={Math.min(112, bloomSize)} breathe={false} />
-                      <p className="mood-sheet__verdict mood-sheet__verdict--sm">{word || label}</p>
+                      <p className="mood-sheet__verdict mood-sheet__verdict--sm">{pickedLabel}</p>
                     </div>
 
                     <h3 className="mood-sheet__question">What&rsquo;s behind it?</h3>
@@ -513,7 +562,7 @@ export default function MoodSheet({
                 type="button"
                 className="mood-sheet__cta"
                 onClick={() => (step === 2 ? finish() : setStep(step + 1))}
-                disabled={(step === 1 && !word) || saving}
+                disabled={(step === 1 && picked.length === 0) || saving}
                 style={{ backgroundColor: ctaBg }}
               >
                 {step === 2 ? (saving ? 'Saving…' : 'Done') : 'Next'}

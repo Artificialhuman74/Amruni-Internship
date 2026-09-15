@@ -1,0 +1,50 @@
+# What runs on the EC2 instance.
+#
+# Two containers: the API, and Caddy in front of it holding the TLS
+# certificate. Caddy is here for one specific reason — Netlify serves the
+# frontend over HTTPS, and a browser will refuse to let an HTTPS page call an
+# HTTP API. Mixed-content blocking happens in the browser, silently as far as
+# the server is concerned, so an HTTP-only backend does not look broken in the
+# logs. It looks like the frontend simply stopped making requests.
+#
+# Secrets come from /opt/amruni/.env on the instance, which is never committed.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+
+services:
+  api:
+    image: ${API_IMAGE:-amruni-api:latest}
+    env_file: /opt/amruni/.env
+    environment:
+      PORT: 8000
+      DB_PATH: /data/amruni.db
+      ENV: production
+    volumes:
+      # The EBS volume mounted at /opt/amruni/data by user-data.sh. This is the
+      # only durable thing on the instance; everything else can be rebuilt.
+      - /opt/amruni/data:/data
+    expose:
+      - "8000"
+    restart: unless-stopped
+    # Never published to the host. The only way in is through Caddy, so there
+    # is no port 8000 open to the internet serving plaintext alongside the TLS
+    # one — which is the usual way this setup ends up with an unencrypted
+    # bypass nobody notices.
+
+  caddy:
+    image: caddy:2-alpine
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data       # certificates — losing this re-issues them, and
+      - caddy-config:/config   # Let's Encrypt rate-limits re-issuance
+    env_file: /opt/amruni/.env
+    restart: unless-stopped
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -179,11 +179,11 @@ export default function JournalComposer() {
     navigate('/journal');
   }
 
-  async function handleMoodSave({ valence, intensity, word, factors }) {
+  async function handleMoodSave({ valence, intensity, word, words, factors }) {
     setSavingMood(true);
     try {
       const created = await log({
-        valence, intensity, word, factors, scope: 'moment', source: 'journal', date,
+        valence, intensity, word, words, factors, scope: 'moment', source: 'journal', date,
       });
       setAttachedMood(created);
       setMoodSheet(false);

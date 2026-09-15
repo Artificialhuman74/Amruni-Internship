@@ -21,6 +21,8 @@
  * says it should — see `needsSupport` at the bottom of this file.
  */
 
+import { COUNSELLING } from './counselling';
+
 // ── field kinds ────────────────────────────────────────────────
 // text   — one line
 // long   — a paragraph
@@ -691,9 +693,9 @@ export const AYURVEDA = {
   ],
 };
 
-export const FORMS = { homeopathy: HOMEOPATHY, ayurveda: AYURVEDA };
+export const FORMS = { homeopathy: HOMEOPATHY, ayurveda: AYURVEDA, counselling: COUNSELLING };
 
-export const FORM_LIST = [HOMEOPATHY, AYURVEDA];
+export const FORM_LIST = [HOMEOPATHY, AYURVEDA, COUNSELLING];
 
 /** Every field in a form, flattened — used for progress and validation. */
 export function allFields(form) {

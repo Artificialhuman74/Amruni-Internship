@@ -87,11 +87,17 @@ export function MoodProvider({ children }) {
   }, [signedIn]);
 
   /** Writes a log and folds it into local state without waiting for a refetch. */
-  const log = useCallback(async ({ valence, word, factors, scope, source, journalId, date }) => {
+  const log = useCallback(async ({
+    valence, intensity, word, words, factors, scope, source, journalId, date,
+  }) => {
     const created = await moodApi.create({
       date: date ?? todayISO(),
       loggedAt: localISOStamp(),
-      scope, valence, word, factors, source, journalId,
+      // `intensity` used to be dropped here. The sheet computed it, the API
+      // accepted it and the column existed, but this function never passed it
+      // on — so every log was silently rounded back to its integer band and
+      // reopening an entry could not return her thumb to where she left it.
+      scope, valence, intensity, word, words, factors, source, journalId,
     });
     setLogs((prev) => {
       // A day-scope log replaces the day's existing summary, matching the server.

@@ -577,6 +577,12 @@ def init_db():
         # speaks; this is the finer grain the slider now offers, kept so
         # reopening an entry returns her thumb to where she left it.
         _ensure_column(db, "mood_logs", "intensity", "REAL")
+        # Every word she picked, not just the lead. A feeling is rarely one
+        # word, and asking her to rank three true ones threw two away. `word`
+        # stays the lead so the one-line readers (a journal row, the doctor's
+        # chart) need no change, and rows written before this existed are read
+        # as the single-word list they are.
+        _ensure_column(db, "mood_logs", "words", "TEXT")
         # Family and genetic history — a doctor's own note, not derived from
         # anything she logs, so it needed a column rather than a computed field.
         _ensure_column(db, "patient_charts", "family_history", "TEXT")
@@ -590,15 +596,27 @@ def init_db():
 # own.
 ENCRYPTED_COLUMNS = {
     "users": ["name", "dob", "phone", "goal"],
+    # Why she booked, in her words ("heavy bleeding for three weeks"). Found
+    # in plaintext while writing the privacy screen's promise; it is exactly
+    # the kind of sentence that promise is about.
+    "appointments": ["reason"],
+    # PHQ-9 / GAD-7 item answers. The total stays plain so trends can be drawn;
+    # the answers include item 9 of the PHQ-9, which asks about self-harm.
+    "screenings": ["answers"],
+    # Names and phone numbers of the people she trusts, her weight history and
+    # her baby's kick counts.
+    "pregnancy_state": ["trusted_contacts", "weight_logs", "kick_counts"],
     "patient_charts": ["allergies", "conditions", "blood_group", "self_declared", "family_history"],
     "consultation_records": ["diagnosis", "notes", "vitals", "prescription"],
     "journal_entries": ["text", "context"],
-    "mood_logs": ["word", "factors"],
+    "mood_logs": ["word", "words", "factors"],
     "pregnancy_logs": ["mood", "symptoms"],
     "cycle_logs": ["symptoms"],
     "medications": ["name", "dose", "frequency", "doctor_name"],
     "sos_contacts": ["name", "phone", "relation"],
-    "sos_alerts": ["message"],
+    # `sent_to` is the phone numbers an SOS went to — as identifying as the
+    # contacts themselves, which were already encrypted one table over.
+    "sos_alerts": ["message", "sent_to"],
     "documents": ["title", "data"],
     "care_shares": ["label"],
     "care_events": ["summary", "actor_label"],
@@ -752,7 +770,7 @@ def appointment_json(row) -> dict:
         "slotId": row["slot_id"],
         "date": row["date"],
         "time": row["time"],
-        "reason": row["reason"],
+        "reason": crypto.dec(row["reason"]),
         "consultMode": row["consult_mode"],
         "amount": row["amount_inr"],
         "fee": f"₹{row['amount_inr']}" if row["amount_inr"] else "",

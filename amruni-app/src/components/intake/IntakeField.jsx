@@ -20,6 +20,11 @@ export default function IntakeField({ field, value, onChange }) {
           <legend className="intake-field__label">
             {field.label}
             {field.optional && <span className="intake-field__optional">Optional</span>}
+            {/* The same question in Kannada, for the forms that carry it. A
+                second line rather than a toggle: the women filling this in read
+                one or the other, and making her choose a language first is a
+                question before the question. */}
+            {field.sub && <span className="intake-field__sub" lang="kn">{field.sub}</span>}
           </legend>
           {field.hint && <p className="intake-field__hint" id={describedBy}>{field.hint}</p>}
           <Control field={field} value={value} onChange={onChange} describedBy={describedBy} />
@@ -29,6 +34,7 @@ export default function IntakeField({ field, value, onChange }) {
           <label className="intake-field__label" htmlFor={field.id}>
             {field.label}
             {field.optional && <span className="intake-field__optional">Optional</span>}
+            {field.sub && <span className="intake-field__sub" lang="kn">{field.sub}</span>}
           </label>
           {field.hint && <p className="intake-field__hint" id={describedBy}>{field.hint}</p>}
           <Control field={field} value={value} onChange={onChange} describedBy={describedBy} />

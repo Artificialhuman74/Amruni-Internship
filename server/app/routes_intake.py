@@ -21,7 +21,7 @@ from .db import get_db, intake_json, new_id
 
 router = APIRouter()
 
-FORM_IDS = ("homeopathy", "ayurveda")
+FORM_IDS = ("homeopathy", "ayurveda", "counselling")
 
 # A case history is long-form prose, but it is not a file upload. The cap is
 # generous enough for the longest honest answer and small enough that the
