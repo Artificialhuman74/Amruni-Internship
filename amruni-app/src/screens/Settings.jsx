@@ -333,18 +333,16 @@ export default function Settings() {
             <div className="settings-group__title">Your experience</div>
             <div
               className="settings-item"
-              onClick={() => { setConditions(state.health?.conditions ?? []); setHealthSheet(true); }}
+              onClick={() => navigate('/health-record')}
               role="button"
               tabIndex={0}
-              onKeyDown={(e) => e.key === 'Enter' && setHealthSheet(true)}
+              onKeyDown={(e) => e.key === 'Enter' && navigate('/health-record')}
             >
               <div className="settings-item__icon" style={{ background: 'var(--clr-sky-soft)', color: 'var(--clr-sky)' }}><IconStethoscope size={20} /></div>
               <div style={{ flex: 1 }}>
-                <div className="settings-item__label">Health background</div>
+                <div className="settings-item__label">My health record</div>
                 <div className="settings-item__desc">
-                  {state.health?.conditions?.length
-                    ? `${state.health.conditions.length} condition${state.health.conditions.length === 1 ? '' : 's'} — your doctor sees these`
-                    : 'Conditions you live with, shared with your doctor'}
+                  Conditions, medicines, surgeries, family history and documents — shared only when you choose
                 </div>
               </div>
               <ChevronRight />

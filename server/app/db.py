@@ -54,6 +54,55 @@ CREATE TABLE IF NOT EXISTS doctors (
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- Her own account of her health history, for the parts the chart had no
+-- place for: surgeries and hospital stays, illnesses in her family, and
+-- anything else she wants a doctor to know. Conditions, allergies and blood
+-- group already live in patient_charts and medicines in medications; this does
+-- not duplicate them. `data` is one encrypted JSON object per entry.
+CREATE TABLE IF NOT EXISTS health_history (
+  id          TEXT PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category    TEXT NOT NULL,              -- procedures | family | notes
+  data        TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_history_user ON health_history(user_id, category);
+
+-- What she chose to share with the practitioner of one appointment.
+--
+-- Per appointment, not per doctor, because the choice is made at booking and
+-- a woman may reasonably share everything with the gynaecologist she books in
+-- March and nothing when she returns in June. The doctor's view follows her
+-- most recent appointment with them. mode: all | selected | none.
+CREATE TABLE IF NOT EXISTS history_shares (
+  appointment_id TEXT PRIMARY KEY REFERENCES appointments(id) ON DELETE CASCADE,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  doctor_id      INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  mode           TEXT NOT NULL,
+  categories     TEXT NOT NULL DEFAULT '[]',
+  document_ids   TEXT NOT NULL DEFAULT '[]',
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_share_pair ON history_shares(doctor_id, user_id);
+
+-- A practitioner asking to see more than she shared. She decides; nothing is
+-- granted by the request itself.
+CREATE TABLE IF NOT EXISTS history_requests (
+  id              TEXT PRIMARY KEY,
+  appointment_id  TEXT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  doctor_id       INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  categories      TEXT NOT NULL DEFAULT '[]',
+  message         TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending',   -- pending | granted | declined
+  granted         TEXT NOT NULL DEFAULT '[]',
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  responded_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_request_user ON history_requests(user_id, status);
+
 -- A practitioner's licences to practise, one row per jurisdiction.
 --
 -- One row per jurisdiction rather than a single licence field, because a
@@ -609,6 +658,10 @@ def init_db():
         # chart) need no change, and rows written before this existed are read
         # as the single-word list they are.
         _ensure_column(db, "mood_logs", "words", "TEXT")
+        # Who put a document on her record. A prescription she photographs
+        # and a report her doctor uploads are both hers, but a doctor always
+        # sees what they uploaded themselves, whatever she chose to share.
+        _ensure_column(db, "documents", "uploaded_by", "TEXT NOT NULL DEFAULT 'doctor'")
         # Family and genetic history — a doctor's own note, not derived from
         # anything she logs, so it needed a column rather than a computed field.
         _ensure_column(db, "patient_charts", "family_history", "TEXT")
@@ -622,6 +675,9 @@ def init_db():
 # own.
 ENCRYPTED_COLUMNS = {
     "users": ["name", "dob", "phone", "goal"],
+    "health_history": ["data"],
+    # Why a doctor wants more of her history is itself about her health.
+    "history_requests": ["message"],
     # Why she booked, in her words ("heavy bleeding for three weeks"). Found
     # in plaintext while writing the privacy screen's promise; it is exactly
     # the kind of sentence that promise is about.
@@ -874,6 +930,8 @@ def document_json(row, include_data=False) -> dict:
         "title": crypto.dec(row["title"]),
         "kind": row["kind"],
         "createdAt": row["created_at"],
+        "uploadedBy": row["uploaded_by"] if "uploaded_by" in row.keys() else "doctor",
+        "doctorId": row["doctor_id"],
     }
     if include_data:
         # A scan or a lab report is the most identifying thing in the record,

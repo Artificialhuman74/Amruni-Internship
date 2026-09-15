@@ -25,6 +25,7 @@ from . import meet, payments
 from .auth import current_user
 from . import crypto
 from .db import licence_status, licences_for
+from .routes_history import clean_share, save_share
 from .db import get_db, appointment_json, doctor_json, new_id, payment_json, record_json, to_12h, utcnow_iso
 from .routes_doctors import release_expired_locks
 
@@ -38,6 +39,10 @@ class BookingBody(BaseModel):
     reason: str | None = None
     # Honoured only for Mental Health doctors — see the note in create_booking.
     anonymous: bool = False
+    # Her choice of how much history this practitioner sees: all / selected /
+    # none. Absent from older clients, which leaves the booking on the
+    # pre-existing behaviour (see effective_share).
+    historyShare: dict | None = None
 
 
 class ConfirmBody(BaseModel):
@@ -121,6 +126,11 @@ def create_booking(body: BookingBody, user: dict = Depends(current_user)):
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?)""",
             (appt_id, user["id"], doctor_id, slot_id, appt_date, appt_time, crypto.enc(body.reason), body.mode, amount, anonymous),
         )
+        if body.historyShare is not None:
+            # An anonymous booking opens no chart at all, so whatever she
+            # picked, nothing is shared — recorded as exactly that.
+            mode, cats, docs = ("none", [], []) if anonymous else clean_share(db, user["id"], body.historyShare)
+            save_share(db, appt_id, user["id"], doctor_id, mode, cats, docs)
 
         order = payments.create_order(amount, receipt=appt_id)
         pay_id = new_id("pay")
