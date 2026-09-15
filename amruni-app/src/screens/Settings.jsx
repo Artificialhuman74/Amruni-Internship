@@ -546,14 +546,20 @@ export default function Settings() {
           </div>
         </motion.div>
 
-        <motion.p
+        <motion.div
+          className="settings-footer"
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           transition={{ delay: 0.4 }}
-          style={{ textAlign: 'center', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}
         >
-          Amruni v1.0 · Made with care in India <FlagIN size={13} style={{ verticalAlign: '-2px', marginLeft: 2 }} />
-        </motion.p>
+          <p className="testing-note" role="note" style={{ marginTop: 0, marginBottom: 'var(--sp-3)' }}>
+            <strong>Amruni is in testing.</strong> This is an early version — some things may
+            change or not work as expected. It is not a substitute for emergency care.
+          </p>
+          <p className="settings-footer__made">
+            Amruni v1.0 · Testing phase · Made with care in India <FlagIN size={15} />
+          </p>
+        </motion.div>
       </div>
 
       {/* Life stage sheet */}
