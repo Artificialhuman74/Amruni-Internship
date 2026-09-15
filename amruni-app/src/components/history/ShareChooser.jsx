@@ -15,7 +15,7 @@ import { tap } from '../../lib/haptics';
  * `counts` shows what each section actually holds ("2 conditions"), so she is
  * choosing about her own records, not an abstract list of headings.
  */
-export default function ShareChooser({ value, onChange, history, doctorName }) {
+export default function ShareChooser({ value, onChange, history, doctorName, onAddRecords }) {
   const reduce = useReducedMotion();
   const groupId = useId();
   const counts = countsFor(history);
@@ -53,6 +53,22 @@ export default function ShareChooser({ value, onChange, history, doctorName }) {
     <fieldset className="share">
       <legend className="share__legend">Your health history</legend>
       <p className="share__intro">Choose what {who.startsWith('Dr') ? who : 'this practitioner'} can see. You can change this later.</p>
+
+      {/* Right where she is deciding, because this is the moment she
+          remembers the prescription in her bag. An empty record gets a
+          stronger prompt than one that already has things in it. */}
+      {onAddRecords && (
+        <button type="button" className={`share__add${history && !Object.values(countsFor(history)).some(Boolean) ? ' share__add--empty' : ''}`} onClick={onAddRecords}>
+          <span className="share__add-text">
+            {history && !Object.values(countsFor(history)).some(Boolean)
+              ? 'Your health record is empty. Add conditions, medicines or a prescription first?'
+              : 'Add a prescription, report or condition to your record'}
+          </span>
+          <span className="share__add-go" aria-hidden="true">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M5 12h13M13 6l6 6-6 6" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
+          </span>
+        </button>
+      )}
 
       <div className="share__modes" role="radiogroup" aria-labelledby={groupId}>
         <span id={groupId} hidden>Sharing choice</span>

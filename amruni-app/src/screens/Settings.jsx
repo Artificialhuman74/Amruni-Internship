@@ -174,15 +174,6 @@ export default function Settings() {
               <ChevronRight />
             </div>
 
-            <div className="settings-item" role="button" tabIndex={0}>
-              <div className="settings-item__icon"><IconRecords size={20} /></div>
-              <div style={{ flex: 1 }}>
-                <div className="settings-item__label">Health records</div>
-                <div className="settings-item__desc">Prescriptions, reports, history</div>
-              </div>
-              <ChevronRight />
-            </div>
-
             {/* Sits in Account rather than under a heading of its own: to the
                 woman filling it in this is a fact about her, alongside her life
                 stage and her records — not a feature. */}
@@ -232,18 +223,28 @@ export default function Settings() {
             </div>
             {FORM_LIST.map((form) => {
               const done = intakeDates[form.id];
+              const to = form.route ?? `/intake/${form.id}`;
+              // Samadhana carries its own mark, the same one as on Mental Health
+              // and at the top of the conversation, so the row is recognisably
+              // the centre she is talking to rather than one form among three.
+              const centre = Boolean(form.practitioner);
               return (
                 <div
                   key={form.id}
-                  className="settings-item"
-                  onClick={() => navigate(`/intake/${form.id}`)}
+                  className={`settings-item${centre ? ' settings-item--samadhana' : ''}`}
+                  onClick={() => navigate(to)}
                   role="button"
                   tabIndex={0}
-                  onKeyDown={(e) => e.key === 'Enter' && navigate(`/intake/${form.id}`)}
+                  onKeyDown={(e) => e.key === 'Enter' && navigate(to)}
                 >
-                  <div className="settings-item__icon"><IconRecords size={20} /></div>
+                  {centre ? (
+                    <div className="settings-item__icon settings-item__icon--samadhana" aria-hidden="true" lang="kn">ಸ</div>
+                  ) : (
+                    <div className="settings-item__icon"><IconRecords size={20} /></div>
+                  )}
                   <div style={{ flex: 1 }}>
                     <div className="settings-item__label">{form.label}</div>
+                    {centre && <div className="settings-item__kn" lang="kn">{form.practitionerKn}</div>}
                     <div className="settings-item__desc">
                       {done
                         ? `Filled ${done} — fill it again before your next consultation`
