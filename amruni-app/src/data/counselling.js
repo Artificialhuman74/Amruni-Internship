@@ -152,7 +152,13 @@ export const SRQ_BANDS = {
 /** ── The case record ──────────────────────────────────────────── */
 export const COUNSELLING = {
   id: 'counselling',
-  label: 'Counselling intake',
+  // Named for the centre, because that is who she is filling it in for —
+  // "Counselling intake" in a list of forms reads like paperwork with no one
+  // on the other end.
+  label: 'Samadhana Center',
+  practitioner: 'Samadhana Center',
+  practitionerKn: 'ಸಮಾಧಾನ ಆಪ್ತ ಸಲಹಾ ಕೇಂದ್ರ',
+  route: '/samadhana',
   short: 'Counselling',
   specialty: 'Mental Health',
   minutes: 10,

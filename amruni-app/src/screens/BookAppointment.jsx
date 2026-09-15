@@ -368,7 +368,7 @@ export default function BookAppointment() {
             the slot chosen and before payment, because it is a decision about
             this particular doctor. */}
         {!bookAnonymously && (
-          <ShareChooser value={share} onChange={setShare} history={history} doctorName={doctorName} />
+          <ShareChooser value={share} onChange={setShare} history={history} doctorName={doctorName} onAddRecords={() => navigate('/health-record')} />
         )}
 
         {/* Who is paying. Stated before payment, in the terms that are actually

@@ -10,6 +10,7 @@ import DailyMoodCheckIn from '../components/DailyMoodCheckIn';
 import MedicinesCard from '../components/MedicinesCard';
 import CareActivityCard from '../components/CareActivityCard';
 import HistoryRequestsNotice from '../components/history/HistoryRequestsNotice';
+import HealthRecordCard from '../components/history/HealthRecordCard';
 import {
   IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
   IconPregnant, IconBaby, IconStar, IconCamellia, IconSprout, IconBlossom,
@@ -211,6 +212,10 @@ export default function Home() {
               <span className="quick-action__label">I Need Help</span>
             </button>
           </div>
+        </motion.div>
+
+        <motion.div variants={fadeUp}>
+          <HealthRecordCard />
         </motion.div>
 
         {/* Something a caretaker did. Renders nothing unless there is
