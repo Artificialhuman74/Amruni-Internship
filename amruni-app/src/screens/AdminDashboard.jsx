@@ -3,6 +3,8 @@ import { appointmentApi } from '../services/appointmentApi';
 import { authApi, getAdminToken, setAdminToken, apiError } from '../services/api';
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
+import { SpecialtyPicker, LanguagePicker, LicenceEditor } from '../components/admin/PractitionerFields';
+import { EMPTY_LICENCE, licenceLine, licenceProblem } from '../data/practitioners';
 import { patientAppHref } from '../lib/siteLinks';
 import {
   IconSettings, IconAlert, IconPlus, IconTip, IconMobile, IconCheckCircle,
@@ -22,6 +24,7 @@ export default function AdminDashboard() {
   const [doctors, setDoctors] = useState([]);
   const [loading, setLoading] = useState(true);
   const [slotDoctorId, setSlotDoctorId] = useState(null); // doctor whose slot manager is open
+  const [licenceDoctorId, setLicenceDoctorId] = useState(null); // doctor whose licences are open
 
   // Form state
   const [docName, setDocName] = useState('');
@@ -30,19 +33,13 @@ export default function AdminDashboard() {
   const [docFee, setDocFee] = useState('');
   const [docMeetLink, setDocMeetLink] = useState('');
   const [docPhone, setDocPhone] = useState('');
-  const [docLang, setDocLang] = useState('English, Hindi');
+  const [docLang, setDocLang] = useState(['English', 'Hindi']);
+  const [docLicences, setDocLicences] = useState([{ ...EMPTY_LICENCE }]);
+  const [showLicenceErrors, setShowLicenceErrors] = useState(false);
   const [docPhoto, setDocPhoto] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formMessage, setFormMessage] = useState({ text: '', type: '' });
 
-  const SPECIALTY_PRESETS = [
-    'Gynaecology',
-    'Fertility',
-    'Mental Health',
-    'Pregnancy',
-    'Menopause',
-    'Homeopathy'
-  ];
 
   // Load doctors if authenticated
   useEffect(() => {
@@ -98,8 +95,17 @@ export default function AdminDashboard() {
 
   const handleAddDoctor = async (e) => {
     e.preventDefault();
-    if (!docName.trim() || !docExp.trim() || !docFee.trim()) {
+    if (!docName.trim() || !docExp.trim() || !docFee.trim() || !docSpecialty) {
       setFormMessage({ text: 'Please fill in all required fields.', type: 'error' });
+      return;
+    }
+    // The clinic's instruction: no practitioner reaches patients without a
+    // licence on record. Checked here for a fast, specific message, and again
+    // on the server, which is the check that actually counts.
+    const badLicence = docLicences.map(licenceProblem).find(Boolean);
+    if (badLicence) {
+      setShowLicenceErrors(true);
+      setFormMessage({ text: `Licence: ${badLicence}.`, type: 'error' });
       return;
     }
 
@@ -109,7 +115,7 @@ export default function AdminDashboard() {
     // Formatting fields
     const formattedFee = docFee.startsWith('₹') ? docFee : `₹${docFee}`;
     const formattedExp = docExp.toLowerCase().includes('yr') ? docExp : `${docExp} yrs exp`;
-    const langArray = docLang.split(',').map((l) => l.trim()).filter(Boolean);
+    const langArray = docLang;
     
     // Auto-generate meet link if left blank
     let meetLink = docMeetLink.trim();
@@ -133,6 +139,13 @@ export default function AdminDashboard() {
       rating: parseFloat((4.8 + Math.random() * 0.2).toFixed(1)), // randomized 4.8 - 5.0
       reviews: Math.floor(Math.random() * 150) + 15,
       nextSlot: 'Today, 4:00 PM',
+      licences: docLicences.map((l) => ({
+        country: l.country,
+        region: l.region || null,
+        authority: l.authority.trim(),
+        number: l.number.trim(),
+        expiresOn: l.expiresOn || null,
+      })),
     };
 
     try {
@@ -148,7 +161,9 @@ export default function AdminDashboard() {
       setDocMeetLink('');
       setDocPhone('');
       setDocPhoto('');
-      setDocLang('English, Hindi');
+      setDocLang(['English', 'Hindi']);
+      setDocLicences([{ ...EMPTY_LICENCE }]);
+      setShowLicenceErrors(false);
 
       // Reset file input in DOM
       const fileInput = document.getElementById('doctor-photo-upload');
@@ -158,7 +173,9 @@ export default function AdminDashboard() {
       setTimeout(() => setFormMessage({ text: '', type: '' }), 3000);
     } catch (err) {
       console.error(err);
-      setFormMessage({ text: 'Failed to add doctor.', type: 'error' });
+      // The server's reason, not a generic failure — it names the licence
+      // problem exactly, and an admin cannot fix what she is not told.
+      setFormMessage({ text: apiError(err, 'Failed to add doctor.'), type: 'error' });
     } finally {
       setSubmitting(false);
     }
@@ -349,16 +366,7 @@ export default function AdminDashboard() {
               </div>
 
               <div>
-                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>SPECIALTY *</label>
-                <select
-                  value={docSpecialty}
-                  onChange={(e) => setDocSpecialty(e.target.value)}
-                  style={{ width: '100%', padding: 'calc(var(--sp-3) + 2px) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
-                >
-                  {SPECIALTY_PRESETS.map((p) => (
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
+                <SpecialtyPicker value={docSpecialty} onChange={setDocSpecialty} required />
               </div>
             </div>
 
@@ -418,14 +426,7 @@ export default function AdminDashboard() {
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
               <div>
-                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>LANGUAGES (Comma-separated)</label>
-                <input
-                  type="text"
-                  value={docLang}
-                  onChange={(e) => setDocLang(e.target.value)}
-                  placeholder="English, Hindi, Tamil"
-                  style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
-                />
+                <LanguagePicker value={docLang} onChange={setDocLang} />
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
@@ -455,6 +456,8 @@ export default function AdminDashboard() {
                 )}
               </div>
             </div>
+
+            <LicenceEditor value={docLicences} onChange={setDocLicences} showErrors={showLicenceErrors} />
 
             {formMessage.text && (
               <p style={{
@@ -502,6 +505,7 @@ export default function AdminDashboard() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>{doc.name}</div>
                     <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>{doc.specialty} · {doc.exp}</div>
+                    <LicenceBadge doctor={doc} onClick={() => setLicenceDoctorId(licenceDoctorId === doc.id ? null : doc.id)} />
                     <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
                       <span style={inlineHint}><IconAppointment size={11} /></span> Next open slot: {doc.nextSlot || 'None published'}
                     </div>
@@ -544,6 +548,12 @@ export default function AdminDashboard() {
                   </div>
                 </div>
                 {slotDoctorId === doc.id && <SlotManager doctor={doc} />}
+                {licenceDoctorId === doc.id && (
+                  <LicenceManager
+                    doctor={doc}
+                    onChange={(licences) => setDoctors((prev) => prev.map((d) => (d.id === doc.id ? withLicences(d, licences) : d)))}
+                  />
+                )}
                 </div>
               ))}
 
@@ -703,6 +713,107 @@ function SlotManager({ doctor }) {
           </div>
         ))
       )}
+    </div>
+  );
+}
+
+/**
+ * Licence state on each directory row.
+ *
+ * "None on file" is amber, not red: it is every practitioner onboarded before
+ * licences were captured, still bookable, and this is the prompt to go and
+ * add one. "Expired" is red because it is the state that has already stopped
+ * their bookings.
+ */
+function LicenceBadge({ doctor, onClick }) {
+  const status = doctor.licenceStatus ?? 'none';
+  const current = (doctor.licences ?? []).filter((l) => !l.expired);
+  const text = status === 'current'
+    ? `Licensed · ${current.map((l) => l.region || l.country).join(', ')}`
+    : status === 'expired' ? 'Licence expired — bookings paused' : 'No licence on file — add one';
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-label={`${text}. Manage licences for ${doctor.name}`}
+      className={`lic-badge lic-badge--${status}`}
+      title={(doctor.licences ?? []).map((l) => `${licenceLine(l)} · ${l.number}${l.expiresOn ? ` · until ${l.expiresOn}` : ''}`).join('\n') || undefined}
+    >
+      {text}
+    </button>
+  );
+}
+
+function withLicences(doctor, licences) {
+  const today = new Date().toISOString().slice(0, 10);
+  const marked = licences.map((l) => ({ ...l, expired: Boolean(l.expiresOn) && l.expiresOn < today }));
+  const status = !marked.length ? 'none' : marked.some((l) => !l.expired) ? 'current' : 'expired';
+  return { ...doctor, licences: marked, licenceStatus: status };
+}
+
+/**
+ * Licences for a practitioner already in the directory — the eighteen seeded
+ * before licences were captured, a renewal, or a newly licensed state.
+ */
+function LicenceManager({ doctor, onChange }) {
+  const [draft, setDraft] = useState([{ ...EMPTY_LICENCE }]);
+  const [showErrors, setShowErrors] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const licences = doctor.licences ?? [];
+
+  async function save() {
+    const problem = draft.map(licenceProblem).find(Boolean);
+    if (problem) { setShowErrors(true); setMessage(problem); return; }
+    setBusy(true); setMessage('');
+    try {
+      const added = [];
+      for (const l of draft) {
+        added.push(await appointmentApi.addLicence(doctor.id, {
+          country: l.country, region: l.region || null, authority: l.authority.trim(),
+          number: l.number.trim(), expiresOn: l.expiresOn || null,
+        }));
+      }
+      onChange([...licences, ...added]);
+      setDraft([{ ...EMPTY_LICENCE }]); setShowErrors(false);
+      confirm();
+    } catch (err) {
+      setMessage(apiError(err, 'Could not save the licence.'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function remove(l) {
+    if (!window.confirm(`Remove the ${licenceLine(l)} licence (${l.number})?`)) return;
+    try {
+      await appointmentApi.deleteLicence(doctor.id, l.id);
+      onChange(licences.filter((x) => x.id !== l.id));
+    } catch (err) {
+      setMessage(apiError(err, 'Could not remove the licence.'));
+    }
+  }
+
+  return (
+    <div className="lic-manager">
+      {licences.length > 0 && (
+        <ul className="lic-manager__list">
+          {licences.map((l) => (
+            <li key={l.id} className={l.expired ? 'is-expired' : ''}>
+              <span>
+                <strong>{licenceLine(l)}</strong>
+                <small>{l.number}{l.expiresOn ? ` · ${l.expired ? 'expired' : 'valid until'} ${l.expiresOn}` : ' · no expiry'}</small>
+              </span>
+              <button type="button" onClick={() => remove(l)}>Remove</button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <LicenceEditor value={draft} onChange={setDraft} showErrors={showErrors} />
+      {message && <p className="lic__problem" role="alert">{message}</p>}
+      <button type="button" className="btn btn--primary btn--sm" onClick={save} disabled={busy}>
+        {busy ? 'Saving…' : draft.length > 1 ? `Save ${draft.length} licences` : 'Save licence'}
+      </button>
     </div>
   );
 }

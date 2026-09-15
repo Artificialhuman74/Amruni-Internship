@@ -54,6 +54,75 @@ CREATE TABLE IF NOT EXISTS doctors (
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 
+-- Her own account of her health history, for the parts the chart had no
+-- place for: surgeries and hospital stays, illnesses in her family, and
+-- anything else she wants a doctor to know. Conditions, allergies and blood
+-- group already live in patient_charts and medicines in medications; this does
+-- not duplicate them. `data` is one encrypted JSON object per entry.
+CREATE TABLE IF NOT EXISTS health_history (
+  id          TEXT PRIMARY KEY,
+  user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  category    TEXT NOT NULL,              -- procedures | family | notes
+  data        TEXT NOT NULL,
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_history_user ON health_history(user_id, category);
+
+-- What she chose to share with the practitioner of one appointment.
+--
+-- Per appointment, not per doctor, because the choice is made at booking and
+-- a woman may reasonably share everything with the gynaecologist she books in
+-- March and nothing when she returns in June. The doctor's view follows her
+-- most recent appointment with them. mode: all | selected | none.
+CREATE TABLE IF NOT EXISTS history_shares (
+  appointment_id TEXT PRIMARY KEY REFERENCES appointments(id) ON DELETE CASCADE,
+  user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  doctor_id      INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  mode           TEXT NOT NULL,
+  categories     TEXT NOT NULL DEFAULT '[]',
+  document_ids   TEXT NOT NULL DEFAULT '[]',
+  created_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  updated_at     TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_share_pair ON history_shares(doctor_id, user_id);
+
+-- A practitioner asking to see more than she shared. She decides; nothing is
+-- granted by the request itself.
+CREATE TABLE IF NOT EXISTS history_requests (
+  id              TEXT PRIMARY KEY,
+  appointment_id  TEXT NOT NULL REFERENCES appointments(id) ON DELETE CASCADE,
+  user_id         INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  doctor_id       INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  categories      TEXT NOT NULL DEFAULT '[]',
+  message         TEXT,
+  status          TEXT NOT NULL DEFAULT 'pending',   -- pending | granted | declined
+  granted         TEXT NOT NULL DEFAULT '[]',
+  created_at      TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
+  responded_at    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_request_user ON history_requests(user_id, status);
+
+-- A practitioner's licences to practise, one row per jurisdiction.
+--
+-- One row per jurisdiction rather than a single licence field, because a
+-- licence is only valid where it was issued. In the US a doctor licensed in
+-- New York and Tennessee may not consult a patient in Ohio; in India a State
+-- Medical Council registration and an NMC registration are different
+-- documents, and AYUSH and psychology practitioners register with different
+-- bodies again. A single text box cannot say any of that.
+CREATE TABLE IF NOT EXISTS doctor_licences (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  doctor_id   INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
+  country     TEXT NOT NULL,              -- ISO 3166 alpha-2: IN, US, ...
+  region      TEXT,                       -- state / union territory, if the licence is regional
+  authority   TEXT NOT NULL,              -- issuing body, e.g. Karnataka Medical Council
+  number      TEXT NOT NULL,
+  expires_on  TEXT,                       -- YYYY-MM-DD; NULL where the registration does not lapse
+  created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_licence_doctor ON doctor_licences(doctor_id);
+
 CREATE TABLE IF NOT EXISTS slots (
   id         INTEGER PRIMARY KEY AUTOINCREMENT,
   doctor_id  INTEGER NOT NULL REFERENCES doctors(id) ON DELETE CASCADE,
@@ -456,6 +525,12 @@ SEED_DOCTORS = [
     dict(name="Dr. Anand Kulkarni", specialty="Ayurveda", exp="11 yrs exp · BAMS, MD (Ayu)", fee=650, phone="9876543223", lang=["English", "Marathi", "Hindi"], photo="https://images.unsplash.com/photo-1537368910025-700350fe46c7?auto=format&fit=crop&q=80&w=300&h=300", rating=4.7, reviews=94),
     dict(name="Kavitha Iyer", specialty="Yoga", exp="9 yrs · YCB Level 2", fee=400, phone="9876543224", lang=["English", "Tamil", "Kannada"], photo="https://images.unsplash.com/photo-1594824813573-246434de83fb?auto=format&fit=crop&q=80&w=300&h=300", rating=4.9, reviews=207),
     dict(name="Ritu Bhatnagar", specialty="Yoga", exp="13 yrs · Prenatal specialist", fee=450, phone="9876543225", lang=["English", "Hindi"], photo="https://images.unsplash.com/photo-1580489944761-15a19d654956?auto=format&fit=crop&q=80&w=300&h=300", rating=4.8, reviews=138),
+    # A counselling centre rather than a single practitioner. Specialty is
+    # "Mental Health" on purpose: that is the one specialty where booking
+    # anonymously is honoured, and a woman seeking counselling is exactly who
+    # that exists for. The fee is a placeholder until the centre confirms it.
+    dict(name="Samadhana Center", specialty="Mental Health", exp="Counselling centre · ಸಮಾಧಾನ ಆಪ್ತ ಸಲಹಾ ಕೇಂದ್ರ", fee=300, phone="9876543227", lang=["Kannada", "English", "Hindi"], photo=None, rating=4.9, reviews=0,
+         bio="A counselling centre offering confidential support for stress, worry, low mood, family difficulties and more. Your counsellor reads your intake form before you meet."),
     dict(name="Meenakshi Rao", specialty="Reiki", exp="8 yrs · Level 3 practitioner", fee=300, phone="9876543226", lang=["English", "Kannada", "Hindi"], photo="https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=300&h=300", rating=4.7, reviews=61),
 ]
 
@@ -583,6 +658,10 @@ def init_db():
         # chart) need no change, and rows written before this existed are read
         # as the single-word list they are.
         _ensure_column(db, "mood_logs", "words", "TEXT")
+        # Who put a document on her record. A prescription she photographs
+        # and a report her doctor uploads are both hers, but a doctor always
+        # sees what they uploaded themselves, whatever she chose to share.
+        _ensure_column(db, "documents", "uploaded_by", "TEXT NOT NULL DEFAULT 'doctor'")
         # Family and genetic history — a doctor's own note, not derived from
         # anything she logs, so it needed a column rather than a computed field.
         _ensure_column(db, "patient_charts", "family_history", "TEXT")
@@ -596,6 +675,9 @@ def init_db():
 # own.
 ENCRYPTED_COLUMNS = {
     "users": ["name", "dob", "phone", "goal"],
+    "health_history": ["data"],
+    # Why a doctor wants more of her history is itself about her health.
+    "history_requests": ["message"],
     # Why she booked, in her words ("heavy bleeding for three weeks"). Found
     # in plaintext while writing the privacy screen's promise; it is exactly
     # the kind of sentence that promise is about.
@@ -681,10 +763,10 @@ def seed_doctors(db: sqlite3.Connection):
         if d["name"] in existing:
             continue
         db.execute(
-            """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, photo, rating, reviews)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, photo, bio, rating, reviews)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (d["name"], d["specialty"], d["exp"], d["fee"], round(d["fee"] / 3),
-             d["phone"], json.dumps(d["lang"]), d["photo"], d["rating"], d["reviews"]),
+             d["phone"], json.dumps(d["lang"]), d["photo"], d.get("bio"), d["rating"], d["reviews"]),
         )
 
 
@@ -747,6 +829,40 @@ def doctor_json(row) -> dict:
         "rating": row["rating"],
         "reviews": row["reviews"],
     }
+
+
+def licence_json(row) -> dict:
+    return {
+        "id": row["id"],
+        "country": row["country"],
+        "region": row["region"],
+        "authority": row["authority"],
+        "number": row["number"],
+        "expiresOn": row["expires_on"],
+        "expired": bool(row["expires_on"]) and row["expires_on"] < date.today().isoformat(),
+    }
+
+
+def licences_for(db, doctor_id: int) -> list[dict]:
+    rows = db.execute(
+        "SELECT * FROM doctor_licences WHERE doctor_id = ? ORDER BY country, region, id", (doctor_id,)
+    ).fetchall()
+    return [licence_json(r) for r in rows]
+
+
+def licence_status(licences: list[dict]) -> str:
+    """'current' if any licence is in force, 'expired' if every one has lapsed,
+    'none' if nothing is on file.
+
+    'none' and 'expired' are deliberately different. A doctor seeded before
+    licences existed has nothing on file, and treating that as expired would
+    make every existing practitioner unbookable the moment this shipped. A
+    doctor whose licences are on file and have all lapsed is a known fact, and
+    is the case that must stop a booking.
+    """
+    if not licences:
+        return "none"
+    return "current" if any(not l["expired"] for l in licences) else "expired"
 
 
 def slot_json(row) -> dict:
@@ -814,6 +930,8 @@ def document_json(row, include_data=False) -> dict:
         "title": crypto.dec(row["title"]),
         "kind": row["kind"],
         "createdAt": row["created_at"],
+        "uploadedBy": row["uploaded_by"] if "uploaded_by" in row.keys() else "doctor",
+        "doctorId": row["doctor_id"],
     }
     if include_data:
         # A scan or a lab report is the most identifying thing in the record,

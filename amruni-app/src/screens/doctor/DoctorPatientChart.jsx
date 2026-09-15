@@ -3,18 +3,19 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import { doctorApi, doctorApiError } from '../../services/doctorApi';
 import { useToast } from '../../components/Toast';
-import { IconLab, IconReport, IconScan, IconAttachment, IconAlert, IconClose } from '../../icons.jsx';
+import { IconAlert, IconClose } from '../../icons.jsx';
 import WeightCorridor from '../../components/WeightCorridor';
 import { pregnancyWeightView, personalWeightView } from '../../lib/pregnancyWeight';
 import { FORMS } from '../../data/intake';
 import { wordsOf } from '../../lib/moodScale';
+import { ShareBanner, NotShared, PatientHistory } from '../../components/doctor/HistoryShare';
+import { DocumentLibrary } from '../../components/history/DocumentViewer';
 import { srqResult, SRQ_CUTOFF } from '../../data/counselling';
 
 const STAGE_LABEL = {
   adolescent: 'Adolescent', reproductive: 'Reproductive age',
   postpartum: 'Post-partum', menopause: 'Menopause', elderly: 'Elderly care',
 };
-const KIND_ICON = { lab: IconLab, report: IconReport, scan: IconScan, other: IconAttachment };
 
 // What she chose at sign-up, in her words rather than the id it is stored as.
 // Kept as a plain map so the console does not pull the whole onboarding module.
@@ -97,7 +98,21 @@ export default function DoctorPatientChart() {
   useEffect(() => {
     let cancelled = false;
     doctorApi.chart(userId)
-      .then((d) => { if (!cancelled) setData(d); })
+      // Withheld sections arrive as null, never []. The chart's editing logic
+      // works on arrays, so they are normalised here — and `hidden` is what
+      // decides whether a section renders as "not shared" instead of empty.
+      .then((d) => {
+        if (cancelled) return;
+        setData({
+          ...d,
+          chart: {
+            ...d.chart,
+            allergies: d.chart.allergies ?? [],
+            conditions: d.chart.conditions ?? [],
+            selfDeclared: d.chart.selfDeclared ?? [],
+          },
+        });
+      })
       .catch(() => { if (!cancelled) setFailed(true); });
     return () => { cancelled = true; };
   }, [userId]);
@@ -168,18 +183,6 @@ export default function DoctorPatientChart() {
     reader.readAsDataURL(file);
   }
 
-  async function openDocument(doc) {
-    try {
-      const full = await doctorApi.getDocument(userId, doc.id);
-      // Data URL → Blob URL so the browser's own viewer renders it safely.
-      const blob = await (await fetch(full.data)).blob();
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
-    } catch (err) {
-      toast(doctorApiError(err, 'Could not open that document.'), { icon: 'warning' });
-    }
-  }
 
   // What she has logged herself between visits — read the same way her own
   // weight screen reads it, so the corridor a doctor sees is the one she sees.
@@ -233,6 +236,8 @@ export default function DoctorPatientChart() {
   } = data;
   const latestVitals = vitalsHistory[vitalsHistory.length - 1] || null;
   const meds = data.medications || { current: [], past: [], adherence: null };
+  const hidden = data.historyShare?.hidden ?? [];
+  const isHidden = (c) => hidden.includes(c);
 
   return (
     <div style={{ padding: 'calc(env(safe-area-inset-top) + var(--sp-4)) var(--sp-6) var(--sp-8)' }}>
@@ -277,6 +282,15 @@ export default function DoctorPatientChart() {
           <p className="ctx-band__caution">{context.caution}</p>
         </section>
       )}
+
+      {/* What she chose to share with this doctor — above every clinical
+          section, so nothing below is read as complete when it is not. */}
+      <ShareBanner
+        share={data.historyShare}
+        requests={data.historyRequests}
+        userId={userId}
+        onRequested={(req) => setData((d) => ({ ...d, historyRequests: [req, ...(d.historyRequests ?? [])] }))}
+      />
 
       {/* Who is paying, if anyone but her.
           Above the clinical sections because it changes what the doctor writes
@@ -337,10 +351,14 @@ export default function DoctorPatientChart() {
               </span>
             );
           })}
-          {chart.allergies.length === 0 && chart.conditions.length === 0 && flagInput.kind === null && (
+          {!isHidden('allergies') && !isHidden('conditions') && chart.allergies.length === 0 && chart.conditions.length === 0 && flagInput.kind === null && (
             <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>No known allergies or conditions recorded.</span>
           )}
         </div>
+        {/* Anything added here while a section is withheld is merged into her
+            list on the server, never written over it. */}
+        {isHidden('allergies') && <NotShared category="allergies" />}
+        {isHidden('conditions') && <NotShared category="conditions" />}
         {(chart.selfDeclared || []).length > 0 && (
           <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)', marginTop: 'var(--sp-2)' }}>
             Marked entries are what she reported herself when she signed up — worth confirming
@@ -410,6 +428,12 @@ export default function DoctorPatientChart() {
             </button>
           </>
         )}
+      </section>
+
+      {/* What she recorded about herself: surgeries, family, anything else. */}
+      <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Patient-recorded history">
+        <h2 className="doc-section-title">Her health history</h2>
+        <PatientHistory history={data.history} hidden={hidden} />
       </section>
 
       {/* Vitals */}
@@ -483,7 +507,9 @@ export default function DoctorPatientChart() {
           )}
         </h2>
 
-        {meds.current.length === 0 && meds.past.length === 0 ? (
+        {data.medications === null ? (
+          <NotShared category="medications" />
+        ) : meds.current.length === 0 && meds.past.length === 0 ? (
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
             No medicines recorded. Anything prescribed here, or added by her, will appear on this list.
           </p>
@@ -565,6 +591,7 @@ export default function DoctorPatientChart() {
       {/* Records timeline */}
       <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Consultation records">
         <h2 className="doc-section-title">Consultation records</h2>
+        {isHidden('consultations') && <NotShared category="consultations" />}
         {records.length === 0 ? (
           <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
             Her first consultation record will start the timeline.
@@ -634,25 +661,22 @@ export default function DoctorPatientChart() {
       {/* Documents */}
       <section style={{ marginTop: 'var(--sp-8)' }} aria-label="Documents">
         <h2 className="doc-section-title">Documents & reports</h2>
-        {documents.length === 0 && (
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)', marginBottom: 'var(--sp-3)' }}>
-            Lab reports, scans and referrals live here — attached once, available every visit.
+        {/* Counted, not inferred from the documents category: she may have
+            withheld the category and still shared one prescription by hand. */}
+        {data.historyShare?.hiddenDocuments > 0 && (
+          <p className="not-shared">
+            {data.historyShare.hiddenDocuments === 1
+              ? '1 of her documents was not shared with you. Ask her if you need it.'
+              : `${data.historyShare.hiddenDocuments} of her documents were not shared with you. Ask her if you need them.`}
           </p>
         )}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
-          {documents.map((doc) => (
-            <div key={doc.id} className="doc-queue-row">
-              <span style={{ color: 'var(--clr-ink-muted)', display: 'flex' }} aria-hidden="true">
-                {(() => { const I = KIND_ICON[doc.kind] || IconAttachment; return <I size={18} />; })()}
-              </span>
-              <button onClick={() => openDocument(doc)} style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                <span style={{ display: 'block', fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{doc.title}</span>
-                <span style={{ display: 'block', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>{doc.kind} · {fmtDate(doc.createdAt)}</span>
-              </button>
-              <button onClick={() => removeDocument(doc)} aria-label={`Remove ${doc.title}`} style={{ color: 'var(--clr-ink-subtle)', padding: 'var(--sp-1)' }}><IconClose size={15} /></button>
-            </div>
-          ))}
-        </div>
+        <DocumentLibrary
+          documents={documents}
+          load={(doc) => doctorApi.getDocument(userId, doc.id)}
+          canRemove={(doc) => doc.uploadedBy !== 'patient'}
+          onRemove={removeDocument}
+          emptyText="Lab reports, scans and referrals live here — attached once, available every visit."
+        />
         <div style={{ display: 'flex', gap: 'var(--sp-2)', marginTop: 'var(--sp-3)' }}>
           <select
             className="input-field--sm"
@@ -662,8 +686,10 @@ export default function DoctorPatientChart() {
             aria-label="Document type"
           >
             <option value="lab">Lab result</option>
-            <option value="report">Report</option>
+            <option value="prescription">Prescription</option>
             <option value="scan">Scan</option>
+            <option value="discharge">Discharge summary</option>
+            <option value="report">Report</option>
             <option value="other">Other</option>
           </select>
           <button className="btn btn--secondary btn--sm" style={{ flex: 1 }} onClick={() => fileRef.current?.click()} disabled={uploading}>

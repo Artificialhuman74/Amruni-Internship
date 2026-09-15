@@ -22,8 +22,8 @@ export const appointmentApi = {
   // Video: { slotId, mode: 'video', reason } — locks the slot.
   // Chat:  { doctorId, mode: 'chat', reason } — instant.
   // Returns { appointmentId, payment: { paymentId, provider, orderId, amount, keyId } }.
-  createBooking: async ({ slotId, doctorId, mode, reason, anonymous }) =>
-    (await api.post('/bookings', { slotId, doctorId, mode, reason, anonymous })).data,
+  createBooking: async ({ slotId, doctorId, mode, reason, anonymous, historyShare }) =>
+    (await api.post('/bookings', { slotId, doctorId, mode, reason, anonymous, historyShare })).data,
 
   // Confirms payment; server verifies, books the slot, and generates the
   // Google Meet link. Returns the confirmed appointment (with meetLink).
@@ -54,4 +54,6 @@ export const appointmentApi = {
   addDoctor: async (doctor) => (await api.post('/doctors', doctor)).data,
 
   deleteDoctor: async (id) => (await api.delete(`/doctors/${id}`)).data,
+  addLicence: async (doctorId, licence) => (await api.post(`/doctors/${doctorId}/licences`, licence)).data,
+  deleteLicence: async (doctorId, licenceId) => (await api.delete(`/doctors/${doctorId}/licences/${licenceId}`)).data,
 };

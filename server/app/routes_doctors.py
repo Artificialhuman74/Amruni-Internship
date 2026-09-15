@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from .auth import require_admin
-from .db import get_db, doctor_json, slot_json
+from .db import get_db, doctor_json, licence_json, licence_status, licences_for, slot_json
 
 router = APIRouter()
 
@@ -51,6 +51,49 @@ class SlotRange(BaseModel):
     mode: str = "video"
 
 
+COUNTRY_RE = re.compile(r"^[A-Z]{2}$")
+
+
+class LicenceBody(BaseModel):
+    country: str = "IN"
+    region: str | None = None
+    authority: str
+    number: str
+    expiresOn: str | None = None
+
+
+def _clean_licence(body: LicenceBody) -> tuple:
+    """Validates one licence and returns it as an insert-ready tuple.
+
+    Refuses a licence that has already expired rather than storing it quietly:
+    the point of capturing licences at onboarding is that a practitioner cannot
+    be put in front of patients on the strength of one that has lapsed.
+    """
+    country = (body.country or "").strip().upper()
+    authority = (body.authority or "").strip()
+    number = (body.number or "").strip()
+    region = (body.region or "").strip() or None
+    expires = (body.expiresOn or "").strip() or None
+    if not COUNTRY_RE.match(country):
+        raise HTTPException(422, "Licence country must be a two-letter code, like IN or US.")
+    if not authority:
+        raise HTTPException(422, "Each licence needs the council or board that issued it.")
+    if not number:
+        raise HTTPException(422, "Each licence needs its registration number.")
+    if len(number) > 60 or len(authority) > 120 or (region and len(region) > 80):
+        raise HTTPException(422, "A licence field is too long.")
+    # A US licence is issued by a state board and is valid only in that state,
+    # so a US licence without a state says nothing about where she may practise.
+    if country == "US" and not region:
+        raise HTTPException(422, "A US licence must name the state it was issued in.")
+    if expires:
+        if not DATE_RE.match(expires):
+            raise HTTPException(422, "Licence expiry must be a date (YYYY-MM-DD).")
+        if expires < date.today().isoformat():
+            raise HTTPException(422, f"The licence {number} expired on {expires}. Add a current licence.")
+    return country, region, authority, number, expires
+
+
 class DoctorBody(BaseModel):
     name: str
     specialty: str
@@ -66,6 +109,7 @@ class DoctorBody(BaseModel):
     rating: float | None = None
     reviews: int | None = None
     nextSlot: str | None = None        # legacy field; slots are real now
+    licences: list[LicenceBody] = []
 
 
 def _fee_to_int(fee) -> int:
@@ -98,12 +142,22 @@ def _next_slot_label(db, doctor_id: int) -> str | None:
     return f"{day_label}, {to_12h(row['start_time'])}"
 
 
+def _doctor_payload(db, row) -> dict:
+    licences = licences_for(db, row["id"])
+    return {
+        **doctor_json(row),
+        "nextSlot": _next_slot_label(db, row["id"]),
+        "licences": licences,
+        "licenceStatus": licence_status(licences),
+    }
+
+
 @router.get("/doctors")
 def list_doctors():
     with get_db() as db:
         release_expired_locks(db)
         rows = db.execute("SELECT * FROM doctors ORDER BY id").fetchall()
-        return [{**doctor_json(r), "nextSlot": _next_slot_label(db, r["id"])} for r in rows]
+        return [_doctor_payload(db, r) for r in rows]
 
 
 @router.get("/doctors/{doctor_id}")
@@ -112,12 +166,18 @@ def get_doctor(doctor_id: int):
         row = db.execute("SELECT * FROM doctors WHERE id = ?", (doctor_id,)).fetchone()
         if not row:
             raise HTTPException(404, "Doctor not found")
-        return {**doctor_json(row), "nextSlot": _next_slot_label(db, doctor_id)}
+        return _doctor_payload(db, row)
 
 
 @router.post("/doctors", status_code=201)
 def add_doctor(body: DoctorBody, user: dict = Depends(require_admin)):
     fee = _fee_to_int(body.fee)
+    # Required for every practitioner added from here on. The eighteen seeded
+    # before this existed are flagged in the admin list instead of being made
+    # unbookable overnight — see licence_status.
+    if not body.licences:
+        raise HTTPException(422, "Add at least one licence to practise before onboarding a practitioner.")
+    licences = [_clean_licence(l) for l in body.licences]
     with get_db() as db:
         cur = db.execute(
             """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, avatar, photo, bio, rating, reviews)
@@ -128,13 +188,46 @@ def add_doctor(body: DoctorBody, user: dict = Depends(require_admin)):
              body.rating if body.rating is not None else 5.0,
              body.reviews if body.reviews is not None else 0),
         )
+        for country, region, authority, number, expires in licences:
+            db.execute(
+                """INSERT INTO doctor_licences (doctor_id, country, region, authority, number, expires_on)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (cur.lastrowid, country, region, authority, number, expires),
+            )
         row = db.execute("SELECT * FROM doctors WHERE id = ?", (cur.lastrowid,)).fetchone()
-        return {**doctor_json(row), "nextSlot": None}
+        return _doctor_payload(db, row)
+
+
+@router.post("/doctors/{doctor_id}/licences", status_code=201)
+def add_licence(doctor_id: int, body: LicenceBody, user: dict = Depends(require_admin)):
+    """Adds a licence to an existing practitioner — a new state, or a renewal."""
+    country, region, authority, number, expires = _clean_licence(body)
+    with get_db() as db:
+        if not db.execute("SELECT 1 FROM doctors WHERE id = ?", (doctor_id,)).fetchone():
+            raise HTTPException(404, "Doctor not found")
+        cur = db.execute(
+            """INSERT INTO doctor_licences (doctor_id, country, region, authority, number, expires_on)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (doctor_id, country, region, authority, number, expires),
+        )
+        return licence_json(db.execute("SELECT * FROM doctor_licences WHERE id = ?", (cur.lastrowid,)).fetchone())
+
+
+@router.delete("/doctors/{doctor_id}/licences/{licence_id}")
+def delete_licence(doctor_id: int, licence_id: int, user: dict = Depends(require_admin)):
+    with get_db() as db:
+        cur = db.execute(
+            "DELETE FROM doctor_licences WHERE id = ? AND doctor_id = ?", (licence_id, doctor_id)
+        )
+        if cur.rowcount == 0:
+            raise HTTPException(404, "Licence not found")
+    return {"success": True}
 
 
 @router.delete("/doctors/{doctor_id}")
 def delete_doctor(doctor_id: int, user: dict = Depends(require_admin)):
     with get_db() as db:
+        db.execute("DELETE FROM doctor_licences WHERE doctor_id = ?", (doctor_id,))
         cur = db.execute("DELETE FROM doctors WHERE id = ?", (doctor_id,))
         if cur.rowcount == 0:
             raise HTTPException(404, "Doctor not found")

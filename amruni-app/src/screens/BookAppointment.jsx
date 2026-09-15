@@ -13,10 +13,32 @@ import { insuranceApi } from '../services/insuranceApi';
 import { intakeApi } from '../services/intakeApi';
 import { summaryLine, expiryState, isInternational, countryName } from '../lib/insurance';
 import { FORMS } from '../data/intake';
+import ShareChooser from '../components/history/ShareChooser';
+import { historyApi } from '../services/historyApi';
 import { IconChat, IconVideo, IconShield, IconRecords, IconAlert } from '../icons.jsx';
 
 // Specialties that have an intake form worth filling before the consultation.
 const INTAKE_BY_SPECIALTY = { Homeopathy: 'homeopathy', Ayurveda: 'ayurveda' };
+// Keyed by practitioner rather than specialty: the counselling form belongs to
+// Samadhana Center, not to every "Mental Health" listing.
+const INTAKE_BY_PRACTITIONER = { 'Samadhana Center': 'counselling' };
+const INTAKE_ROUTE = { counselling: '/samadhana' };
+
+const LAST_SHARE_KEY = 'amruni_last_history_share';
+
+/** Her previous choice, offered again — never a default she did not make. */
+function lastShare() {
+  try {
+    const v = JSON.parse(localStorage.getItem(LAST_SHARE_KEY) || 'null');
+    return v?.mode ? { mode: v.mode, categories: v.categories ?? [], documentIds: [] } : null;
+  } catch {
+    return null;
+  }
+}
+
+function canBookAnonymouslyEarly(doctor) {
+  return doctor?.specialty === 'Mental Health';
+}
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -82,8 +104,16 @@ export default function BookAppointment() {
   // afterwards. They are shown before payment so the choice is hers.
   const [coverage, setCoverage] = useState(null);
   const [intakeDone, setIntakeDone] = useState(null);
+  const [history, setHistory] = useState(null);
+  const [share, setShare] = useState(lastShare);
 
-  const intakeFormId = INTAKE_BY_SPECIALTY[currentDoctor?.specialty] ?? null;
+  useEffect(() => {
+    let cancelled = false;
+    historyApi.get().then((h) => { if (!cancelled) setHistory(h); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  const intakeFormId = INTAKE_BY_PRACTITIONER[currentDoctor?.name] ?? INTAKE_BY_SPECIALTY[currentDoctor?.specialty] ?? null;
 
   useEffect(() => {
     let cancelled = false;
@@ -110,7 +140,10 @@ export default function BookAppointment() {
   const amountDue = consultMode === 'chat' ? chatFee : selectedSlot?.price ?? null;
   const feeLabel = amountDue != null ? `₹${amountDue}` : '';
 
-  const canProceed = consultMode === 'chat' || !!selectedSlot;
+  // Anonymous bookings open no chart, so there is nothing to choose.
+  const needsShare = !(canBookAnonymouslyEarly(currentDoctor) && Boolean(state.settings?.anonymousMode));
+  const shareChosen = !needsShare || (share?.mode && (share.mode !== 'selected' || share.categories.length || share.documentIds.length));
+  const canProceed = (consultMode === 'chat' || !!selectedSlot) && shareChosen;
 
   async function handleProceedToPay() {
     if (!canProceed || payStep !== 'idle') return;
@@ -123,7 +156,13 @@ export default function BookAppointment() {
         mode: consultMode,
         reason,
         anonymous: bookAnonymously,
+        historyShare: bookAnonymously ? { mode: 'none' } : share,
       });
+      try {
+        if (!bookAnonymously && share?.mode) {
+          localStorage.setItem(LAST_SHARE_KEY, JSON.stringify({ mode: share.mode, categories: share.categories }));
+        }
+      } catch { /* private mode — nothing to remember */ }
       setBooking(res);
       setPayStep('pay');
     } catch (err) {
@@ -308,7 +347,7 @@ export default function BookAppointment() {
         {intakeFormId && intakeDone === false && (
           <button
             className="booking-prompt"
-            onClick={() => navigate(`/intake/${intakeFormId}`)}
+            onClick={() => navigate(INTAKE_ROUTE[intakeFormId] ?? `/intake/${intakeFormId}`)}
             type="button"
           >
             <span className="booking-prompt__icon"><IconRecords size={18} /></span>
@@ -323,6 +362,13 @@ export default function BookAppointment() {
               </span>
             </span>
           </button>
+        )}
+
+        {/* What this practitioner may read of her history. Asked here, with
+            the slot chosen and before payment, because it is a decision about
+            this particular doctor. */}
+        {!bookAnonymously && (
+          <ShareChooser value={share} onChange={setShare} history={history} doctorName={doctorName} />
         )}
 
         {/* Who is paying. Stated before payment, in the terms that are actually
@@ -418,7 +464,11 @@ export default function BookAppointment() {
           disabled={!canProceed || payStep !== 'idle'}
           style={{ opacity: (!canProceed || payStep !== 'idle') ? 0.6 : 1 }}
         >
-          {payStep === 'ordering' ? 'Reserving slot…' : `Continue to Pay${feeLabel ? ` · ${feeLabel}` : ''}`}
+          {payStep === 'ordering'
+            ? 'Reserving slot…'
+            : (consultMode === 'chat' || selectedSlot) && !shareChosen
+              ? 'Choose what to share'
+              : `Continue to Pay${feeLabel ? ` · ${feeLabel}` : ''}`}
         </button>
       </div>
 

@@ -89,6 +89,8 @@ export const doctorApi = {
     (await client.post(`/doctor/patients/${userId}/documents`, doc)).data,
   getDocument: async (userId, docId) =>
     (await client.get(`/doctor/patients/${userId}/documents/${docId}`)).data,
+  requestHistory: async (userId, categories, message) =>
+    (await client.post(`/doctor/patients/${userId}/history-requests`, { categories, message })).data,
   deleteDocument: async (userId, docId) =>
     (await client.delete(`/doctor/patients/${userId}/documents/${docId}`)).data,
 };

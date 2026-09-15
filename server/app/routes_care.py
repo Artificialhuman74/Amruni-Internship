@@ -28,7 +28,7 @@ from pydantic import BaseModel
 
 from . import crypto, payments
 from .auth import current_user
-from .db import get_db, new_id, payment_json, to_12h, utcnow_iso
+from .db import get_db, licence_status, licences_for, new_id, payment_json, to_12h, utcnow_iso
 
 router = APIRouter()
 
@@ -340,6 +340,10 @@ def book_via_share(token: str, body: BookBody):
 
         slot = db.execute("SELECT * FROM slots WHERE id = ?", (body.slotId,)).fetchone()
         doctor = db.execute("SELECT * FROM doctors WHERE id = ?", (slot["doctor_id"],)).fetchone()
+        # Same rule as her own bookings: a practitioner whose licences have all
+        # lapsed cannot be booked, by her or by someone booking on her behalf.
+        if licence_status(licences_for(db, doctor["id"])) == "expired":
+            raise HTTPException(409, "This practitioner's licence to practise has expired, so they cannot take bookings right now.")
 
         appt_id = new_id("apt")
         db.execute(

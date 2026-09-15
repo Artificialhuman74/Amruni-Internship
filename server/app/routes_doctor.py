@@ -19,6 +19,7 @@ from .auth import current_doctor
 from .routes_community import get_or_create_anon_handle
 from .routes_insurance import intake_for_doctor, policy_for_doctor
 from .routes_meds import medication_history, sync_from_prescription
+from .routes_history import CATEGORIES, can_see, can_see_document, effective_share, history_items, requests_json
 from . import crypto
 from .db import (
     appointment_json, doctor_json, document_json, get_db, record_json,
@@ -164,6 +165,9 @@ def _doctor_appointment(db, row) -> dict:
         "patient": (_anonymous_summary(db, patient) if anon else _patient_summary(patient)) if patient else None,
         "anonymous": anon,
         "hasRecord": has_record,
+        # Shown on the appointment itself, so a doctor knows before opening
+        # the chart that they are walking in with part of the picture.
+        "historyShare": None if anon else effective_share(db, row["doctor_id"], row["user_id"])["mode"],
     }
 
 
@@ -410,6 +414,7 @@ class ChartBody(BaseModel):
 def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
     with get_db() as db:
         _require_relationship(db, doctor["id"], user_id)
+        share = effective_share(db, doctor["id"], user_id)
         user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
         chart = db.execute("SELECT * FROM patient_charts WHERE user_id = ?", (user_id,)).fetchone()
         preg = db.execute("SELECT * FROM pregnancy_state WHERE user_id = ?", (user_id,)).fetchone()
@@ -422,9 +427,19 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
                ORDER BY r.created_at DESC""",
             (user_id,),
         ).fetchall()
-        documents = db.execute(
-            "SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
-        ).fetchall()
+        # Records this doctor wrote are theirs to read; other doctors' records
+        # are her history, and follow what she shared.
+        if not can_see(share, "consultations"):
+            records = [r for r in records if r["doctor_id"] == doctor["id"]]
+        documents = [
+            d for d in db.execute(
+                "SELECT * FROM documents WHERE user_id = ? ORDER BY created_at DESC", (user_id,)
+            ).fetchall()
+            if can_see_document(share, d, doctor["id"])
+        ]
+        hidden_documents = db.execute(
+            "SELECT COUNT(*) AS n FROM documents WHERE user_id = ?", (user_id,)
+        ).fetchone()["n"] - len(documents)
 
         vitals_history = []
         for r in reversed(records):  # chronological
@@ -467,21 +482,37 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
         # incomplete drug list, which is the shape most interaction errors
         # have. Adherence rides along for the same reason: whether a drug was
         # taken changes what "it isn't working" means.
-        medications = medication_history(db, user_id)
+        medications = medication_history(db, user_id) if can_see(share, "medications") else None
+        items = history_items(db, user_id)
 
         return {
             "patient": _patient_summary(user),
             "context": _life_context(db, user_id),
+            # What she chose to share, stated rather than left to be inferred
+            # from empty sections. `hidden` is the list the chart renders as
+            # "not shared", so an empty allergy list is never mistaken for
+            # "no allergies".
+            "historyShare": {
+                **share,
+                "hidden": [c for c in CATEGORIES if not can_see(share, c)],
+                "hiddenDocuments": hidden_documents,
+            },
+            "historyRequests": requests_json(db, "q.user_id = ? AND q.doctor_id = ?", (user_id, doctor["id"])),
+            "history": {
+                "procedures": items["procedures"] if can_see(share, "procedures") else None,
+                "family": items["family"] if can_see(share, "family") else None,
+                "notes": items["notes"] if can_see(share, "notes") else None,
+            },
             "chart": {
-                "allergies": crypto.dec_json(chart["allergies"], []) if chart else [],
-                "conditions": crypto.dec_json(chart["conditions"], []) if chart else [],
-                "bloodGroup": crypto.dec(chart["blood_group"]) if chart else None,
+                "allergies": (crypto.dec_json(chart["allergies"], []) if chart else []) if can_see(share, "allergies") else None,
+                "conditions": (crypto.dec_json(chart["conditions"], []) if chart else []) if can_see(share, "conditions") else None,
+                "bloodGroup": (crypto.dec(chart["blood_group"]) if chart else None) if can_see(share, "conditions") else None,
                 # What she reported herself, at sign-up and since. The same
                 # entries also appear in `conditions` — this says which of them
                 # are her account rather than a clinician's, which one merged
                 # list cannot. A doctor reading "PCOS" should know whether that
                 # is a diagnosis or something she was told once and repeated.
-                "selfDeclared": crypto.dec_json(chart["self_declared"], []) if chart else [],
+                "selfDeclared": (crypto.dec_json(chart["self_declared"], []) if chart else []) if can_see(share, "conditions") else None,
                 "familyHistory": crypto.dec(chart["family_history"]) if chart else None,
             },
             "medications": medications,
@@ -526,6 +557,20 @@ def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_d
     family_history = body.familyHistory.strip()[:2000] if body.familyHistory else None
     with get_db() as db:
         _require_relationship(db, doctor["id"], user_id)
+        # A doctor who was not shown her allergies or conditions was sent
+        # nothing for them, and saving the chart must not turn that nothing
+        # into an empty list over hers. For a hidden section, whatever the
+        # doctor adds is merged into what is already there; nothing is removed.
+        share = effective_share(db, doctor["id"], user_id)
+        existing = db.execute("SELECT * FROM patient_charts WHERE user_id = ?", (user_id,)).fetchone()
+        blood_group = body.bloodGroup
+        if not can_see(share, "allergies"):
+            have = crypto.dec_json(existing["allergies"], []) if existing else []
+            allergies = list(dict.fromkeys([*have, *allergies]))[:30]
+        if not can_see(share, "conditions"):
+            have = crypto.dec_json(existing["conditions"], []) if existing else []
+            conditions = list(dict.fromkeys([*have, *conditions]))[:30]
+            blood_group = body.bloodGroup or (crypto.dec(existing["blood_group"]) if existing else None)
         db.execute(
             """INSERT INTO patient_charts (user_id, allergies, conditions, blood_group, family_history, updated_at)
                VALUES (?, ?, ?, ?, ?, ?)
@@ -534,7 +579,7 @@ def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_d
                  blood_group = excluded.blood_group, family_history = excluded.family_history,
                  updated_at = excluded.updated_at""",
             (user_id, crypto.enc_json(allergies), crypto.enc_json(conditions),
-             crypto.enc(body.bloodGroup), crypto.enc(family_history), utcnow_iso()),
+             crypto.enc(blood_group), crypto.enc(family_history), utcnow_iso()),
         )
     return {"success": True}
 
@@ -549,8 +594,8 @@ class DocumentBody(BaseModel):
 
 @router.post("/doctor/patients/{user_id}/documents", status_code=201)
 def upload_document(user_id: int, body: DocumentBody, doctor: dict = Depends(current_doctor)):
-    if body.kind not in ("lab", "report", "scan", "other"):
-        raise HTTPException(400, "kind must be lab, report, scan or other.")
+    if body.kind not in ("prescription", "lab", "report", "scan", "discharge", "other"):
+        raise HTTPException(400, "kind must be prescription, lab, report, scan, discharge or other.")
     if not body.data.startswith("data:"):
         raise HTTPException(400, "data must be a data URL.")
     if len(body.data) > 4_000_000:
@@ -574,7 +619,10 @@ def get_document(user_id: int, doc_id: int, doctor: dict = Depends(current_docto
         row = db.execute(
             "SELECT * FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)
         ).fetchone()
-        if not row:
+        # Enforced here as well as in the chart listing. Hiding a document from
+        # the list while this endpoint would still serve it by id is not
+        # hiding it.
+        if not row or not can_see_document(effective_share(db, doctor["id"], user_id), row, doctor["id"]):
             raise HTTPException(404, "Document not found")
         return document_json(row, include_data=True)
 
@@ -583,7 +631,11 @@ def get_document(user_id: int, doc_id: int, doctor: dict = Depends(current_docto
 def delete_document(user_id: int, doc_id: int, doctor: dict = Depends(current_doctor)):
     with get_db() as db:
         _require_relationship(db, doctor["id"], user_id)
-        cur = db.execute("DELETE FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id))
+        # A doctor removes only what they uploaded — never a document she added.
+        cur = db.execute(
+            "DELETE FROM documents WHERE id = ? AND user_id = ? AND doctor_id = ? AND uploaded_by != 'patient'",
+            (doc_id, user_id, doctor["id"]),
+        )
         if cur.rowcount == 0:
             raise HTTPException(404, "Document not found")
     return {"success": True}

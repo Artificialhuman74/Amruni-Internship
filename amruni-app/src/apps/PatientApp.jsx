@@ -9,6 +9,8 @@ import Splash from '../screens/Splash';
 import PhoneEntry from '../screens/PhoneEntry';
 import OTPVerify from '../screens/OTPVerify';
 import PrivacyFirst from '../screens/onboarding/PrivacyFirst';
+import SamadhanaConversation from '../screens/SamadhanaConversation';
+import HealthRecord from '../screens/HealthRecord';
 import NameStep from '../screens/onboarding/NameStep';
 import DobStep from '../screens/onboarding/DobStep';
 import GoalsStep from '../screens/onboarding/GoalsStep';
@@ -91,6 +93,7 @@ export default function PatientApp() {
                   is the recipient's unauthenticated view of the same events. */}
               <Route path="/care-activity" element={<CareActivity />} />
               <Route path="/medicines" element={<Medicines />} />
+              <Route path="/health-record" element={<HealthRecord />} />
             <Route path="/journal" element={<Journal />} />
               <Route path="/community" element={<Community />} />
               <Route path="/community/:id" element={<CommunityThread />} />
@@ -136,10 +139,22 @@ export default function PatientApp() {
               section about being hurt as a child; a tab bar and a floating
               emergency button over that page are chrome interrupting something
               that deserves the whole screen. Its own footer owns the bottom. */}
+          {/* The counselling form has its own conversational screen; the
+              generic sectioned renderer would still work, but any link to it
+              lands on the version made for this form. */}
+          <Route path="/intake/counselling" element={<Navigate to="/samadhana" replace />} />
           <Route
             path="/intake/:formId"
             element={isAuthenticated && isOnboarded
               ? <IntakeForm />
+              : <Navigate to="/phone" replace />}
+          />
+          {/* Outside the shell: a conversation about how she has been doing
+              is not something to run under a tab bar and an SOS button. */}
+          <Route
+            path="/samadhana"
+            element={isAuthenticated && isOnboarded
+              ? <SamadhanaConversation />
               : <Navigate to="/phone" replace />}
           />
 

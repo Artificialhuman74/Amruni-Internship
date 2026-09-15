@@ -9,6 +9,7 @@ import DoctorAvatar from '../components/DoctorAvatar';
 import DailyMoodCheckIn from '../components/DailyMoodCheckIn';
 import MedicinesCard from '../components/MedicinesCard';
 import CareActivityCard from '../components/CareActivityCard';
+import HistoryRequestsNotice from '../components/history/HistoryRequestsNotice';
 import {
   IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
   IconPregnant, IconBaby, IconStar, IconCamellia, IconSprout, IconBlossom,
@@ -186,6 +187,10 @@ export default function Home() {
             </div>
           </motion.div>
         )}
+
+        <motion.div variants={fadeUp}>
+          <HistoryRequestsNotice />
+        </motion.div>
 
         {/* Quick actions */}
         <motion.div variants={fadeUp}>
