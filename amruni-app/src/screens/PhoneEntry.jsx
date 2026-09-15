@@ -1,11 +1,64 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
 import { authApi, apiError } from '../services/api';
-import Logo from '../components/Logo';
+import CamelliaBloom from '../components/CamelliaBloom';
+import {
+  CUES, MOTION, clamp, DESIGN_W, DESIGN_H, FLOWER_BOX, FLOWER_SPAN, FLOWER_SETTLED, LOGO_SCALE, OUTWARD,
+} from '../lib/bloomMotion';
 import { doctorAppHref } from '../lib/siteLinks';
 import { FlagIN } from '../icons.jsx';
+
+/**
+ * Sign-in, opened by the camellia bloom.
+ *
+ * The sequence is the "Camellia Bloom Login Animation" design, scene for
+ * scene: the flower unfurls in the middle of the screen (Bloom), rests while
+ * the wordmark settles under it (Hold), glides up and shrinks into the logo
+ * position (Relocate), and the heading, number field and footer rise in behind
+ * it (Reveal). Only the flower, its placement and that choreography come from
+ * the design; the form, its validation and the Send OTP button are this
+ * screen's own and behave exactly as before.
+ *
+ * Played once per browser session. Coming back from the OTP screen should not
+ * mean watching seven seconds of flower again, and neither should anyone who
+ * has asked the operating system to reduce motion. A tap anywhere during the
+ * bloom jumps straight to the glide.
+ */
+
+const SEEN_KEY = 'amruni_bloom_seen';
+const END = CUES.Rest;
+const REVEAL_AT = CUES.Reveal - 0.45;
+
+function shouldPlay() {
+  try {
+    if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return false;
+    return !sessionStorage.getItem(SEEN_KEY);
+  } catch {
+    return true;
+  }
+}
+
+/** Fades and rises in at `at` seconds, on the design's reveal curve. */
+function Reveal({ t, at, k, as: Tag = 'div', style, children, ...rest }) {
+  const p = clamp(MOTION.fade(at, at + 0.55)(t), 0, 1);
+  return (
+    <Tag
+      {...rest}
+      style={{
+        ...style,
+        opacity: p,
+        transform: p < 1 ? `translateY(${(1 - p) * 26 * k}px)` : undefined,
+        // Invisible means untouchable and unannounced, so nothing can be
+        // tapped or read out before it has appeared.
+        visibility: p === 0 ? 'hidden' : undefined,
+      }}
+    >
+      {children}
+    </Tag>
+  );
+}
 
 export default function PhoneEntry() {
   const navigate = useNavigate();
@@ -15,6 +68,70 @@ export default function PhoneEntry() {
   const [error, setError] = useState('');
 
   const isValid = /^[6-9]\d{9}$/.test(phone);
+
+  // ── the bloom clock ─────────────────────────────────────────────
+  const [play] = useState(shouldPlay);
+  const [t, setT] = useState(() => (play ? 0 : END));
+  const startRef = useRef(0);
+  const wrapRef = useRef(null);
+  const slotRef = useRef(null);
+  const [geo, setGeo] = useState(null);
+
+  useEffect(() => {
+    if (!play) return undefined;
+    let raf;
+    startRef.current = performance.now();
+    const tick = (now) => {
+      const next = Math.min((now - startRef.current) / 1000, END);
+      setT(next);
+      if (next < END) raf = requestAnimationFrame(tick);
+      else { try { sessionStorage.setItem(SEEN_KEY, '1'); } catch { /* private mode */ } }
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [play]);
+
+  // The flower's start and end points come from the real layout — the middle
+  // of this screen, and wherever the logo slot actually sits — so the glide
+  // lands on the slot at any width and after any resize.
+  useEffect(() => {
+    const wrap = wrapRef.current;
+    const slot = slotRef.current;
+    if (!wrap || !slot) return undefined;
+    const measure = () => {
+      const k = Math.min(wrap.clientWidth, 520) / DESIGN_W;
+      const span = FLOWER_SPAN * LOGO_SCALE * k;
+      setGeo({
+        w: wrap.clientWidth,
+        h: window.innerHeight,
+        k,
+        span,
+        cx: slot.offsetLeft + span / 2,
+        cy: slot.offsetTop + span / 2,
+      });
+    };
+    const ro = new ResizeObserver(measure);
+    ro.observe(wrap);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
+
+  function skip() {
+    if (!play || t >= CUES.Relocate) return;
+    startRef.current = performance.now() - CUES.Relocate * 1000;
+  }
+
+  const k = geo?.k ?? 390 / DESIGN_W;
+  const mStart = CUES.Relocate;
+  const mEnd = CUES.Relocate + 1.25;
+  const flowerStyle = geo && {
+    transform: `translate(${MOTION.glide(geo.w / 2, geo.cx, mStart, mEnd)(t)}px, ${MOTION.glide(geo.h * 0.42, geo.cy, mStart, mEnd)(t)}px)`
+      + ` scale(${MOTION.glide(1, LOGO_SCALE, mStart, mEnd)(t) * MOTION.glide(1.07, 1, 0, CUES.Hold)(t)})`
+      + ` rotate(${MOTION.glide(OUTWARD.spin[0], OUTWARD.spin[1], 0, CUES.Hold)(t)}deg)`,
+  };
+  const wordIn = clamp(MOTION.fade(CUES.Bloom + 2.5, CUES.Bloom + 3.3)(t), 0, 1);
+  const wordOut = 1 - clamp(MOTION.fade(CUES.Relocate - 0.1, CUES.Relocate + 0.45)(t), 0, 1);
+  const wordOpacity = wordIn * wordOut;
 
   function handleChange(e) {
     const val = e.target.value.replace(/\D/g, '').slice(0, 10);
@@ -39,24 +156,42 @@ export default function PhoneEntry() {
 
   return (
     <div className="screen screen--soft">
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: 'var(--sp-8) var(--sp-6)', paddingTop: 'calc(env(safe-area-inset-top) + var(--sp-10))' }}>
+      <div
+        ref={wrapRef}
+        onPointerDown={skip}
+        style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', padding: 'var(--sp-8) var(--sp-6)', paddingTop: 'calc(env(safe-area-inset-top) + var(--sp-10))' }}
+      >
 
-        {/* Brand mark */}
-        <motion.div
-          initial={{ opacity: 0, y: -8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: [0.16, 1, 0.3, 1] }}
-        >
-          <Logo size={40} variant="light" />
-        </motion.div>
+        {/* The flower. Drawn once at full size and moved with a transform, so
+            the bloom, the glide and the final logo are one continuous object. */}
+        <div className="bloom-flower" style={{ ...flowerStyle, opacity: geo ? 1 : 0 }} aria-hidden="true">
+          <div style={{ transform: 'translate(-50%, -50%)' }}>
+            <CamelliaBloom t={Math.min(t, FLOWER_SETTLED)} size={FLOWER_BOX * k} halo={t < CUES.Reveal} />
+          </div>
+        </div>
+
+        {/* The wordmark under the open bloom, gone before the flower moves. */}
+        {play && wordOpacity > 0 && geo && (
+          <div
+            className="bloom-wordmark"
+            aria-hidden="true"
+            style={{ top: geo.h * (1240 / DESIGN_H), opacity: wordOpacity, transform: `translateY(${(1 - wordIn) * 22 * k}px)` }}
+          >
+            <div className="bloom-wordmark__name" style={{ fontSize: 104 * k }}>
+              Am<span>r</span>uni
+            </div>
+            <div className="bloom-wordmark__tag" style={{ fontSize: 30 * k, marginTop: 16 * k }}>
+              Women’s Health · Your Way
+            </div>
+          </div>
+        )}
+
+        {/* Where the flower lands. Holds the logo's space in the layout so
+            nothing below shifts when it arrives. */}
+        <div ref={slotRef} style={{ width: geo?.span ?? 32, height: geo?.span ?? 32, flexShrink: 0 }} />
 
         {/* Heading */}
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.1, ease: [0.16, 1, 0.3, 1] }}
-          style={{ marginTop: 'var(--sp-10)' }}
-        >
+        <Reveal t={t} at={REVEAL_AT} k={k} style={{ marginTop: 'var(--sp-10)' }}>
           <h1 style={{
             fontFamily: 'var(--font-display)',
             fontSize: 'var(--text-3xl)',
@@ -75,14 +210,15 @@ export default function PhoneEntry() {
           }}>
             Enter your mobile number to receive a one-time code.
           </p>
-        </motion.div>
+        </Reveal>
 
         {/* Form */}
-        <motion.form
+        <Reveal
+          as="form"
+          t={t}
+          at={REVEAL_AT + 0.22}
+          k={k}
           onSubmit={handleSubmit}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.2, ease: [0.16, 1, 0.3, 1] }}
           style={{ marginTop: 'var(--sp-10)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}
           noValidate
         >
@@ -130,16 +266,17 @@ export default function PhoneEntry() {
           >
             {loading ? <Spinner /> : 'Send OTP'}
           </button>
-        </motion.form>
+        </Reveal>
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
 
         {/* Footer */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ duration: 0.4, delay: 0.5 }}
+        <Reveal
+          as="p"
+          t={t}
+          at={REVEAL_AT + 0.6}
+          k={k}
           style={{
             fontSize: 'var(--text-xs)',
             color: 'var(--clr-ink-subtle)',
@@ -160,7 +297,7 @@ export default function PhoneEntry() {
           >
             Practitioner? Sign in here
           </a>
-        </motion.p>
+        </Reveal>
       </div>
     </div>
   );

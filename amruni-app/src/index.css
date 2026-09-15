@@ -6323,3 +6323,23 @@ button.lic-badge:focus-visible { outline: 2px solid var(--clr-brand); outline-of
 .share__add-text { flex: 1; font-size: var(--text-xs); font-weight: 600; line-height: 1.45; color: var(--clr-ink); }
 .share__add-go { color: var(--clr-brand); display: flex; }
 @media (prefers-reduced-motion: reduce) { .hr-card, .hr-card:hover { transition: none; transform: none; } }
+
+/* ── Camellia bloom on sign-in ──────────────────────────────────── */
+.bloom-flower {
+  position: absolute; left: 0; top: 0; z-index: 2;
+  transform-origin: 0 0; pointer-events: none;
+  will-change: transform;
+}
+.bloom-wordmark {
+  position: absolute; left: 0; right: 0; z-index: 1;
+  text-align: center; pointer-events: none;
+}
+.bloom-wordmark__name {
+  font-family: var(--font-display); font-weight: 700; line-height: 1.1;
+  letter-spacing: -0.01em; color: var(--clr-ink);
+}
+.bloom-wordmark__name span { color: #B8860F; }
+.bloom-wordmark__tag {
+  font-weight: 600; letter-spacing: 0.16em; text-transform: uppercase;
+  color: var(--clr-ink-muted);
+}
