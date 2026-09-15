@@ -46,9 +46,9 @@ def me_payload(user_id: int) -> dict:
             "dueDateOverride": preg["due_date_override"] if preg else None,
             "prePregnancyWeightKg": preg["pre_pregnancy_weight_kg"] if preg else None,
             "heightCm": preg["height_cm"] if preg else None,
-            "trustedContacts": json.loads(preg["trusted_contacts"] or "[]") if preg else [],
-            "weightLogs": json.loads(preg["weight_logs"] or "[]") if preg else [],
-            "kickCounts": json.loads(preg["kick_counts"] or "{}") if preg else {},
+            "trustedContacts": crypto.dec_json(preg["trusted_contacts"], []) if preg else [],
+            "weightLogs": crypto.dec_json(preg["weight_logs"], []) if preg else [],
+            "kickCounts": crypto.dec_json(preg["kick_counts"], {}) if preg else {},
             "loggedDays": {
                 log["date"]: {
                     # This table is a mirror the mood log also writes to, and it
@@ -242,8 +242,8 @@ def put_state(body: StateBody, user: dict = Depends(current_user)):
                  kick_counts = excluded.kick_counts""",
             (user["id"], body.pregnancy.lastPeriodStart, body.pregnancy.dueDateOverride,
              body.pregnancy.prePregnancyWeightKg, body.pregnancy.heightCm,
-             json.dumps(body.pregnancy.trustedContacts), json.dumps(body.pregnancy.weightLogs),
-             json.dumps(body.pregnancy.kickCounts)),
+             crypto.enc_json(body.pregnancy.trustedContacts), crypto.enc_json(body.pregnancy.weightLogs),
+             crypto.enc(json.dumps(body.pregnancy.kickCounts or {}))),
         )
         for day, data in body.pregnancy.loggedDays.items():
             if len(day) == 10 and day[4] == "-" and day[7] == "-":
@@ -317,7 +317,7 @@ def post_screening(body: ScreeningBody, user: dict = Depends(current_user)):
     with get_db() as db:
         db.execute(
             "INSERT INTO screenings (user_id, tool, score, answers) VALUES (?, ?, ?, ?)",
-            (user["id"], body.tool, body.score, json.dumps(body.answers)),
+            (user["id"], body.tool, body.score, crypto.enc_json(body.answers)),
         )
     return {"success": True}
 

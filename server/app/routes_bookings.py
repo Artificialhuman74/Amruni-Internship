@@ -23,6 +23,7 @@ from pydantic import BaseModel
 
 from . import meet, payments
 from .auth import current_user
+from . import crypto
 from .db import get_db, appointment_json, doctor_json, new_id, payment_json, record_json, to_12h, utcnow_iso
 from .routes_doctors import release_expired_locks
 
@@ -111,7 +112,7 @@ def create_booking(body: BookingBody, user: dict = Depends(current_user)):
         db.execute(
             """INSERT INTO appointments (id, user_id, doctor_id, slot_id, date, time, reason, consult_mode, amount_inr, status, anonymous)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending_payment', ?)""",
-            (appt_id, user["id"], doctor_id, slot_id, appt_date, appt_time, body.reason, body.mode, amount, anonymous),
+            (appt_id, user["id"], doctor_id, slot_id, appt_date, appt_time, crypto.enc(body.reason), body.mode, amount, anonymous),
         )
 
         order = payments.create_order(amount, receipt=appt_id)
@@ -170,7 +171,7 @@ def settle_payment(db, payment, appt, provider_payment_id=None, signature=None):
         meeting = meet.create_meeting(
             summary=f"Amruni consultation — {doctor['name']}",
             description=f"Video consultation booked via Amruni.\nAppointment: {appt['id']}\n"
-                        f"Reason: {appt['reason'] or 'Not specified'}",
+                        f"Reason: {crypto.dec(appt['reason']) or 'Not specified'}",
             date=appt["date"],
             start_time=start_time,
             duration_minutes=duration,

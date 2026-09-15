@@ -173,7 +173,7 @@ def claim_receipt(appointment_id: str, user: dict = Depends(current_user)):
             "date": appt["date"],
             "time": appt["time"],
             "mode": appt["consult_mode"],
-            "reason": appt["reason"],
+            "reason": crypto.dec(appt["reason"]),
             "diagnosis": crypto.dec(record["diagnosis"]) if record else None,
             "followUp": record["follow_up"] if record else None,
         },

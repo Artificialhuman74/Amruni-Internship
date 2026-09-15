@@ -347,7 +347,7 @@ def book_via_share(token: str, body: BookBody):
                  (id, user_id, doctor_id, slot_id, date, time, reason, consult_mode, amount_inr, status)
                VALUES (?, ?, ?, ?, ?, ?, ?, 'video', ?, 'pending_payment')""",
             (appt_id, uid, slot["doctor_id"], slot["id"], slot["date"],
-             to_12h(slot["start_time"]), body.reason, slot["price_inr"]),
+             to_12h(slot["start_time"]), crypto.enc(body.reason), slot["price_inr"]),
         )
 
         # The order is raised against the link, and `share_token` is what the

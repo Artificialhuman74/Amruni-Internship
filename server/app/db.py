@@ -596,6 +596,16 @@ def init_db():
 # own.
 ENCRYPTED_COLUMNS = {
     "users": ["name", "dob", "phone", "goal"],
+    # Why she booked, in her words ("heavy bleeding for three weeks"). Found
+    # in plaintext while writing the privacy screen's promise; it is exactly
+    # the kind of sentence that promise is about.
+    "appointments": ["reason"],
+    # PHQ-9 / GAD-7 item answers. The total stays plain so trends can be drawn;
+    # the answers include item 9 of the PHQ-9, which asks about self-harm.
+    "screenings": ["answers"],
+    # Names and phone numbers of the people she trusts, her weight history and
+    # her baby's kick counts.
+    "pregnancy_state": ["trusted_contacts", "weight_logs", "kick_counts"],
     "patient_charts": ["allergies", "conditions", "blood_group", "self_declared", "family_history"],
     "consultation_records": ["diagnosis", "notes", "vitals", "prescription"],
     "journal_entries": ["text", "context"],
@@ -604,7 +614,9 @@ ENCRYPTED_COLUMNS = {
     "cycle_logs": ["symptoms"],
     "medications": ["name", "dose", "frequency", "doctor_name"],
     "sos_contacts": ["name", "phone", "relation"],
-    "sos_alerts": ["message"],
+    # `sent_to` is the phone numbers an SOS went to — as identifying as the
+    # contacts themselves, which were already encrypted one table over.
+    "sos_alerts": ["message", "sent_to"],
     "documents": ["title", "data"],
     "care_shares": ["label"],
     "care_events": ["summary", "actor_label"],
@@ -758,7 +770,7 @@ def appointment_json(row) -> dict:
         "slotId": row["slot_id"],
         "date": row["date"],
         "time": row["time"],
-        "reason": row["reason"],
+        "reason": crypto.dec(row["reason"]),
         "consultMode": row["consult_mode"],
         "amount": row["amount_inr"],
         "fee": f"₹{row['amount_inr']}" if row["amount_inr"] else "",
