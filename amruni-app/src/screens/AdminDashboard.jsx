@@ -4,6 +4,7 @@ import { authApi, getAdminToken, setAdminToken, apiError } from '../services/api
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
 import { SpecialtyPicker, LanguagePicker, LicenceEditor } from '../components/admin/PractitionerFields';
+import CampManager from '../components/admin/CampManager';
 import { EMPTY_LICENCE, licenceLine, licenceProblem } from '../data/practitioners';
 import { patientAppHref } from '../lib/siteLinks';
 import {
@@ -565,6 +566,9 @@ export default function AdminDashboard() {
             </div>
           )}
         </div>
+
+        {/* Health camps — organised here, announced on patients' Home. */}
+        <CampManager doctors={doctors} />
       </div>
     </div>
   );

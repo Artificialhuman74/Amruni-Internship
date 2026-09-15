@@ -11,6 +11,7 @@ import OTPVerify from '../screens/OTPVerify';
 import PrivacyFirst from '../screens/onboarding/PrivacyFirst';
 import SamadhanaConversation from '../screens/SamadhanaConversation';
 import HealthRecord from '../screens/HealthRecord';
+import Camps from '../screens/Camps';
 import NameStep from '../screens/onboarding/NameStep';
 import DobStep from '../screens/onboarding/DobStep';
 import GoalsStep from '../screens/onboarding/GoalsStep';
@@ -94,6 +95,7 @@ export default function PatientApp() {
               <Route path="/care-activity" element={<CareActivity />} />
               <Route path="/medicines" element={<Medicines />} />
               <Route path="/health-record" element={<HealthRecord />} />
+              <Route path="/camps" element={<Camps />} />
             <Route path="/journal" element={<Journal />} />
               <Route path="/community" element={<Community />} />
               <Route path="/community/:id" element={<CommunityThread />} />

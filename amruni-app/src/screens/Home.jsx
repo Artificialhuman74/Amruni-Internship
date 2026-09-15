@@ -10,6 +10,7 @@ import DailyMoodCheckIn from '../components/DailyMoodCheckIn';
 import MedicinesCard from '../components/MedicinesCard';
 import CareActivityCard from '../components/CareActivityCard';
 import HistoryRequestsNotice from '../components/history/HistoryRequestsNotice';
+import CampsNotice from '../components/CampsNotice';
 import HealthRecordCard from '../components/history/HealthRecordCard';
 import {
   IconWave, IconStethoscope, IconAppointment, IconChat, IconJournal,
@@ -191,6 +192,11 @@ export default function Home() {
 
         <motion.div variants={fadeUp}>
           <HistoryRequestsNotice />
+        </motion.div>
+
+        {/* Health camps coming up, running, or just held. */}
+        <motion.div variants={fadeUp}>
+          <CampsNotice />
         </motion.div>
 
         {/* Quick actions */}

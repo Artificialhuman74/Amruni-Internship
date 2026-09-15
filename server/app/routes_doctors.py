@@ -228,6 +228,7 @@ def delete_licence(doctor_id: int, licence_id: int, user: dict = Depends(require
 def delete_doctor(doctor_id: int, user: dict = Depends(require_admin)):
     with get_db() as db:
         db.execute("DELETE FROM doctor_licences WHERE doctor_id = ?", (doctor_id,))
+        db.execute("DELETE FROM camp_doctors WHERE doctor_id = ?", (doctor_id,))
         cur = db.execute("DELETE FROM doctors WHERE id = ?", (doctor_id,))
         if cur.rowcount == 0:
             raise HTTPException(404, "Doctor not found")
