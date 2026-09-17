@@ -5,7 +5,7 @@ const TOKEN_KEY = 'amruni_token';
 const ADMIN_KEY = 'amruni_admin_token'; // sessionStorage: short-lived, per-tab
 
 export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.DEV ? '/api' : (import.meta.env.VITE_API_URL || '/api'),
   timeout: 15000,
 });
 
@@ -79,6 +79,11 @@ api.interceptors.response.use(
 // Human-readable message for toasts/inline errors.
 export function apiError(err, fallback = 'Something went wrong. Please try again.') {
   if (err.response?.data?.error) return err.response.data.error;
+  if (err.response?.data?.detail) {
+    const detail = err.response.data.detail;
+    if (typeof detail === 'string') return detail;
+    if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
+  }
   if (err.code === 'ERR_NETWORK') return 'Cannot reach the server. Check your connection.';
   return fallback;
 }

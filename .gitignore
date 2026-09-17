@@ -27,6 +27,8 @@ yarn-debug.log*
 
 # server database
 server/data/
+server/*.db
+*.db
 server/.venv/
 server/__pycache__/
 **/__pycache__/

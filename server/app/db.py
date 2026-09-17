@@ -147,6 +147,7 @@ CREATE TABLE IF NOT EXISTS doctor_licences (
   authority   TEXT NOT NULL,              -- issuing body, e.g. Karnataka Medical Council
   number      TEXT NOT NULL,
   expires_on  TEXT,                       -- YYYY-MM-DD; NULL where the registration does not lapse
+  document    TEXT,                       -- optional data URL / certificate document
   created_at  TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
 );
 CREATE INDEX IF NOT EXISTS idx_licence_doctor ON doctor_licences(doctor_id);
@@ -693,6 +694,7 @@ def init_db():
         # Family and genetic history — a doctor's own note, not derived from
         # anything she logs, so it needed a column rather than a computed field.
         _ensure_column(db, "patient_charts", "family_history", "TEXT")
+        _ensure_column(db, "doctor_licences", "document", "TEXT")
         seed_doctors(db)
         seed_slots(db)
 
@@ -867,6 +869,7 @@ def licence_json(row) -> dict:
         "authority": row["authority"],
         "number": row["number"],
         "expiresOn": row["expires_on"],
+        "document": row["document"] if "document" in row.keys() else None,
         "expired": bool(row["expires_on"]) and row["expires_on"] < date.today().isoformat(),
     }
 
