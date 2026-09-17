@@ -90,7 +90,7 @@ def train(force=False):
     MODEL_PATH.parent.mkdir(parents=True, exist_ok=True)
     joblib.dump(models, MODEL_PATH)
     _models = models
-    print(f"[pcos] risk model ready ({models['meta']['source']}) → {MODEL_PATH.name}")
+    print(f"[pcos] risk model ready ({models['meta']['source']}) -> {MODEL_PATH.name}")
     return models
 
 

@@ -1,15 +1,16 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { appointmentApi } from '../services/appointmentApi';
 import { authApi, getAdminToken, setAdminToken, apiError } from '../services/api';
 import { confirm } from '../lib/haptics';
 import DoctorAvatar from '../components/DoctorAvatar';
-import { SpecialtyPicker, LanguagePicker, LicenceEditor } from '../components/admin/PractitionerFields';
+import { LicenceEditor } from '../components/admin/PractitionerFields';
 import CampManager from '../components/admin/CampManager';
+import AddDoctorModal from '../components/admin/AddDoctorModal';
 import { EMPTY_LICENCE, licenceLine, licenceProblem } from '../data/practitioners';
 import { patientAppHref } from '../lib/siteLinks';
 import {
   IconSettings, IconAlert, IconPlus, IconTip, IconMobile, IconCheckCircle,
-  IconUser, IconChat, IconClose, IconAppointment,
+  IconUser, IconChat, IconClose, IconAppointment, IconSearch, IconHospital,
 } from '../icons.jsx';
 
 const inlineHint = { display: 'inline-flex', alignItems: 'center', gap: 4, verticalAlign: '-2px' };
@@ -27,19 +28,12 @@ export default function AdminDashboard() {
   const [slotDoctorId, setSlotDoctorId] = useState(null); // doctor whose slot manager is open
   const [licenceDoctorId, setLicenceDoctorId] = useState(null); // doctor whose licences are open
 
-  // Form state
-  const [docName, setDocName] = useState('');
-  const [docSpecialty, setDocSpecialty] = useState('Gynaecology');
-  const [docExp, setDocExp] = useState('');
-  const [docFee, setDocFee] = useState('');
-  const [docMeetLink, setDocMeetLink] = useState('');
-  const [docPhone, setDocPhone] = useState('');
-  const [docLang, setDocLang] = useState(['English', 'Hindi']);
-  const [docLicences, setDocLicences] = useState([{ ...EMPTY_LICENCE }]);
-  const [showLicenceErrors, setShowLicenceErrors] = useState(false);
-  const [docPhoto, setDocPhoto] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [formMessage, setFormMessage] = useState({ text: '', type: '' });
+  // Navigation & filter state
+  const [activeTab, setActiveTab] = useState('doctors'); // 'doctors' | 'camps'
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showActionMenu, setShowActionMenu] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSpecialty, setSelectedSpecialty] = useState('All');
 
 
   // Load doctors if authenticated
@@ -78,109 +72,42 @@ export default function AdminDashboard() {
     confirm();
   };
 
-  const handlePhotoUpload = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      // Validate file size (limit to 1.5MB for localStorage storage capacity)
-      if (file.size > 1500000) {
-        alert('File is too large. Please upload an image smaller than 1.5MB.');
-        return;
-      }
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setDocPhoto(reader.result); // Base64 data URL
-      };
-      reader.readAsDataURL(file);
-    }
-  };
+  const availableSpecialties = useMemo(() => {
+    const list = [
+      'All',
+      'Gynaecology',
+      'Fertility',
+      'Mental Health',
+      'Pregnancy',
+      'Menopause',
+      'Ayurveda',
+      'General Medicine',
+      'Dermatology',
+      'Nutrition & Dietetics',
+    ];
+    const dynamicSet = new Set(list);
+    doctors.forEach((d) => {
+      if (d.specialty) dynamicSet.add(d.specialty);
+    });
+    return Array.from(dynamicSet);
+  }, [doctors]);
 
-  const handleAddDoctor = async (e) => {
-    e.preventDefault();
-    if (!docName.trim() || !docExp.trim() || !docFee.trim() || !docSpecialty) {
-      setFormMessage({ text: 'Please fill in all required fields.', type: 'error' });
-      return;
-    }
-    // The clinic's instruction: no practitioner reaches patients without a
-    // licence on record. Checked here for a fast, specific message, and again
-    // on the server, which is the check that actually counts.
-    const badLicence = docLicences.map(licenceProblem).find(Boolean);
-    if (badLicence) {
-      setShowLicenceErrors(true);
-      setFormMessage({ text: `Licence: ${badLicence}.`, type: 'error' });
-      return;
-    }
+  const filteredDoctors = useMemo(() => {
+    return doctors.filter((doc) => {
+      const matchesSpecialty =
+        selectedSpecialty === 'All' ||
+        (doc.specialty && doc.specialty.toLowerCase() === selectedSpecialty.toLowerCase());
+      if (!matchesSpecialty) return false;
 
-    setSubmitting(true);
-    setFormMessage({ text: '', type: '' });
-
-    // Formatting fields
-    const formattedFee = docFee.startsWith('₹') ? docFee : `₹${docFee}`;
-    const formattedExp = docExp.toLowerCase().includes('yr') ? docExp : `${docExp} yrs exp`;
-    const langArray = docLang;
-    
-    // Auto-generate meet link if left blank
-    let meetLink = docMeetLink.trim();
-    if (!meetLink) {
-      const randomCode = Math.random().toString(36).substring(2, 5) + '-' + 
-                         Math.random().toString(36).substring(2, 6) + '-' + 
-                         Math.random().toString(36).substring(2, 5);
-      meetLink = `https://meet.google.com/${randomCode}`;
-    }
-
-    const doctorData = {
-      name: docName.trim(),
-      specialty: docSpecialty,
-      exp: formattedExp,
-      fee: formattedFee,
-      meetLink: meetLink,
-      phone: docPhone.trim(),
-      photo: docPhoto, // Base64 uploaded photo
-      lang: langArray,
-      avatar: null, // avatar rendering uses initials/photo via DoctorAvatar
-      rating: parseFloat((4.8 + Math.random() * 0.2).toFixed(1)), // randomized 4.8 - 5.0
-      reviews: Math.floor(Math.random() * 150) + 15,
-      nextSlot: 'Today, 4:00 PM',
-      licences: docLicences.map((l) => ({
-        country: l.country,
-        region: l.region || null,
-        authority: l.authority.trim(),
-        number: l.number.trim(),
-        expiresOn: l.expiresOn || null,
-      })),
-    };
-
-    try {
-      const newDoc = await appointmentApi.addDoctor(doctorData);
-      setDoctors((prev) => [...prev, newDoc]);
-      setFormMessage({ text: 'Doctor added successfully!', type: 'success' });
-      confirm();
-
-      // Reset form
-      setDocName('');
-      setDocExp('');
-      setDocFee('');
-      setDocMeetLink('');
-      setDocPhone('');
-      setDocPhoto('');
-      setDocLang(['English', 'Hindi']);
-      setDocLicences([{ ...EMPTY_LICENCE }]);
-      setShowLicenceErrors(false);
-
-      // Reset file input in DOM
-      const fileInput = document.getElementById('doctor-photo-upload');
-      if (fileInput) fileInput.value = '';
-
-      // Clear success message after 3 seconds
-      setTimeout(() => setFormMessage({ text: '', type: '' }), 3000);
-    } catch (err) {
-      console.error(err);
-      // The server's reason, not a generic failure — it names the licence
-      // problem exactly, and an admin cannot fix what she is not told.
-      setFormMessage({ text: apiError(err, 'Failed to add doctor.'), type: 'error' });
-    } finally {
-      setSubmitting(false);
-    }
-  };
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase().trim();
+      return (
+        (doc.name && doc.name.toLowerCase().includes(q)) ||
+        (doc.specialty && doc.specialty.toLowerCase().includes(q)) ||
+        (doc.phone && doc.phone.toLowerCase().includes(q))
+      );
+    });
+  }, [doctors, selectedSpecialty, searchQuery]);
 
   const handleDeleteDoctor = async (id, name) => {
     if (window.confirm(`Are you sure you want to delete ${name}?`)) {
@@ -300,275 +227,507 @@ export default function AdminDashboard() {
         </button>
       </div>
 
-      <div style={{ padding: 'var(--sp-5) var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-6)' }}>
-        {/* Quick Back Navigation */}
-        <button
-          onClick={() => window.location.assign(patientAppHref)}
-          style={{
-            alignSelf: 'flex-start',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'none',
-            border: 'none',
-            color: 'var(--clr-brand)',
-            fontWeight: 600,
-            fontSize: 'var(--text-sm)',
-            cursor: 'pointer',
-            padding: 0
-          }}
-        >
-          ← Return to Patient App (Profile)
-        </button>
-
-        {/* Stats Grid */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 'var(--sp-3)' }}>
+      <div style={{ padding: 'var(--sp-5) var(--sp-6)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-5)' }}>
+        {/* Stats Grid - 2 Cards (Avg Fee removed) */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 'var(--sp-3)' }}>
           <div style={{ background: 'var(--clr-surface)', padding: 'var(--sp-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--clr-border)', textAlign: 'center' }}>
             <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', textTransform: 'uppercase' }}>Doctors</p>
             <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-ink)', marginTop: 4 }}>{doctors.length}</p>
           </div>
           <div style={{ background: 'var(--clr-surface)', padding: 'var(--sp-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--clr-border)', textAlign: 'center' }}>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', textTransform: 'uppercase' }}>Types</p>
+            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', textTransform: 'uppercase' }}>Specialties</p>
             <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-ink)', marginTop: 4 }}>
               {new Set(doctors.map(d => d.specialty)).size}
             </p>
           </div>
-          <div style={{ background: 'var(--clr-surface)', padding: 'var(--sp-4)', borderRadius: 'var(--radius-lg)', border: '1px solid var(--clr-border)', textAlign: 'center' }}>
-            <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', textTransform: 'uppercase' }}>Avg Fee</p>
-            <p style={{ fontSize: 'var(--text-xl)', fontWeight: 700, color: 'var(--clr-success)', marginTop: 4 }}>
-              ₹{doctors.length > 0 ? Math.round(doctors.reduce((sum, d) => sum + parseInt(d.fee.replace(/\D/g, '')), 0) / doctors.length) : 0}
-            </p>
-          </div>
         </div>
 
-        {/* Add Doctor Section */}
-        <div style={{
-          background: 'var(--clr-surface)',
-          padding: 'var(--sp-5)',
-          borderRadius: 'var(--radius-xl)',
-          border: '1.5px solid var(--clr-border)',
-        }}>
-          <h2 style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-4)', display: 'flex', alignItems: 'center', gap: 8 }}>
-            <IconPlus size={18} /> Add New Doctor
-          </h2>
+        {/* Minimalist Tabs */}
+        <div
+          role="tablist"
+          style={{
+            display: 'flex',
+            gap: 6,
+            background: 'var(--clr-surface-2)',
+            padding: 4,
+            borderRadius: 'var(--radius-xl)',
+            border: '1px solid var(--clr-border)'
+          }}
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'doctors'}
+            onClick={() => setActiveTab('doctors')}
+            style={{
+              flex: 1,
+              padding: 'var(--sp-2) var(--sp-4)',
+              borderRadius: 'var(--radius-lg)',
+              border: 'none',
+              background: activeTab === 'doctors' ? 'var(--clr-surface)' : 'transparent',
+              color: activeTab === 'doctors' ? 'var(--clr-ink)' : 'var(--clr-ink-muted)',
+              fontWeight: activeTab === 'doctors' ? 700 : 500,
+              fontSize: 'var(--text-sm)',
+              boxShadow: activeTab === 'doctors' ? 'var(--shadow-xs)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <IconUser size={16} />
+            <span>Doctors</span>
+            <span
+              style={{
+                background: activeTab === 'doctors' ? 'var(--clr-brand)' : 'var(--clr-border)',
+                color: activeTab === 'doctors' ? 'var(--clr-ink-on-dark)' : 'var(--clr-ink-muted)',
+                fontSize: 11,
+                padding: '1px 7px',
+                borderRadius: 'var(--radius-full)',
+                fontWeight: 700
+              }}
+            >
+              {doctors.length}
+            </span>
+          </button>
 
-          <form onSubmit={handleAddDoctor} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>NAME *</label>
-                <input
-                  type="text"
-                  value={docName}
-                  onChange={(e) => setDocName(e.target.value)}
-                  placeholder="e.g. Dr. Kavitha Nair"
-                  style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
-                  required
-                />
-              </div>
-
-              <div>
-                <SpecialtyPicker value={docSpecialty} onChange={setDocSpecialty} required />
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
-              <div>
-                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>EXPERIENCE *</label>
-                <input
-                  type="text"
-                  value={docExp}
-                  onChange={(e) => setDocExp(e.target.value)}
-                  placeholder="e.g. 12 yrs or 12"
-                  style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
-                  required
-                />
-              </div>
-
-              <div>
-                <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>FEE (₹) *</label>
-                <input
-                  type="text"
-                  value={docFee}
-                  onChange={(e) => setDocFee(e.target.value)}
-                  placeholder="e.g. 599"
-                  style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
-                  required
-                />
-              </div>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>GOOGLE MEET LINK</label>
-              <input
-                type="url"
-                value={docMeetLink}
-                onChange={(e) => setDocMeetLink(e.target.value)}
-                placeholder="e.g. https://meet.google.com/abc-defg-hij (Leave blank to auto-generate)"
-                style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
-              />
-              <p style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
-                <span style={inlineHint}><IconTip size={13} /></span> Clicking call in client app will redirect the customer to this Meet link instead of in-app video.
-              </p>
-            </div>
-
-            <div>
-              <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>PHONE NUMBER (for Chat/DM)</label>
-              <input
-                type="tel"
-                value={docPhone}
-                onChange={(e) => setDocPhone(e.target.value)}
-                placeholder="e.g. 9876543210 (10-digit mobile)"
-                style={{ width: '100%', padding: 'var(--sp-3) var(--sp-4)', borderRadius: 'var(--radius-md)', border: '1px solid var(--clr-border)', background: 'var(--clr-surface-2)', color: 'var(--clr-ink)', fontSize: 'var(--text-sm)', outline: 'none' }}
-              />
-              <p style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
-                <span style={inlineHint}><IconMobile size={13} /></span> Used for WhatsApp chat consultations. Chat fee = ⅓ of video fee (auto-calculated).
-              </p>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--sp-3)' }}>
-              <div>
-                <LanguagePicker value={docLang} onChange={setDocLang} />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 10, alignItems: 'end' }}>
-                <div>
-                  <label style={{ display: 'block', fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink-muted)', marginBottom: 4 }}>UPLOAD PHOTO</label>
-                  <input
-                    id="doctor-photo-upload"
-                    type="file"
-                    accept="image/*"
-                    onChange={handlePhotoUpload}
-                    style={{
-                      width: '100%',
-                      fontSize: 11,
-                      color: 'var(--clr-ink-muted)',
-                      cursor: 'pointer'
-                    }}
-                  />
-                </div>
-                {docPhoto ? (
-                  <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', overflow: 'hidden', border: '1.5px solid var(--clr-border)', flexShrink: 0 }}>
-                    <img src={docPhoto} alt="Upload preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  </div>
-                ) : (
-                  <div style={{ width: 44, height: 44, borderRadius: 'var(--radius-md)', background: 'var(--clr-surface-2)', border: '1.5px dashed var(--clr-border)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 9, color: 'var(--clr-ink-subtle)', flexShrink: 0 }}>
-                    No Photo
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <LicenceEditor value={docLicences} onChange={setDocLicences} showErrors={showLicenceErrors} />
-
-            {formMessage.text && (
-              <p style={{
-                color: formMessage.type === 'success' ? 'var(--clr-success)' : 'var(--clr-brand)',
-                fontSize: 'var(--text-sm)',
-                fontWeight: 600
-              }}>
-                <span style={inlineHint}>{formMessage.type === 'success' ? <IconCheckCircle size={15} /> : <IconAlert size={15} />}</span> {formMessage.text}
-              </p>
-            )}
-
-            <button type="submit" className="btn btn--primary" disabled={submitting}>
-              {submitting ? 'Adding doctor...' : 'Add Doctor'}
-            </button>
-          </form>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={activeTab === 'camps'}
+            onClick={() => setActiveTab('camps')}
+            style={{
+              flex: 1,
+              padding: 'var(--sp-2) var(--sp-4)',
+              borderRadius: 'var(--radius-lg)',
+              border: 'none',
+              background: activeTab === 'camps' ? 'var(--clr-surface)' : 'transparent',
+              color: activeTab === 'camps' ? 'var(--clr-ink)' : 'var(--clr-ink-muted)',
+              fontWeight: activeTab === 'camps' ? 700 : 500,
+              fontSize: 'var(--text-sm)',
+              boxShadow: activeTab === 'camps' ? 'var(--shadow-xs)' : 'none',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: 8,
+              transition: 'all 0.15s ease'
+            }}
+          >
+            <IconHospital size={16} />
+            <span>Health Camps</span>
+          </button>
         </div>
 
-        {/* Doctor Listing Section */}
-        <div>
-          <h2 style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--clr-ink)', marginBottom: 'var(--sp-4)' }}>
-            <span style={inlineHint}><IconUser size={18} /></span> Doctor Directory ({doctors.length})
-          </h2>
-
-          {loading ? (
-            <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--sp-8) 0' }}>
-              <div className="spinner"></div>
-            </div>
-          ) : (
+        {/* Tab 1: Doctors */}
+        {activeTab === 'doctors' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+            {/* Search & Specialty Filter */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
-              {doctors.map((doc) => (
-                <div key={doc.id}>
-                <div
+              {/* Search Bar */}
+              <div style={{ position: 'relative' }}>
+                <span
                   style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    padding: 'var(--sp-4)',
-                    background: 'var(--clr-surface)',
-                    border: '1px solid var(--clr-border)',
-                    borderRadius: 'var(--radius-lg)',
-                    gap: 'var(--sp-3)'
+                    position: 'absolute',
+                    left: 14,
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    color: 'var(--clr-ink-muted)',
+                    display: 'inline-flex',
+                    pointerEvents: 'none'
                   }}
                 >
-                  <DoctorAvatar doctor={doc} size={48} />
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>{doc.name}</div>
-                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>{doc.specialty} · {doc.exp}</div>
-                    <LicenceBadge doctor={doc} onClick={() => setLicenceDoctorId(licenceDoctorId === doc.id ? null : doc.id)} />
-                    <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
-                      <span style={inlineHint}><IconAppointment size={11} /></span> Next open slot: {doc.nextSlot || 'None published'}
-                    </div>
-                    <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 2 }}>
-                      <span style={inlineHint}><IconMobile size={11} /></span> Phone: {doc.phone || 'Not set'} · <span style={inlineHint}><IconChat size={11} /></span> Chat fee: ₹{doc.chatFee ?? '—'}
-                    </div>
-                  </div>
-                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
-                    <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)' }}>{doc.fee}</span>
-                    <button
-                      onClick={() => setSlotDoctorId(slotDoctorId === doc.id ? null : doc.id)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: 'var(--radius-md)',
-                        border: 'none',
-                        background: slotDoctorId === doc.id ? 'var(--clr-brand)' : 'oklch(0.55 0.12 260 / 0.1)',
-                        color: slotDoctorId === doc.id ? 'var(--clr-ink-on-dark)' : 'oklch(0.45 0.12 260)',
-                        fontWeight: 600,
-                        fontSize: 10,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Slots
-                    </button>
-                    <button
-                      onClick={() => handleDeleteDoctor(doc.id, doc.name)}
-                      style={{
-                        padding: '4px 8px',
-                        borderRadius: 'var(--radius-md)',
-                        border: 'none',
-                        background: 'oklch(0.60 0.18 20 / 0.1)',
-                        color: 'oklch(0.60 0.18 20)',
-                        fontWeight: 600,
-                        fontSize: 10,
-                        cursor: 'pointer',
-                      }}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-                {slotDoctorId === doc.id && <SlotManager doctor={doc} />}
-                {licenceDoctorId === doc.id && (
-                  <LicenceManager
-                    doctor={doc}
-                    onChange={(licences) => setDoctors((prev) => prev.map((d) => (d.id === doc.id ? withLicences(d, licences) : d)))}
-                  />
+                  <IconSearch size={17} />
+                </span>
+                <input
+                  type="text"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  placeholder="Search by doctor name, specialty, or phone..."
+                  style={{
+                    width: '100%',
+                    padding: '10px 38px 10px 42px',
+                    borderRadius: 'var(--radius-xl)',
+                    border: '1.5px solid var(--clr-border)',
+                    background: 'var(--clr-surface)',
+                    color: 'var(--clr-ink)',
+                    fontSize: 'var(--text-sm)',
+                    outline: 'none',
+                    boxShadow: 'var(--shadow-xs)'
+                  }}
+                />
+                {searchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setSearchQuery('')}
+                    style={{
+                      position: 'absolute',
+                      right: 12,
+                      top: '50%',
+                      transform: 'translateY(-50%)',
+                      background: 'none',
+                      border: 'none',
+                      color: 'var(--clr-ink-muted)',
+                      cursor: 'pointer',
+                      padding: 4,
+                      display: 'flex'
+                    }}
+                  >
+                    <IconClose size={15} />
+                  </button>
                 )}
-                </div>
-              ))}
+              </div>
 
-              {doctors.length === 0 && (
-                <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--clr-ink-muted)', border: '1px dashed var(--clr-border)', borderRadius: 'var(--radius-lg)' }}>
-                  No doctors currently registered in the database.
-                </div>
-              )}
+              {/* Specialty Filter Pills */}
+              <div
+                style={{
+                  display: 'flex',
+                  gap: 8,
+                  overflowX: 'auto',
+                  paddingBottom: 4,
+                  scrollbarWidth: 'none',
+                  WebkitOverflowScrolling: 'touch'
+                }}
+              >
+                {availableSpecialties.map((spec) => {
+                  const isSelected = selectedSpecialty.toLowerCase() === spec.toLowerCase();
+                  return (
+                    <button
+                      key={spec}
+                      type="button"
+                      onClick={() => setSelectedSpecialty(spec)}
+                      style={{
+                        padding: '6px 14px',
+                        borderRadius: 'var(--radius-full)',
+                        border: isSelected ? '1px solid var(--clr-brand)' : '1px solid var(--clr-border)',
+                        background: isSelected ? 'var(--clr-brand)' : 'var(--clr-surface)',
+                        color: isSelected ? 'var(--clr-ink-on-dark)' : 'var(--clr-ink)',
+                        fontSize: 'var(--text-xs)',
+                        fontWeight: isSelected ? 700 : 500,
+                        whiteSpace: 'nowrap',
+                        cursor: 'pointer',
+                        transition: 'all 0.15s ease'
+                      }}
+                    >
+                      {spec}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          )}
-        </div>
 
-        {/* Health camps — organised here, announced on patients' Home. */}
-        <CampManager doctors={doctors} />
+            {/* Doctor Listing Header */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 'var(--sp-2)' }}>
+              <h2 style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--clr-ink)', display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={inlineHint}><IconUser size={18} /></span>
+                Doctor Directory
+              </h2>
+              <span style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>
+                Showing {filteredDoctors.length} of {doctors.length}
+              </span>
+            </div>
+
+            {loading ? (
+              <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--sp-8) 0' }}>
+                <div className="spinner"></div>
+              </div>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                {filteredDoctors.map((doc) => (
+                  <div key={doc.id}>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: 'var(--sp-4)',
+                        background: 'var(--clr-surface)',
+                        border: '1px solid var(--clr-border)',
+                        borderRadius: 'var(--radius-lg)',
+                        gap: 'var(--sp-3)'
+                      }}
+                    >
+                      <DoctorAvatar doctor={doc} size={48} />
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>{doc.name}</div>
+                        <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>
+                          <span style={{ fontWeight: 600, color: 'var(--clr-brand)' }}>{doc.specialty}</span> · {doc.exp}
+                        </div>
+                        <LicenceBadge doctor={doc} onClick={() => setLicenceDoctorId(licenceDoctorId === doc.id ? null : doc.id)} />
+                        <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 4 }}>
+                          <span style={inlineHint}><IconAppointment size={11} /></span> Next open slot: {doc.nextSlot || 'None published'}
+                        </div>
+                        <div style={{ fontSize: 10, color: 'var(--clr-ink-subtle)', marginTop: 2 }}>
+                          <span style={inlineHint}><IconMobile size={11} /></span> Phone: {doc.phone || 'Not set'} · <span style={inlineHint}><IconChat size={11} /></span> Chat fee: ₹{doc.chatFee ?? '—'}
+                        </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6, flexShrink: 0 }}>
+                        <span style={{ fontSize: 'var(--text-xs)', fontWeight: 700, color: 'var(--clr-ink)' }}>{doc.fee}</span>
+                        <button
+                          onClick={() => setSlotDoctorId(slotDoctorId === doc.id ? null : doc.id)}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 'var(--radius-md)',
+                            border: 'none',
+                            background: slotDoctorId === doc.id ? 'var(--clr-brand)' : 'oklch(0.55 0.12 260 / 0.1)',
+                            color: slotDoctorId === doc.id ? 'var(--clr-ink-on-dark)' : 'oklch(0.45 0.12 260)',
+                            fontWeight: 600,
+                            fontSize: 10,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Slots
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDoctor(doc.id, doc.name)}
+                          style={{
+                            padding: '4px 8px',
+                            borderRadius: 'var(--radius-md)',
+                            border: 'none',
+                            background: 'oklch(0.60 0.18 20 / 0.1)',
+                            color: 'oklch(0.60 0.18 20)',
+                            fontWeight: 600,
+                            fontSize: 10,
+                            cursor: 'pointer',
+                          }}
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                    {slotDoctorId === doc.id && <SlotManager doctor={doc} />}
+                    {licenceDoctorId === doc.id && (
+                      <LicenceManager
+                        doctor={doc}
+                        onChange={(licences) => setDoctors((prev) => prev.map((d) => (d.id === doc.id ? withLicences(d, licences) : d)))}
+                      />
+                    )}
+                  </div>
+                ))}
+
+                {filteredDoctors.length === 0 && (
+                  <div style={{ textAlign: 'center', padding: 'var(--sp-8)', color: 'var(--clr-ink-muted)', border: '1px dashed var(--clr-border)', borderRadius: 'var(--radius-lg)' }}>
+                    {searchQuery || selectedSpecialty !== 'All' ? (
+                      <div>
+                        <p style={{ fontWeight: 600 }}>No doctors match your filter criteria.</p>
+                        <button
+                          type="button"
+                          onClick={() => { setSearchQuery(''); setSelectedSpecialty('All'); }}
+                          style={{
+                            marginTop: 'var(--sp-2)',
+                            background: 'none',
+                            border: 'none',
+                            color: 'var(--clr-brand)',
+                            fontSize: 'var(--text-xs)',
+                            fontWeight: 600,
+                            cursor: 'pointer',
+                            textDecoration: 'underline'
+                          }}
+                        >
+                          Clear all filters
+                        </button>
+                      </div>
+                    ) : (
+                      'No doctors currently registered in the database.'
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Tab 2: Health Camps */}
+        {activeTab === 'camps' && (
+          <CampManager doctors={doctors} />
+        )}
+
+        {/* Add Doctor Modal */}
+        {showAddModal && (
+          <AddDoctorModal
+            onClose={() => setShowAddModal(false)}
+            onDoctorAdded={(newDoc) => {
+              setDoctors((prev) => [...prev, newDoc]);
+              setShowAddModal(false);
+            }}
+          />
+        )}
+
+        {/* Action Menu Dialog (triggered by + button) */}
+        {showActionMenu && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="action-menu-title"
+            onClick={() => setShowActionMenu(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(0, 0, 0, 0.45)',
+              backdropFilter: 'blur(4px)',
+              zIndex: 9998,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: 'var(--sp-4)',
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                background: 'var(--clr-surface)',
+                borderRadius: 'var(--radius-xl)',
+                border: '1.5px solid var(--clr-border)',
+                boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
+                width: '100%',
+                maxWidth: 360,
+                padding: 'var(--sp-5)',
+                display: 'flex',
+                flexDirection: 'column',
+                gap: 'var(--sp-4)'
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <div>
+                  <h3 id="action-menu-title" style={{ fontSize: 'var(--text-md)', fontWeight: 700, color: 'var(--clr-ink)' }}>
+                    Choose Action
+                  </h3>
+                  <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>
+                    Select what you want to create
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowActionMenu(false)}
+                  style={{
+                    background: 'var(--clr-surface-2)',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: 32,
+                    height: 32,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    color: 'var(--clr-ink-muted)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <IconClose size={16} />
+                </button>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-3)' }}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionMenu(false);
+                    setShowAddModal(true);
+                  }}
+                  style={{
+                    padding: 'var(--sp-4)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1.5px solid var(--clr-border)',
+                    background: 'var(--clr-surface-2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 14,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    background: 'var(--clr-brand)',
+                    color: 'var(--clr-ink-on-dark)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <IconUser size={22} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>Add Doctor</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>Register a practitioner to the directory</div>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowActionMenu(false);
+                    setActiveTab('camps');
+                  }}
+                  style={{
+                    padding: 'var(--sp-4)',
+                    borderRadius: 'var(--radius-lg)',
+                    border: '1.5px solid var(--clr-border)',
+                    background: 'var(--clr-surface-2)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 14,
+                    cursor: 'pointer',
+                    textAlign: 'left',
+                    transition: 'all 0.15s ease'
+                  }}
+                >
+                  <div style={{
+                    width: 44,
+                    height: 44,
+                    borderRadius: '50%',
+                    background: 'oklch(0.55 0.14 260)',
+                    color: '#fff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0
+                  }}>
+                    <IconHospital size={22} />
+                  </div>
+                  <div>
+                    <div style={{ fontWeight: 700, fontSize: 'var(--text-sm)', color: 'var(--clr-ink)' }}>Create a Camp</div>
+                    <div style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>Organize a community health camp</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Sticky Floating Circle Button with + on Bottom-Right inside content container */}
+        <button
+          type="button"
+          onClick={() => setShowActionMenu(true)}
+          title="Add Doctor or Create Camp"
+          aria-label="Add Doctor or Create Camp"
+          style={{
+            position: 'fixed',
+            bottom: 'max(24px, calc(env(safe-area-inset-bottom) + 16px))',
+            right: 'max(20px, calc(50% - (var(--app-max-width) / 2) + 20px))',
+            width: 56,
+            height: 56,
+            borderRadius: '50%',
+            background: 'var(--clr-brand)',
+            color: 'var(--clr-ink-on-dark)',
+            border: '2px solid rgba(255, 255, 255, 0.35)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            boxShadow: '0 8px 24px rgba(162, 38, 93, 0.45), 0 2px 8px rgba(0, 0, 0, 0.15)',
+            zIndex: 999,
+            transition: 'transform 0.2s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.transform = 'scale(1.08)')}
+          onMouseLeave={(e) => (e.currentTarget.style.transform = 'scale(1)')}
+        >
+          <IconPlus size={28} />
+        </button>
       </div>
     </div>
   );

@@ -6,18 +6,21 @@ import OTPInput from '../../components/OTPInput';
 import Logo from '../../components/Logo';
 import { confirm as confirmHaptic } from '../../lib/haptics';
 import { patientAppHref } from '../../lib/siteLinks';
-import { FlagIN } from '../../icons.jsx';
+import CountryPhoneInput from '../../components/CountryPhoneInput';
+import { DEFAULT_COUNTRY } from '../../data/countries';
 
 export default function DoctorLogin() {
   const navigate = useNavigate();
   const [step, setStep] = useState('phone'); // phone | otp
+  const [country, setCountry] = useState(DEFAULT_COUNTRY);
   const [phone, setPhone] = useState('');
   const [otp, setOtp] = useState('');
   const [devOtp, setDevOtp] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const isValidPhone = /^[6-9]\d{9}$/.test(phone);
+  const minLen = country.len || 10;
+  const isValidPhone = country.code === 'IN' ? /^[6-9]\d{9}$/.test(phone) : phone.length >= 7;
 
   if (getDoctorToken()) {
     return <Navigate to="/today" replace />;
@@ -25,11 +28,15 @@ export default function DoctorLogin() {
 
   async function sendOtp(e) {
     e?.preventDefault();
-    if (!isValidPhone) { setError('Enter a valid 10-digit Indian mobile number.'); return; }
+    if (!isValidPhone) {
+      setError(country.code === 'IN' ? 'Enter a valid 10-digit Indian mobile number.' : 'Enter a valid phone number.');
+      return;
+    }
     setLoading(true);
     setError('');
+    const fullPhone = country.code === 'IN' ? phone : `${country.dial}${phone}`;
     try {
-      const res = await doctorApi.requestOtp(phone);
+      const res = await doctorApi.requestOtp(fullPhone);
       setDevOtp(res.devCode || null);
       setStep('otp');
       setOtp('');
@@ -44,8 +51,9 @@ export default function DoctorLogin() {
     if (code.length !== 6 || loading) return;
     setLoading(true);
     setError('');
+    const fullPhone = country.code === 'IN' ? phone : `${country.dial}${phone}`;
     try {
-      await doctorApi.verifyOtp(phone, code);
+      await doctorApi.verifyOtp(fullPhone, code);
       confirmHaptic();
       navigate('/today', { replace: true });
     } catch (err) {
@@ -78,7 +86,7 @@ export default function DoctorLogin() {
           <p style={{ marginTop: 'var(--sp-3)', fontSize: 'var(--text-base)', color: 'var(--clr-ink-muted)', lineHeight: 'var(--leading-base)' }}>
             {step === 'phone'
               ? 'Sign in with your registered practice number.'
-              : <>Sent to <strong style={{ color: 'var(--clr-ink)' }}>+91 {phone.slice(0, 2)}••• •••{phone.slice(-3)}</strong></>}
+              : <>Sent to <strong style={{ color: 'var(--clr-ink)' }}>{country.dial} {phone.slice(0, 2)}••• •••{phone.slice(-2)}</strong></>}
           </p>
         </motion.div>
 
@@ -95,21 +103,16 @@ export default function DoctorLogin() {
               noValidate
             >
               <div className="input-group">
-                <label className="input-label">Registered mobile number</label>
-                <div className="phone-row">
-                  <div className="phone-prefix"><FlagIN size={20} /><span>+91</span></div>
-                  <input
-                    className="input-field input-field--dark"
-                    style={{ flex: 1 }}
-                    type="tel"
-                    inputMode="tel"
-                    placeholder="98765 43210"
-                    value={phone.replace(/(\d{5})(\d{1,5})/, '$1 $2')}
-                    onChange={(e) => { setPhone(e.target.value.replace(/\D/g, '').slice(0, 10)); setError(''); }}
-                    aria-label="Registered mobile number"
-                    aria-invalid={!!error}
-                  />
-                </div>
+                <label className="input-label" htmlFor="doctor-login-phone">Registered mobile number</label>
+                <CountryPhoneInput
+                  id="doctor-login-phone"
+                  country={country}
+                  onCountryChange={setCountry}
+                  phone={phone}
+                  onPhoneChange={(val) => { setPhone(val); setError(''); }}
+                  error={!!error}
+                  disabled={loading}
+                />
               </div>
               <button type="submit" className="btn btn--primary" disabled={!isValidPhone || loading}>
                 {loading ? 'Sending…' : 'Send OTP'}

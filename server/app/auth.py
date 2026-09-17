@@ -40,11 +40,11 @@ ADMIN_TOKEN_TTL = 12 * 3600
 # disables password login entirely (ADMIN_PHONES still works).
 ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or (None if IS_PROD else "amruni")
 
-PHONE_RE = re.compile(r"^[6-9]\d{9}$")
+PHONE_RE = re.compile(r"^(\+?[1-9]\d{6,14}|[6-9]\d{9})$")
 
 
 def is_valid_phone(phone: str) -> bool:
-    return bool(phone and PHONE_RE.match(phone))
+    return bool(phone and PHONE_RE.match(phone.strip()))
 
 
 def _test_numbers() -> dict[str, str]:
@@ -70,7 +70,7 @@ def _hash_code(phone: str, code: str) -> str:
 
 def send_sms(phone: str, code: str):
     # SMS gateway integration point (MSG91, Twilio, AWS SNS, ...).
-    print(f"[otp] {phone} → {code}")
+    print(f"[otp] {phone} -> {code}")
 
 
 def request_otp(phone: str) -> dict:
@@ -169,15 +169,21 @@ DOCTOR_OTP_DISABLED = os.environ.get("DOCTOR_OTP_DISABLED", "").lower() in ("1",
 def verify_doctor_otp(phone: str, code: str) -> dict:
     """Doctor sign-in: the phone must belong to a registered practitioner.
     Never creates an account."""
+    clean_phone = phone.strip()
     with get_db() as db:
-        doctor = db.execute("SELECT * FROM doctors WHERE phone = ?", (phone,)).fetchone()
+        doctor = db.execute("SELECT * FROM doctors WHERE phone = ?", (clean_phone,)).fetchone()
+        if not doctor and clean_phone.startswith("+91"):
+            doctor = db.execute("SELECT * FROM doctors WHERE phone = ?", (clean_phone[3:],)).fetchone()
+        elif not doctor and len(clean_phone) == 10:
+            doctor = db.execute("SELECT * FROM doctors WHERE phone = ?", (f"+91{clean_phone}",)).fetchone()
+
         if not doctor:
             raise HTTPException(403, "This number isn't registered as a practitioner on Amruni.")
         if not DOCTOR_OTP_DISABLED:
-            _consume_otp(db, phone, code)
+            _consume_otp(db, clean_phone, code)
 
     token = jwt.encode(
-        {"role": "doctor", "did": doctor["id"], "phone": phone, "exp": int(time.time()) + TOKEN_TTL},
+        {"role": "doctor", "did": doctor["id"], "phone": clean_phone, "exp": int(time.time()) + TOKEN_TTL},
         JWT_SECRET,
         algorithm="HS256",
     )

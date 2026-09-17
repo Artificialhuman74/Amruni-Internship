@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
-from .auth import require_admin
+from .auth import require_admin, is_valid_phone
 from .db import get_db, doctor_json, licence_json, licence_status, licences_for, slot_json
 
 router = APIRouter()
@@ -60,6 +60,7 @@ class LicenceBody(BaseModel):
     authority: str
     number: str
     expiresOn: str | None = None
+    document: str | None = None
 
 
 def _clean_licence(body: LicenceBody) -> tuple:
@@ -74,6 +75,7 @@ def _clean_licence(body: LicenceBody) -> tuple:
     number = (body.number or "").strip()
     region = (body.region or "").strip() or None
     expires = (body.expiresOn or "").strip() or None
+    document = (body.document or "").strip() or None
     if not COUNTRY_RE.match(country):
         raise HTTPException(422, "Licence country must be a two-letter code, like IN or US.")
     if not authority:
@@ -91,7 +93,7 @@ def _clean_licence(body: LicenceBody) -> tuple:
             raise HTTPException(422, "Licence expiry must be a date (YYYY-MM-DD).")
         if expires < date.today().isoformat():
             raise HTTPException(422, f"The licence {number} expired on {expires}. Add a current licence.")
-    return country, region, authority, number, expires
+    return country, region, authority, number, expires, document
 
 
 class DoctorBody(BaseModel):
@@ -172,27 +174,33 @@ def get_doctor(doctor_id: int):
 @router.post("/doctors", status_code=201)
 def add_doctor(body: DoctorBody, user: dict = Depends(require_admin)):
     fee = _fee_to_int(body.fee)
-    # Required for every practitioner added from here on. The eighteen seeded
-    # before this existed are flagged in the admin list instead of being made
-    # unbookable overnight — see licence_status.
-    if not body.licences:
-        raise HTTPException(422, "Add at least one licence to practise before onboarding a practitioner.")
-    licences = [_clean_licence(l) for l in body.licences]
+    phone = (body.phone or "").strip()
+    if not phone:
+        raise HTTPException(422, "Doctor phone number is mandatory.")
+    if not is_valid_phone(phone):
+        raise HTTPException(422, "Enter a valid phone number (e.g. +91 9876543210 or 10-digit number).")
+
+    # Licences are optional at onboarding. Only process if valid fields are present.
+    valid_candidates = [
+        l for l in (body.licences or [])
+        if (l.number and l.number.strip()) or (l.authority and l.authority.strip())
+    ]
+    licences = [_clean_licence(l) for l in valid_candidates]
     with get_db() as db:
         cur = db.execute(
             """INSERT INTO doctors (name, specialty, exp, fee_inr, chat_fee_inr, phone, lang, avatar, photo, bio, rating, reviews)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (body.name, body.specialty, body.exp, fee,
              body.chatFee if body.chatFee is not None else round(fee / 3),
-             body.phone, json.dumps(body.lang), body.avatar or "🩺", body.photo, body.bio,
+             phone, json.dumps(body.lang), body.avatar or "🩺", body.photo, body.bio,
              body.rating if body.rating is not None else 5.0,
              body.reviews if body.reviews is not None else 0),
         )
-        for country, region, authority, number, expires in licences:
+        for country, region, authority, number, expires, document in licences:
             db.execute(
-                """INSERT INTO doctor_licences (doctor_id, country, region, authority, number, expires_on)
-                   VALUES (?, ?, ?, ?, ?, ?)""",
-                (cur.lastrowid, country, region, authority, number, expires),
+                """INSERT INTO doctor_licences (doctor_id, country, region, authority, number, expires_on, document)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                (cur.lastrowid, country, region, authority, number, expires, document),
             )
         row = db.execute("SELECT * FROM doctors WHERE id = ?", (cur.lastrowid,)).fetchone()
         return _doctor_payload(db, row)
@@ -201,14 +209,14 @@ def add_doctor(body: DoctorBody, user: dict = Depends(require_admin)):
 @router.post("/doctors/{doctor_id}/licences", status_code=201)
 def add_licence(doctor_id: int, body: LicenceBody, user: dict = Depends(require_admin)):
     """Adds a licence to an existing practitioner — a new state, or a renewal."""
-    country, region, authority, number, expires = _clean_licence(body)
+    country, region, authority, number, expires, document = _clean_licence(body)
     with get_db() as db:
         if not db.execute("SELECT 1 FROM doctors WHERE id = ?", (doctor_id,)).fetchone():
             raise HTTPException(404, "Doctor not found")
         cur = db.execute(
-            """INSERT INTO doctor_licences (doctor_id, country, region, authority, number, expires_on)
-               VALUES (?, ?, ?, ?, ?, ?)""",
-            (doctor_id, country, region, authority, number, expires),
+            """INSERT INTO doctor_licences (doctor_id, country, region, authority, number, expires_on, document)
+               VALUES (?, ?, ?, ?, ?, ?, ?)""",
+            (doctor_id, country, region, authority, number, expires, document),
         )
         return licence_json(db.execute("SELECT * FROM doctor_licences WHERE id = ?", (cur.lastrowid,)).fetchone())
 
