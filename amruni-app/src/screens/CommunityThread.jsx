@@ -6,6 +6,7 @@ import { apiError } from '../services/api';
 import { useToast } from '../components/Toast';
 import CommunityPostCard from '../components/CommunityPostCard';
 import CommunityPostComposer from '../components/CommunityPostComposer';
+import ModerationNotice from '../components/ModerationNotice';
 import { IconHeart } from '../icons.jsx';
 
 /** Single-post thread, X-style: the root post in full, flat replies below it
@@ -24,6 +25,7 @@ export default function CommunityThread() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [moderationNotice, setModerationNotice] = useState(null);
 
   useEffect(() => {
     async function loadThread() {
@@ -43,10 +45,19 @@ export default function CommunityThread() {
   }, [id]);
 
   function handleReplyCreated(reply) {
-    setReplies((prev) => [reply, ...prev]);
-    setPost((prev) => (prev ? { ...prev, replyCount: prev.replyCount + 1 } : prev));
+    const status = reply.moderationStatus || 'approved';
     setComposerOpen(false);
-    toast('Your reply is posted', { icon: 'heart' });
+    if (status === 'approved') {
+      setReplies((prev) => [reply, ...prev]);
+      setPost((prev) => (prev ? { ...prev, replyCount: prev.replyCount + 1 } : prev));
+      setModerationNotice(reply.helpline ? reply : null);
+      toast('Your reply is posted', { icon: 'heart' });
+      return;
+    }
+    setModerationNotice(reply);
+    toast(status === 'pending' ? 'Reply submitted for review' : 'Reply not published', {
+      icon: status === 'pending' ? 'heart' : 'warning',
+    });
   }
 
   function handleReplyChange(updated) {
@@ -175,6 +186,11 @@ export default function CommunityThread() {
                 : 'var(--sp-3) var(--sp-5) calc(env(safe-area-inset-bottom) + var(--sp-3))',
             }}
           >
+            {moderationNotice && (
+              <div style={{ marginBottom: 'var(--sp-3)' }}>
+                <ModerationNotice moderation={moderationNotice} onDismiss={() => setModerationNotice(null)} />
+              </div>
+            )}
             {composerOpen ? (
               <CommunityPostComposer
                 replyToId={id}

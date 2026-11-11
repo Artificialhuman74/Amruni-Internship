@@ -118,7 +118,17 @@ def create_mood(body: MoodBody, user: dict = Depends(current_user)):
     lead = picked[0] if picked else None
 
     logged_at = body.loggedAt or utcnow_iso()
+    journal_id = body.journalId.strip() if isinstance(body.journalId, str) else None
+    journal_id = journal_id or None
     with get_db() as db:
+        if journal_id:
+            owns_journal = db.execute(
+                "SELECT 1 FROM journal_entries WHERE id = ? AND user_id = ?",
+                (journal_id, user["id"]),
+            ).fetchone()
+            if not owns_journal:
+                raise HTTPException(404, "Journal entry not found.")
+
         if body.scope == "day":
             # One per date: re-logging the day replaces it rather than stacking
             # a second summary the log would then have to disambiguate.
@@ -137,7 +147,7 @@ def create_mood(body: MoodBody, user: dict = Depends(current_user)):
             (mood_id, user["id"], body.date, logged_at, body.scope, body.valence,
              body.intensity if body.intensity is not None else float(body.valence),
              crypto.enc(lead), crypto.enc_json(picked),
-             crypto.enc_json(body.factors), body.source, body.journalId),
+             crypto.enc_json(body.factors), body.source, journal_id),
         )
 
         if body.scope == "day":

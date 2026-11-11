@@ -221,17 +221,38 @@ def policy_for_doctor(db, user_id: int) -> dict | None:
     }
 
 
-def intake_for_doctor(db, user_id: int) -> list[dict]:
-    """Her submitted intake forms, newest first, in full.
+SPECIALTY_INTAKE_FORMS: dict[str, tuple[str, ...]] = {
+    "homeopathy": ("homeopathy",),
+    "ayurveda": ("ayurveda",),
+    "mental health": ("counselling",),
+    "counselling": ("counselling",),
+    "counseling": ("counselling",),
+}
 
-    The practitioner reading a homeopathic case needs the whole case — the
-    access rule that protects it is the appointment relationship enforced by
-    the caller, not a partial view that would make the form useless.
+
+def intake_for_doctor(
+    db,
+    user_id: int,
+    doctor_specialty: str | None = None,
+    share: dict | None = None,
+) -> list[dict]:
+    """Her submitted intake forms for this doctor's discipline, if shared.
+
+    Scoped strictly to forms matching the doctor's specialty and only returned
+    when the patient's effective share allows full history access. Fails closed
+    on missing share settings or unmapped specialties.
     """
+    if not share or not share.get("appointmentId") or share.get("mode") != "all":
+        return []
+    allowed_forms = SPECIALTY_INTAKE_FORMS.get((doctor_specialty or "").strip().lower(), ())
+    if not allowed_forms:
+        return []
+    placeholders = ",".join("?" * len(allowed_forms))
     rows = db.execute(
-        """SELECT * FROM intake_submissions WHERE user_id = ?
-           ORDER BY submitted_at DESC LIMIT 10""",
-        (user_id,),
+        f"""SELECT * FROM intake_submissions
+            WHERE user_id = ? AND form_id IN ({placeholders})
+            ORDER BY submitted_at DESC LIMIT 10""",
+        [user_id, *allowed_forms],
     ).fetchall()
     return [
         {

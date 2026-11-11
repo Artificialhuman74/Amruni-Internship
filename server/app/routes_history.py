@@ -100,12 +100,15 @@ def save_share(db, appointment_id: str, user_id: int, doctor_id: int, mode: str,
     )
 
 
-def effective_share(db, doctor_id: int, user_id: int) -> dict:
+def effective_share(db, doctor_id: int, user_id: int, *, include_pending: bool = False) -> dict:
     """What this doctor may read of her history, right now."""
+    status_clause = (
+        "status != 'cancelled'" if include_pending else "status IN ('confirmed', 'completed')"
+    )
     appt = db.execute(
-        """SELECT id FROM appointments
+        f"""SELECT id FROM appointments
            WHERE doctor_id = ? AND user_id = ? AND COALESCE(anonymous, 0) = 0
-             AND status != 'cancelled'
+             AND {status_clause}
            ORDER BY created_at DESC LIMIT 1""",
         (doctor_id, user_id),
     ).fetchone()
@@ -317,7 +320,7 @@ def get_share(appointment_id: str, user: dict = Depends(current_user)):
         ).fetchone()
         if not appt:
             raise HTTPException(404, "Appointment not found")
-        return effective_share(db, appt["doctor_id"], user["id"])
+        return effective_share(db, appt["doctor_id"], user["id"], include_pending=True)
 
 
 @router.put("/me/appointments/{appointment_id}/history-share")
@@ -330,7 +333,7 @@ def put_share(appointment_id: str, body: ShareBody, user: dict = Depends(current
             raise HTTPException(404, "Appointment not found")
         mode, cats, docs = clean_share(db, user["id"], body)
         save_share(db, appointment_id, user["id"], appt["doctor_id"], mode, cats, docs)
-        return effective_share(db, appt["doctor_id"], user["id"])
+        return effective_share(db, appt["doctor_id"], user["id"], include_pending=True)
 
 
 @router.get("/me/history-requests")

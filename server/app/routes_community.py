@@ -8,6 +8,7 @@ anonymous even to other clients inspecting network traffic.
 """
 import json
 import random
+import re
 import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -58,17 +59,74 @@ def validate_tags(tags: list[str], life_stage: str):
 # integration point, mirroring how send_sms() stands in for a real SMS
 # gateway in auth.py. Reports that accumulate on a post also pull it down
 # automatically (see report_post below).
-BLOCKED_TERMS = (
-    "kill myself", "end my life", "suicide method", "how to hurt myself",
-)
 REPORT_AUTO_HIDE_THRESHOLD = 3
+REPORT_RATE_LIMIT_PER_HOUR = 5
+
+TELE_MANAS_HELPLINE = {
+    "name": "Tele-MANAS",
+    "number": "14416",
+    "description": "Free, 24×7 mental health support in your language. Run by NIMHANS for the Government of India.",
+}
+
+_ZERO_WIDTH_RE = re.compile(r"[\u200b-\u200f\ufeff]")
+_OBFUSCATED_DOT_LETTERS_RE = re.compile(r"\b(?:[a-z][._-]){2,}[a-z]\b")
+_OBFUSCATED_SPACED_LETTERS_RE = re.compile(r"\b(?:[a-z] ){2,}[a-z]\b")
+
+_SELF_HARM_INSTRUCTION_RE = re.compile(
+    r"\b(kill\s*my\s*self|end\s*my\s*life|suicide\s*method|how\s+to\s+hurt\s*my\s*self|"
+    r"ways\s+to\s+die|commit\s+suicide|cut\s*my\s*self|hang\s*my\s*self|kill\s*your\s*self|kys)\b"
+)
+_ABUSIVE_SLUR_RE = re.compile(
+    r"\b(bitch|whore|slut|retard(?:ed)?|faggot|cunt|go\s+die)\b"
+)
+_SPAM_SOLICITATION_RE = re.compile(
+    r"https?://|www\.|\b(?:wa\.me|t\.me|bit\.ly)/\S*|"
+    r"\b(?:buy\s+cheap\s+pills|pills?\s+without\s+prescription|miracle\s+cure|"
+    r"100%\s+guaranteed\s+cure|earn\s+money\s+from\s+home|crypto\s+giveaway)\b|"
+    r"\b(?:whatsapp|telegram)\b[^\n]{0,40}\+?\d[\d\s-]{6,}\d|"
+    r"\b(?:order|dm|buy)\s+(?:medicine|pills|tablets|capsules)\s+(?:on|via)\s+(?:whatsapp|telegram)\b"
+)
+_HIGH_RISK_DISCLOSURE_RE = re.compile(
+    r"\b(?:want\s+to\s+die|don(?:'|\s)?t\s+want\s+to\s+live|do\s+not\s+want\s+to\s+live|"
+    r"no\s+reason\s+to\s+live|better\s+off\s+dead|suicidal|thoughts\s+of\s+suicide|"
+    r"thinking\s+of\s+ending|self[- ]?harm|hurting\s+my\s*self|"
+    r"husband\s+(?:hits|beats)\s+me|he\s+(?:hits|beats)\s+me|domestic\s+(?:violence|abuse)|"
+    r"being\s+abused\s+at\s+home|sexual\s+assault|raped|"
+    r"took\s+too\s+many\s+pills|overdosed|swallowed\s+poison|"
+    r"heavy\s+bleeding\s+and\s+fainting|can(?:'|\s)?t\s+stop\s+bleeding|cannot\s+breathe)\b"
+)
+
+
+def _normalize_moderation_texts(text: str | None) -> tuple[str, str]:
+    raw_lower = _ZERO_WIDTH_RE.sub("", (text or "").lower())
+    raw_norm = re.sub(r"\s+", " ", raw_lower).strip()
+    # Collapse punctuated or spaced-out letters (e.g. "k.i.l.l m.y.s.e.l.f", "k i l l   m y s e l f")
+    # before collapsing remaining separators into single spaces.
+    collapsed = _OBFUSCATED_DOT_LETTERS_RE.sub(lambda m: re.sub(r"[._-]+", "", m.group(0)), raw_lower)
+    collapsed = _OBFUSCATED_SPACED_LETTERS_RE.sub(lambda m: m.group(0).replace(" ", ""), collapsed)
+    plain = re.sub(r"[^a-z0-9\s]+", " ", collapsed)
+    plain = re.sub(r"\s+", " ", plain).strip()
+    return raw_norm, plain
+
+
+def assess_moderation(text: str | None) -> tuple[str, dict | None]:
+    """Return (moderation_status, optional_helpline) for community text."""
+    raw_norm, plain = _normalize_moderation_texts(text)
+    for candidate in (raw_norm, plain):
+        if _SELF_HARM_INSTRUCTION_RE.search(candidate):
+            return "rejected", dict(TELE_MANAS_HELPLINE)
+    for candidate in (raw_norm, plain):
+        if _ABUSIVE_SLUR_RE.search(candidate) or _SPAM_SOLICITATION_RE.search(candidate):
+            return "rejected", None
+    for candidate in (raw_norm, plain):
+        if _HIGH_RISK_DISCLOSURE_RE.search(candidate):
+            return "pending", dict(TELE_MANAS_HELPLINE)
+    return "approved", None
 
 
 def moderate_text(text: str | None) -> str:
-    lowered = (text or "").lower()
-    if any(term in lowered for term in BLOCKED_TERMS):
-        return "rejected"
-    return "approved"
+    status, _ = assess_moderation(text)
+    return status
 
 
 def repair_ciphertext_posts(db) -> int:
@@ -171,6 +229,7 @@ def _post_json(db: sqlite3.Connection, row, viewer_id: int) -> dict:
         "likeCount": row["like_count"],
         "likedByMe": liked,
         "replyCount": row["reply_count"],
+        "moderationStatus": row["moderation_status"] if "moderation_status" in row.keys() else "approved",
         "createdAt": row["created_at"],
     }
 
@@ -228,7 +287,21 @@ def _journal_json(row, mood: dict | None = None) -> dict:
     }
 
 
-def _moods_for(db, rows) -> dict[str, dict]:
+def _require_owned_mood(db, mood_log_id: str | None, user_id: int) -> str | None:
+    """Verify a client-supplied moodLogId belongs to the authenticated user."""
+    cleaned = mood_log_id.strip() if isinstance(mood_log_id, str) else None
+    if not cleaned:
+        return None
+    row = db.execute(
+        "SELECT id FROM mood_logs WHERE id = ? AND user_id = ?",
+        (cleaned, user_id),
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "Mood entry not found.")
+    return cleaned
+
+
+def _moods_for(db, rows, user_id: int) -> dict[str, dict]:
     """Fetches the mood attached to each entry in one query, so a list of N
     entries doesn't become N+1 round trips."""
     ids = [r["mood_log_id"] for r in rows if r["mood_log_id"]]
@@ -236,7 +309,8 @@ def _moods_for(db, rows) -> dict[str, dict]:
         return {}
     placeholders = ",".join("?" * len(ids))
     moods = db.execute(
-        f"SELECT * FROM mood_logs WHERE id IN ({placeholders})", ids
+        f"SELECT * FROM mood_logs WHERE user_id = ? AND id IN ({placeholders})",
+        [user_id, *ids],
     ).fetchall()
     return {
         m["id"]: {
@@ -257,7 +331,7 @@ def list_journal(user: dict = Depends(current_user)):
         rows = db.execute(
             "SELECT * FROM journal_entries WHERE user_id = ? ORDER BY date DESC, created_at DESC", (user["id"],)
         ).fetchall()
-        moods = _moods_for(db, rows)
+        moods = _moods_for(db, rows, user["id"])
     return [_journal_json(r, moods.get(r["mood_log_id"])) for r in rows]
 
 
@@ -267,21 +341,22 @@ def create_journal(body: JournalBody, user: dict = Depends(current_user)):
     now = utcnow_iso()
     with get_db() as db:
         validate_tags(body.tags, user["life_stage"])
+        mood_log_id = _require_owned_mood(db, body.moodLogId, user["id"])
         db.execute(
             """INSERT INTO journal_entries
                  (id, user_id, date, text, tags, mood_log_id, context, bring_to_appointment, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (entry_id, user["id"], body.date, crypto.enc(body.text), json.dumps(body.tags),
-             body.moodLogId, crypto.enc_json(body.context), int(body.bringToAppointment), now, now),
+             mood_log_id, crypto.enc_json(body.context), int(body.bringToAppointment), now, now),
         )
         # Back-link the mood so deleting the entry can take its mood with it.
-        if body.moodLogId:
+        if mood_log_id:
             db.execute(
                 "UPDATE mood_logs SET journal_id = ? WHERE id = ? AND user_id = ?",
-                (entry_id, body.moodLogId, user["id"]),
+                (entry_id, mood_log_id, user["id"]),
             )
         row = db.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,)).fetchone()
-        moods = _moods_for(db, [row])
+        moods = _moods_for(db, [row], user["id"])
     return _journal_json(row, moods.get(row["mood_log_id"]))
 
 
@@ -294,22 +369,23 @@ def update_journal(entry_id: str, body: JournalBody, user: dict = Depends(curren
         if not existing:
             raise HTTPException(404, "Journal entry not found.")
         validate_tags(body.tags, user["life_stage"])
+        mood_log_id = _require_owned_mood(db, body.moodLogId, user["id"])
         db.execute(
             """UPDATE journal_entries
                  SET date = ?, text = ?, tags = ?, mood_log_id = ?, context = ?,
                      bring_to_appointment = ?, updated_at = ?
                WHERE id = ?""",
-            (body.date, crypto.enc(body.text), json.dumps(body.tags), body.moodLogId,
+            (body.date, crypto.enc(body.text), json.dumps(body.tags), mood_log_id,
              crypto.enc_json(body.context) if body.context else existing["context"],
              int(body.bringToAppointment), utcnow_iso(), entry_id),
         )
-        if body.moodLogId:
+        if mood_log_id:
             db.execute(
                 "UPDATE mood_logs SET journal_id = ? WHERE id = ? AND user_id = ?",
-                (entry_id, body.moodLogId, user["id"]),
+                (entry_id, mood_log_id, user["id"]),
             )
         row = db.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,)).fetchone()
-        moods = _moods_for(db, [row])
+        moods = _moods_for(db, [row], user["id"])
     return _journal_json(row, moods.get(row["mood_log_id"]))
 
 
@@ -359,16 +435,19 @@ def share_journal(entry_id: str, body: ShareJournalBody, user: dict = Depends(cu
         # ran the moderation blocklist against that ciphertext, which matches
         # nothing, so every shared entry passed moderation without being read.
         text = crypto.dec(entry["text"]) or ""
-        status = moderate_text(text)
+        status, helpline = assess_moderation(text)
         db.execute(
             """INSERT INTO community_posts
                  (id, author_id, is_anonymous, tags, type, text, reply_to_id, moderation_status, created_at)
                VALUES (?, ?, ?, ?, 'text', ?, NULL, ?, ?)""",
             (post_id, user["id"], int(body.isAnonymous), json.dumps(tags), text, status, now),
         )
-        db.execute("UPDATE journal_entries SET shared_as_post_id = ? WHERE id = ?", (post_id, entry_id))
+        if status != "rejected":
+            db.execute("UPDATE journal_entries SET shared_as_post_id = ? WHERE id = ?", (post_id, entry_id))
         row = db.execute("SELECT * FROM community_posts WHERE id = ?", (post_id,)).fetchone()
         post = _post_json(db, row, user["id"])
+        if helpline:
+            post["helpline"] = helpline
     return post
 
 
@@ -446,7 +525,9 @@ def create_post(body: CreatePostBody, user: dict = Depends(current_user)):
             parent = db.execute("SELECT id FROM community_posts WHERE id = ?", (body.replyToId,)).fetchone()
             if not parent:
                 raise HTTPException(404, "The post you're replying to no longer exists.")
-        status = moderate_text(body.text if body.type == "text" else " ".join([body.text or "", *body.pollOptions]))
+        status, helpline = assess_moderation(
+            body.text if body.type == "text" else " ".join([body.text or "", *body.pollOptions])
+        )
         db.execute(
             """INSERT INTO community_posts
                  (id, author_id, is_anonymous, tags, type, text, poll_options, reply_to_id, moderation_status, created_at)
@@ -455,10 +536,12 @@ def create_post(body: CreatePostBody, user: dict = Depends(current_user)):
              json.dumps(body.pollOptions) if body.type == "poll" else None,
              body.replyToId, status, now),
         )
-        if body.replyToId:
+        if body.replyToId and status == "approved":
             db.execute("UPDATE community_posts SET reply_count = reply_count + 1 WHERE id = ?", (body.replyToId,))
         row = db.execute("SELECT * FROM community_posts WHERE id = ?", (post_id,)).fetchone()
         post = _post_json(db, row, user["id"])
+        if helpline:
+            post["helpline"] = helpline
     return post
 
 
@@ -510,18 +593,35 @@ class ReportBody(BaseModel):
 @router.post("/community/posts/{post_id}/report", status_code=201)
 def report_post(post_id: str, body: ReportBody, user: dict = Depends(current_user)):
     with get_db() as db:
-        post = db.execute("SELECT id FROM community_posts WHERE id = ?", (post_id,)).fetchone()
-        if not post:
+        post = db.execute(
+            "SELECT id, moderation_status FROM community_posts WHERE id = ?",
+            (post_id,),
+        ).fetchone()
+        if not post or post["moderation_status"] != "approved":
             raise HTTPException(404, "Post not found.")
+        if db.execute(
+            "SELECT 1 FROM community_reports WHERE post_id = ? AND reporter_id = ?",
+            (post_id, user["id"]),
+        ).fetchone():
+            raise HTTPException(409, "You have already reported this post.")
+        recent_count = db.execute(
+            """SELECT COUNT(*) AS n FROM community_reports
+                WHERE reporter_id = ? AND datetime(created_at) >= datetime('now', '-1 hour')""",
+            (user["id"],),
+        ).fetchone()["n"]
+        if recent_count >= REPORT_RATE_LIMIT_PER_HOUR:
+            raise HTTPException(429, "You have reached the hourly report limit. Please try again later.")
+        reason = (body.reason or "").strip()[:300] or None
         db.execute(
-            "INSERT INTO community_reports (post_id, reporter_id, reason) VALUES (?, ?, ?)",
-            (post_id, user["id"], body.reason),
+            "INSERT INTO community_reports (post_id, reporter_id, reason, created_at) VALUES (?, ?, ?, ?)",
+            (post_id, user["id"], reason, utcnow_iso()),
         )
         count = db.execute(
-            "SELECT COUNT(*) AS n FROM community_reports WHERE post_id = ?", (post_id,)
+            "SELECT COUNT(DISTINCT reporter_id) AS n FROM community_reports WHERE post_id = ?",
+            (post_id,),
         ).fetchone()["n"]
         if count >= REPORT_AUTO_HIDE_THRESHOLD:
-            db.execute("UPDATE community_posts SET moderation_status = 'rejected' WHERE id = ?", (post_id,))
+            db.execute("UPDATE community_posts SET moderation_status = 'pending' WHERE id = ?", (post_id,))
     return {"success": True}
 
 

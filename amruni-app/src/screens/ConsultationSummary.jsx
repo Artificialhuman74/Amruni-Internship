@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
+import { apiError } from '../services/api';
 import { appointmentApi } from '../services/appointmentApi';
 import { useVideoCall } from '../hooks/useVideoCall';
 import SuccessCheck from '../components/SuccessCheck';
@@ -18,6 +19,9 @@ export default function ConsultationSummary() {
   const [ratingSubmitted, setRatingSubmitted] = useState(false);
   const [showPrescription, setShowPrescription] = useState(false);
   const [downloading, setDownloading] = useState(false);
+  const [rxMeta, setRxMeta] = useState(null);
+  const [rxError, setRxError] = useState('');
+  const [copiedLink, setCopiedLink] = useState(false);
 
   useEffect(() => {
     async function loadAppointment() {
@@ -28,6 +32,10 @@ export default function ConsultationSummary() {
           setActiveAppointment(appt);
           // Mark appointment as completed so it is cleared from UPCOMING list
           await appointmentApi.completeAppointment(id);
+          if (appt.record) {
+            const meta = await appointmentApi.getPrescriptionMeta(id).catch(() => null);
+            setRxMeta(meta);
+          }
         }
       } catch (err) {
         console.error(err);
@@ -44,13 +52,49 @@ export default function ConsultationSummary() {
     confirm();
   };
 
-  const handleDownloadPrescription = () => {
+  const handleDownloadPrescription = async () => {
+    if (downloading) return;
     setDownloading(true);
-    setTimeout(() => {
-      setDownloading(false);
+    setRxError('');
+    try {
+      const blob = await appointmentApi.downloadPrescriptionPdf(id);
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement('a');
+      anchor.href = url;
+      anchor.download = `prescription-${id}.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       confirm();
-      alert('Mock Prescription PDF downloaded successfully!');
-    }, 1500);
+    } catch (err) {
+      let msg = apiError(err, 'Could not download the prescription PDF. Please try again.');
+      if (err?.response?.data instanceof Blob) {
+        try {
+          const parsed = JSON.parse(await err.response.data.text());
+          msg = parsed?.error || parsed?.detail || msg;
+        } catch { /* ignore invalid json blob */ }
+      }
+      setRxError(msg);
+    } finally {
+      setDownloading(false);
+    }
+  };
+
+  const handleCopyVerifyLink = async () => {
+    if (!rxMeta?.verificationToken) return;
+    if (!navigator.clipboard?.writeText) {
+      setRxError('Could not copy verification link.');
+      return;
+    }
+    const shareUrl = `${window.location.origin}/verify-rx?token=${encodeURIComponent(rxMeta.verificationToken)}`;
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2000);
+    } catch {
+      setRxError('Could not copy verification link.');
+    }
   };
 
   if (loading) {
@@ -153,17 +197,46 @@ export default function ConsultationSummary() {
               </div>
             )}
 
-            <div style={{ borderTop: '1px dashed var(--clr-border)', paddingTop: 'var(--sp-3)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span style={{ fontSize: 10, color: 'var(--clr-ink-subtle)' }}>Electronically signed by {doctorName}</span>
-              <button
-                className="btn btn--primary"
-                onClick={handleDownloadPrescription}
-                disabled={downloading}
-                style={{ fontSize: 'var(--text-xs)', padding: 'var(--sp-2) var(--sp-3)', width: 'auto', opacity: 0.5 }}
-              >
-                {downloading ? 'Downloading...' : 'Download PDF'}
-              </button>
-            </div>
+            {appointment?.record && (
+              <div style={{ borderTop: '1px dashed var(--clr-border)', paddingTop: 'var(--sp-3)', display: 'flex', flexDirection: 'column', gap: 'var(--sp-2)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 'var(--sp-2)' }}>
+                  <div style={{ fontSize: 11, color: 'var(--clr-ink-muted)', display: 'flex', alignItems: 'center', gap: 'var(--sp-2)', flexWrap: 'wrap' }}>
+                    <span>Issued from clinician record</span>
+                    {rxMeta?.verificationToken && (
+                      <>
+                        <Link
+                          to={`/verify-rx?token=${encodeURIComponent(rxMeta.verificationToken)}`}
+                          style={{ color: 'var(--clr-brand)', fontWeight: 600, textDecoration: 'underline' }}
+                        >
+                          Verify record
+                        </Link>
+                        <button
+                          type="button"
+                          className="btn btn--ghost btn--sm"
+                          onClick={handleCopyVerifyLink}
+                          style={{ padding: '2px 6px', fontSize: 11, height: 'auto', minHeight: 0 }}
+                        >
+                          {copiedLink ? 'Copied link' : 'Copy link'}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                  <button
+                    className="btn btn--primary"
+                    onClick={handleDownloadPrescription}
+                    disabled={downloading}
+                    style={{ fontSize: 'var(--text-xs)', padding: 'var(--sp-2) var(--sp-3)', width: 'auto' }}
+                  >
+                    {downloading ? 'Downloading...' : 'Download PDF'}
+                  </button>
+                </div>
+                {rxError && (
+                  <p role="alert" style={{ fontSize: 'var(--text-xs)', color: 'oklch(0.55 0.16 24)' }}>
+                    {rxError}
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

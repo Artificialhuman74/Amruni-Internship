@@ -37,6 +37,14 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   last_sent  REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS otp_rate_limits (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope      TEXT NOT NULL,
+  rate_key   TEXT NOT NULL,
+  created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_otp_rate_limits ON otp_rate_limits(scope, rate_key, created_at);
+
 CREATE TABLE IF NOT EXISTS doctors (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL,
@@ -532,6 +540,35 @@ CREATE TABLE IF NOT EXISTS community_blocks (
   blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, blocked_id)
 );
+
+-- Append-only medical access log (non-PHI metadata only; triggers reject tampering).
+CREATE TABLE IF NOT EXISTS medical_audit_logs (
+  id            TEXT PRIMARY KEY,
+  actor_type    TEXT NOT NULL,
+  actor_id      INTEGER NOT NULL,
+  patient_id    INTEGER,
+  resource_type TEXT NOT NULL,
+  resource_id   TEXT,
+  action        TEXT NOT NULL,
+  outcome       TEXT NOT NULL,
+  status_code   INTEGER NOT NULL,
+  ip_address    TEXT,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_medical_audit_patient ON medical_audit_logs(patient_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_medical_audit_actor ON medical_audit_logs(actor_type, actor_id, created_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_medical_audit_no_update
+BEFORE UPDATE ON medical_audit_logs
+BEGIN
+  SELECT RAISE(ABORT, 'medical_audit_logs is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_medical_audit_no_delete
+BEFORE DELETE ON medical_audit_logs
+BEGIN
+  SELECT RAISE(ABORT, 'medical_audit_logs is append-only');
+END;
 """
 
 SEED_DOCTORS = [
@@ -570,9 +607,16 @@ SEED_DAYS_AHEAD = 7
 SLOT_MINUTES = 30
 
 
+BUSY_TIMEOUT_MS = 5000
+
+
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    """Open a WAL-mode SQLite connection with foreign keys and busy timeout enabled."""
+    busy_ms = int(BUSY_TIMEOUT_MS)
+    conn = sqlite3.connect(DB_PATH, timeout=busy_ms / 1000)
     conn.row_factory = sqlite3.Row
+    # Configure busy_timeout before switching journal mode so contenders wait cleanly.
+    conn.execute(f"PRAGMA busy_timeout = {busy_ms}")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
@@ -669,6 +713,7 @@ def init_db():
         # sign-in cannot look it up directly. This is the deterministic index it
         # looks up instead — see app/crypto.blind_index.
         _ensure_column(db, "users", "phone_bidx", "TEXT")
+        _ensure_column(db, "users", "deleted_at", "TEXT")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_bidx ON users(phone_bidx) WHERE phone_bidx IS NOT NULL")
         encrypt_existing_rows(db)
         # Journal entries gained a mood, an auto-captured body/cycle context and
@@ -773,6 +818,8 @@ def encrypt_existing_rows(db: sqlite3.Connection):
             # Rebuilt from the plaintext we just read, or nobody whose account
             # predates this module can ever sign in again.
             for row in rows:
+                if str(row["phone"] or "").startswith("deleted:"):
+                    continue
                 db.execute(
                     "UPDATE users SET phone_bidx = ? WHERE rowid = ?",
                     (crypto.blind_index(row["phone"]), row["_rid"]),
@@ -1039,3 +1086,44 @@ def new_id(prefix: str) -> str:
 
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def record_medical_audit(
+    db: sqlite3.Connection,
+    *,
+    actor_type: str,
+    actor_id: int,
+    patient_id: int | None,
+    resource_type: str,
+    resource_id: str | None,
+    action: str,
+    outcome: str,
+    status_code: int,
+    ip_address: str | None = None,
+) -> None:
+    """Append a non-PHI access event onto the caller's open DB transaction."""
+    db.execute(
+        """INSERT INTO medical_audit_logs
+             (id, actor_type, actor_id, patient_id, resource_type, resource_id,
+              action, outcome, status_code, ip_address, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            new_id("audit"),
+            actor_type,
+            actor_id,
+            patient_id,
+            resource_type,
+            resource_id,
+            action,
+            outcome,
+            status_code,
+            ip_address,
+            utcnow_iso(),
+        ),
+    )
+
+
+def write_medical_audit(**kwargs) -> None:
+    """Persist an audit entry in its own transaction (safe after caller rollback)."""
+    with get_db() as db:
+        record_medical_audit(db, **kwargs)

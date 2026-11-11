@@ -9,9 +9,10 @@ appointment with her. Enforced on every patient-scoped endpoint.
 """
 import json
 import re
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from . import auth
@@ -23,7 +24,7 @@ from .routes_history import CATEGORIES, can_see, can_see_document, effective_sha
 from . import crypto
 from .db import (
     appointment_json, doctor_json, document_json, get_db, record_json,
-    slot_json, utcnow_iso,
+    record_medical_audit, slot_json, utcnow_iso, write_medical_audit,
 )
 from .routes_bookings import _is_past
 from .routes_doctors import release_expired_locks
@@ -64,7 +65,23 @@ def _age(dob: str | None) -> int | None:
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
+def _is_deleted_user(user_row) -> bool:
+    return bool(user_row and "deleted_at" in user_row.keys() and user_row["deleted_at"])
+
+
 def _patient_summary(user_row) -> dict:
+    if _is_deleted_user(user_row):
+        return {
+            "id": user_row["id"],
+            "name": "Deleted patient",
+            "phone": None,
+            "age": None,
+            "dob": None,
+            "lifeStage": None,
+            "goal": None,
+            "anonymous": False,
+            "deleted": True,
+        }
     return {
         "id": user_row["id"],
         "name": crypto.dec(user_row["name"]) or "Unnamed patient",
@@ -96,6 +113,16 @@ def _anonymous_summary(db, user_row) -> dict:
     withholding it is what makes the chart genuinely unreachable rather than
     merely unlinked in the interface.
     """
+    if _is_deleted_user(user_row):
+        return {
+            "id": None,
+            "name": "Deleted patient",
+            "phone": None,
+            "age": None,
+            "lifeStage": None,
+            "anonymous": True,
+            "deleted": True,
+        }
     return {
         "id": None,
         "name": get_or_create_anon_handle(db, user_row["id"]),
@@ -107,15 +134,19 @@ def _anonymous_summary(db, user_row) -> dict:
 
 
 def _require_relationship(db, doctor_id: int, user_id: int):
-    """An anonymous consultation grants no access to anything but itself.
+    """Only active or completed non-anonymous consultations grant patient chart access.
 
-    Without this clause the promise would leak through the side door: a
+    Without the anonymous clause the promise would leak through the side door: a
     counsellor could not read her name in the queue but could open the chart
-    that carries it, along with her whole history.
+    that carries it, along with her whole history. Requiring confirmed/completed
+    prevents cancelled or unpaid bookings from exposing patient PHI.
     """
     ok = db.execute(
         """SELECT 1 FROM appointments
-           WHERE doctor_id = ? AND user_id = ? AND COALESCE(anonymous, 0) = 0 LIMIT 1""",
+           WHERE doctor_id = ? AND user_id = ?
+             AND status IN ('confirmed', 'completed')
+             AND COALESCE(anonymous, 0) = 0
+           LIMIT 1""",
         (doctor_id, user_id),
     ).fetchone()
     if not ok:
@@ -138,8 +169,10 @@ def doctor_me(doctor: dict = Depends(current_doctor)):
                 (doctor["id"], today),
             ).fetchone()["n"],
             "patients": db.execute(
-                """SELECT COUNT(DISTINCT user_id) AS n FROM appointments
-                   WHERE doctor_id = ? AND COALESCE(anonymous, 0) = 0""",
+                """SELECT COUNT(DISTINCT a.user_id) AS n FROM appointments a
+                   JOIN users u ON u.id = a.user_id
+                   WHERE a.doctor_id = ? AND a.status IN ('confirmed', 'completed')
+                     AND COALESCE(a.anonymous, 0) = 0 AND COALESCE(u.deleted_at, '') = ''""",
                 (doctor["id"],),
             ).fetchone()["n"],
             "weekEarnings": db.execute(
@@ -167,7 +200,7 @@ def _doctor_appointment(db, row) -> dict:
         "hasRecord": has_record,
         # Shown on the appointment itself, so a doctor knows before opening
         # the chart that they are walking in with part of the picture.
-        "historyShare": None if anon else effective_share(db, row["doctor_id"], row["user_id"])["mode"],
+        "historyShare": None if (anon or _is_deleted_user(patient)) else effective_share(db, row["doctor_id"], row["user_id"])["mode"],
     }
 
 
@@ -266,14 +299,67 @@ class RecordBody(BaseModel):
     followUp: str | None = None
 
 
+@contextmanager
+def _audited_doctor_db(
+    request: Request,
+    doctor: dict,
+    action: str,
+    resource_type: str,
+    *,
+    resource_id: str | None = None,
+    patient_id: int | None = None,
+    success_status: int = 200,
+):
+    """Run a doctor clinical DB action and log granted/denied attempts without PHI."""
+    state = {"patient_id": patient_id, "resource_id": resource_id}
+    ip_address = request.client.host if request.client else None
+    try:
+        with get_db() as db:
+            yield db, state
+            record_medical_audit(
+                db,
+                actor_type="doctor",
+                actor_id=doctor["id"],
+                patient_id=state["patient_id"],
+                resource_type=resource_type,
+                resource_id=state["resource_id"],
+                action=action,
+                outcome="granted",
+                status_code=success_status,
+                ip_address=ip_address,
+            )
+    except HTTPException as exc:
+        write_medical_audit(
+            actor_type="doctor",
+            actor_id=doctor["id"],
+            patient_id=state["patient_id"],
+            resource_type=resource_type,
+            resource_id=state["resource_id"],
+            action=action,
+            outcome="denied",
+            status_code=exc.status_code,
+            ip_address=ip_address,
+        )
+        raise
+
+
+def _require_doctor_appointment(db, appointment_id: str, doctor_id: int):
+    """Fetch a confirmed or completed appointment belonging to this doctor."""
+    appt = db.execute(
+        """SELECT * FROM appointments
+           WHERE id = ? AND doctor_id = ? AND status IN ('confirmed', 'completed')""",
+        (appointment_id, doctor_id),
+    ).fetchone()
+    if not appt:
+        raise HTTPException(404, "Appointment not found")
+    return appt
+
+
 @router.get("/doctor/appointments/{appointment_id}/record")
-def get_record(appointment_id: str, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
-        appt = db.execute(
-            "SELECT * FROM appointments WHERE id = ? AND doctor_id = ?", (appointment_id, doctor["id"])
-        ).fetchone()
-        if not appt:
-            raise HTTPException(404, "Appointment not found")
+def get_record(appointment_id: str, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(request, doctor, "view", "record", resource_id=appointment_id) as (db, audit):
+        appt = _require_doctor_appointment(db, appointment_id, doctor["id"])
+        audit["patient_id"] = appt["user_id"]
         row = db.execute(
             "SELECT * FROM consultation_records WHERE appointment_id = ?", (appointment_id,)
         ).fetchone()
@@ -288,7 +374,7 @@ def get_record(appointment_id: str, doctor: dict = Depends(current_doctor)):
 
 
 @router.put("/doctor/appointments/{appointment_id}/record")
-def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(current_doctor)):
+def save_record(appointment_id: str, body: RecordBody, request: Request, doctor: dict = Depends(current_doctor)):
     if body.followUp and not DATE_RE.match(body.followUp):
         raise HTTPException(400, "followUp must be YYYY-MM-DD.")
     prescription = [
@@ -301,12 +387,9 @@ def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(cu
         for line in body.prescription
         if isinstance(line, dict) and str(line.get("name", "")).strip()
     ]
-    with get_db() as db:
-        appt = db.execute(
-            "SELECT * FROM appointments WHERE id = ? AND doctor_id = ?", (appointment_id, doctor["id"])
-        ).fetchone()
-        if not appt:
-            raise HTTPException(404, "Appointment not found")
+    with _audited_doctor_db(request, doctor, "update", "record", resource_id=appointment_id) as (db, audit):
+        appt = _require_doctor_appointment(db, appointment_id, doctor["id"])
+        audit["patient_id"] = appt["user_id"]
         db.execute(
             """INSERT INTO consultation_records
                  (appointment_id, doctor_id, user_id, diagnosis, notes, vitals, prescription, follow_up, updated_at)
@@ -393,7 +476,8 @@ def doctor_patients(doctor: dict = Depends(current_doctor)):
         rows = db.execute(
             """SELECT u.*, MAX(a.created_at) AS last_visit, COUNT(a.id) AS visits
                FROM users u JOIN appointments a ON a.user_id = u.id
-               WHERE a.doctor_id = ? AND COALESCE(a.anonymous, 0) = 0
+               WHERE a.doctor_id = ? AND a.status IN ('confirmed', 'completed')
+                 AND COALESCE(a.anonymous, 0) = 0 AND COALESCE(u.deleted_at, '') = ''
                GROUP BY u.id ORDER BY last_visit DESC""",
             (doctor["id"],),
         ).fetchall()
@@ -411,8 +495,8 @@ class ChartBody(BaseModel):
 
 
 @router.get("/doctor/patients/{user_id}/chart")
-def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
+def patient_chart(user_id: int, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(request, doctor, "view", "chart", patient_id=user_id) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
         share = effective_share(db, doctor["id"], user_id)
         user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -428,8 +512,8 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
             (user_id,),
         ).fetchall()
         # Records this doctor wrote are theirs to read; other doctors' records
-        # are her history, and follow what she shared.
-        if not can_see(share, "consultations"):
+        # are her history, and follow what she shared (and are hidden once deleted).
+        if not can_see(share, "consultations") or _is_deleted_user(user):
             records = [r for r in records if r["doctor_id"] == doctor["id"]]
         documents = [
             d for d in db.execute(
@@ -464,7 +548,10 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
         mood_ids = [j["mood_log_id"] for j in shared if j["mood_log_id"]]
         if mood_ids:
             marks = ",".join("?" * len(mood_ids))
-            for m in db.execute(f"SELECT * FROM mood_logs WHERE id IN ({marks})", mood_ids).fetchall():
+            for m in db.execute(
+                f"SELECT * FROM mood_logs WHERE user_id = ? AND id IN ({marks})",
+                [user_id, *mood_ids],
+            ).fetchall():
                 mood_by_id[m["id"]] = {
                     "valence": m["valence"],
                     "word": crypto.dec(m["word"]),
@@ -535,7 +622,7 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
             # the rest of the chart. Coverage arrives masked: a practitioner
             # writing a summary needs to know a claim is being made and against
             # which insurer, and does not need the policy number to do it.
-            "intakeForms": intake_for_doctor(db, user_id),
+            "intakeForms": intake_for_doctor(db, user_id, doctor["specialty"], share),
             "coverage": policy_for_doctor(db, user_id),
             "sharedJournal": [
                 {
@@ -551,12 +638,14 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
 
 
 @router.put("/doctor/patients/{user_id}/chart")
-def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_doctor)):
+def update_chart(user_id: int, body: ChartBody, request: Request, doctor: dict = Depends(current_doctor)):
     allergies = [a.strip() for a in body.allergies if a.strip()][:30]
     conditions = [c.strip() for c in body.conditions if c.strip()][:30]
     family_history = body.familyHistory.strip()[:2000] if body.familyHistory else None
-    with get_db() as db:
+    with _audited_doctor_db(request, doctor, "update", "chart", patient_id=user_id) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
+        if _is_deleted_user(db.execute("SELECT deleted_at FROM users WHERE id = ?", (user_id,)).fetchone()):
+            raise HTTPException(404, "Patient not found")
         # A doctor who was not shown her allergies or conditions was sent
         # nothing for them, and saving the chart must not turn that nothing
         # into an empty list over hers. For a hidden section, whatever the
@@ -581,7 +670,7 @@ def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_d
             (user_id, crypto.enc_json(allergies), crypto.enc_json(conditions),
              crypto.enc(blood_group), crypto.enc(family_history), utcnow_iso()),
         )
-    return {"success": True}
+        return {"success": True}
 
 
 # ---------- documents ----------
@@ -593,7 +682,7 @@ class DocumentBody(BaseModel):
 
 
 @router.post("/doctor/patients/{user_id}/documents", status_code=201)
-def upload_document(user_id: int, body: DocumentBody, doctor: dict = Depends(current_doctor)):
+def upload_document(user_id: int, body: DocumentBody, request: Request, doctor: dict = Depends(current_doctor)):
     if body.kind not in ("prescription", "lab", "report", "scan", "discharge", "other"):
         raise HTTPException(400, "kind must be prescription, lab, report, scan, discharge or other.")
     if not body.data.startswith("data:"):
@@ -602,19 +691,24 @@ def upload_document(user_id: int, body: DocumentBody, doctor: dict = Depends(cur
         raise HTTPException(413, "File too large — keep documents under ~3 MB.")
     if not body.title.strip():
         raise HTTPException(400, "title is required.")
-    with get_db() as db:
+    with _audited_doctor_db(
+        request, doctor, "upload", "document", patient_id=user_id, success_status=201
+    ) as (db, audit):
         _require_relationship(db, doctor["id"], user_id)
         cur = db.execute(
             "INSERT INTO documents (user_id, doctor_id, title, kind, data) VALUES (?, ?, ?, ?, ?)",
             (user_id, doctor["id"], crypto.enc(body.title.strip()), body.kind, crypto.enc(body.data)),
         )
+        audit["resource_id"] = str(cur.lastrowid)
         row = db.execute("SELECT * FROM documents WHERE id = ?", (cur.lastrowid,)).fetchone()
         return document_json(row)
 
 
 @router.get("/doctor/patients/{user_id}/documents/{doc_id}")
-def get_document(user_id: int, doc_id: int, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
+def get_document(user_id: int, doc_id: int, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(
+        request, doctor, "view", "document", resource_id=str(doc_id), patient_id=user_id
+    ) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
         row = db.execute(
             "SELECT * FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)
@@ -628,8 +722,10 @@ def get_document(user_id: int, doc_id: int, doctor: dict = Depends(current_docto
 
 
 @router.delete("/doctor/patients/{user_id}/documents/{doc_id}")
-def delete_document(user_id: int, doc_id: int, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
+def delete_document(user_id: int, doc_id: int, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(
+        request, doctor, "delete", "document", resource_id=str(doc_id), patient_id=user_id
+    ) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
         # A doctor removes only what they uploaded — never a document she added.
         cur = db.execute(
@@ -638,4 +734,4 @@ def delete_document(user_id: int, doc_id: int, doctor: dict = Depends(current_do
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Document not found")
-    return {"success": True}
+        return {"success": True}

@@ -49,6 +49,17 @@ export const appointmentApi = {
   completeAppointment: async (appointmentId) =>
     (await api.post(`/appointments/${appointmentId}/complete`)).data,
 
+  // ---- prescriptions ----
+
+  getPrescriptionMeta: async (appointmentId) =>
+    (await api.get(`/appointments/${appointmentId}/prescription`)).data,
+
+  downloadPrescriptionPdf: async (appointmentId) =>
+    (await api.get(`/appointments/${appointmentId}/prescription.pdf`, { responseType: 'blob' })).data,
+
+  verifyPrescription: async (token) =>
+    (await api.get('/prescriptions/verify', { params: { token } })).data,
+
   // ---- doctor management (admin) ----
 
   addDoctor: async (doctor) => (await api.post('/doctors', doctor)).data,
