@@ -8,8 +8,10 @@ present, so web and API can ship as one service. Native clients (the Android
 app) just call /api/* directly.
 """
 import os
+import re
 import threading
 from pathlib import Path
+from urllib.parse import unquote
 
 from fastapi import FastAPI, Request
 from fastapi.exceptions import HTTPException
@@ -91,11 +93,55 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
     return JSONResponse(status_code=500, content={"error": "Something went wrong. Please try again."})
 
 
+_PUBLIC_API_PATTERNS = (
+    re.compile(r"^/api/health$"),
+    re.compile(r"^/api/doctors$"),
+    re.compile(r"^/api/doctors/[^/]+$"),
+    re.compile(r"^/api/doctors/[^/]+/slots$"),
+    re.compile(r"^/api/camps$"),
+    re.compile(r"^/api/camps/types$"),
+    re.compile(r"^/api/camps/[^/]+$"),
+)
+
+
+def _has_unsafe_path_segments(raw: str) -> bool:
+    return "\\" in raw or "//" in raw or any(seg in (".", "..") for seg in raw.split("/"))
+
+
+def _is_sensitive_api_request(request: Request) -> bool:
+    """Fail closed: every /api response gets no-store except public catalog GET/HEAD."""
+    path = request.url.path
+    if path != "/api" and not path.startswith("/api/"):
+        return False
+    if request.method == "OPTIONS":
+        return False
+    if request.method not in ("GET", "HEAD"):
+        return True
+
+    raw_path = request.scope.get("raw_path")
+    if isinstance(raw_path, (bytes, bytearray)):
+        try:
+            raw_text = raw_path.decode("ascii").split("?", 1)[0]
+        except UnicodeDecodeError:
+            return True
+        lowered = raw_text.lower()
+        if "%2f" in lowered or "%5c" in lowered or _has_unsafe_path_segments(unquote(raw_text)):
+            return True
+
+    if _has_unsafe_path_segments(path):
+        return True
+    normalized = path[:-1] if len(path) > 1 and path.endswith("/") else path
+    return not any(pattern.match(normalized) for pattern in _PUBLIC_API_PATTERNS)
+
+
 @app.middleware("http")
 async def security_headers(request: Request, call_next):
     response = await call_next(request)
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["X-Frame-Options"] = "DENY"
+    if _is_sensitive_api_request(request):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, private"
+        response.headers["Pragma"] = "no-cache"
     return response
 
 
