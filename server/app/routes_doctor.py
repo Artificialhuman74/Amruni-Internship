@@ -143,7 +143,7 @@ def doctor_me(doctor: dict = Depends(current_doctor)):
             ).fetchone()["n"],
             "patients": db.execute(
                 """SELECT COUNT(DISTINCT user_id) AS n FROM appointments
-                   WHERE doctor_id = ? AND COALESCE(anonymous, 0) = 0""",
+                   WHERE doctor_id = ? AND status IN ('confirmed', 'completed') AND COALESCE(anonymous, 0) = 0""",
                 (doctor["id"],),
             ).fetchone()["n"],
             "weekEarnings": db.execute(
@@ -270,14 +270,22 @@ class RecordBody(BaseModel):
     followUp: str | None = None
 
 
+def _require_doctor_appointment(db, appointment_id: str, doctor_id: int):
+    """Fetch a confirmed or completed appointment belonging to this doctor."""
+    appt = db.execute(
+        """SELECT * FROM appointments
+           WHERE id = ? AND doctor_id = ? AND status IN ('confirmed', 'completed')""",
+        (appointment_id, doctor_id),
+    ).fetchone()
+    if not appt:
+        raise HTTPException(404, "Appointment not found")
+    return appt
+
+
 @router.get("/doctor/appointments/{appointment_id}/record")
 def get_record(appointment_id: str, doctor: dict = Depends(current_doctor)):
     with get_db() as db:
-        appt = db.execute(
-            "SELECT * FROM appointments WHERE id = ? AND doctor_id = ?", (appointment_id, doctor["id"])
-        ).fetchone()
-        if not appt:
-            raise HTTPException(404, "Appointment not found")
+        appt = _require_doctor_appointment(db, appointment_id, doctor["id"])
         row = db.execute(
             "SELECT * FROM consultation_records WHERE appointment_id = ?", (appointment_id,)
         ).fetchone()
@@ -306,11 +314,7 @@ def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(cu
         if isinstance(line, dict) and str(line.get("name", "")).strip()
     ]
     with get_db() as db:
-        appt = db.execute(
-            "SELECT * FROM appointments WHERE id = ? AND doctor_id = ?", (appointment_id, doctor["id"])
-        ).fetchone()
-        if not appt:
-            raise HTTPException(404, "Appointment not found")
+        appt = _require_doctor_appointment(db, appointment_id, doctor["id"])
         db.execute(
             """INSERT INTO consultation_records
                  (appointment_id, doctor_id, user_id, diagnosis, notes, vitals, prescription, follow_up, updated_at)
@@ -397,7 +401,7 @@ def doctor_patients(doctor: dict = Depends(current_doctor)):
         rows = db.execute(
             """SELECT u.*, MAX(a.created_at) AS last_visit, COUNT(a.id) AS visits
                FROM users u JOIN appointments a ON a.user_id = u.id
-               WHERE a.doctor_id = ? AND COALESCE(a.anonymous, 0) = 0
+               WHERE a.doctor_id = ? AND a.status IN ('confirmed', 'completed') AND COALESCE(a.anonymous, 0) = 0
                GROUP BY u.id ORDER BY last_visit DESC""",
             (doctor["id"],),
         ).fetchall()

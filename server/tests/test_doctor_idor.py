@@ -189,6 +189,156 @@ class DoctorRelationshipIDORTests(unittest.TestCase):
         self.assertEqual(comp_chart.status_code, 200, comp_chart.text)
         self.assertEqual(comp_chart.json()["patient"]["name"], "Completed Patient")
 
+    def _patient_headers(self, phone: str) -> dict[str, str]:
+        prev = os.environ.get("TEST_OTP_NUMBERS")
+        os.environ["TEST_OTP_NUMBERS"] = f"{phone}:123456"
+        try:
+            self.assertEqual(self.client.post("/api/auth/request-otp", json={"phone": phone}).status_code, 200)
+            res = self.client.post("/api/auth/verify-otp", json={"phone": phone, "code": "123456"})
+            self.assertEqual(res.status_code, 200, res.text)
+            return {"Authorization": f"Bearer {res.json()['token']}"}
+        finally:
+            if prev is None:
+                os.environ.pop("TEST_OTP_NUMBERS", None)
+            else:
+                os.environ["TEST_OTP_NUMBERS"] = prev
+
+    def test_record_routes_require_confirmed_or_completed_status(self):
+        doc_a_id, doc_a_headers = self._create_doctor_headers("+919900001021", "Dr. Rec A")
+        _, doc_b_headers = self._create_doctor_headers("+919900001022", "Dr. Rec B")
+        patient_id, _ = self._create_patient("+919900002021", "Record Patient")
+
+        cancelled_id = self._insert_appointment(doc_a_id, patient_id, status="cancelled", anonymous=0)
+        pending_id = self._insert_appointment(doc_a_id, patient_id, status="pending_payment", anonymous=0)
+        confirmed_id = self._insert_appointment(doc_a_id, patient_id, status="confirmed", anonymous=0)
+        anon_id = self._insert_appointment(doc_a_id, patient_id, status="confirmed", anonymous=1)
+
+        record_body = {"diagnosis": "PCOS follow-up", "notes": "Reviewed", "vitals": {"bp": "120/80"}, "prescription": []}
+
+        # Cancelled and pending_payment appointments must deny GET and PUT /record
+        for blocked_id in (cancelled_id, pending_id):
+            r_get = self.client.get(f"/api/doctor/appointments/{blocked_id}/record", headers=doc_a_headers)
+            self.assertEqual(r_get.status_code, 404, r_get.text)
+            r_put = self.client.put(f"/api/doctor/appointments/{blocked_id}/record", json=record_body, headers=doc_a_headers)
+            self.assertEqual(r_put.status_code, 404, r_put.text)
+
+        # Unrelated Doctor B is denied on confirmed appointment too
+        self.assertEqual(
+            self.client.get(f"/api/doctor/appointments/{confirmed_id}/record", headers=doc_b_headers).status_code,
+            404,
+        )
+        self.assertEqual(
+            self.client.put(f"/api/doctor/appointments/{confirmed_id}/record", json=record_body, headers=doc_b_headers).status_code,
+            404,
+        )
+
+        # Confirmed non-anonymous and confirmed anonymous appointments still allow assigned doctor
+        r_conf_get = self.client.get(f"/api/doctor/appointments/{confirmed_id}/record", headers=doc_a_headers)
+        self.assertEqual(r_conf_get.status_code, 200, r_conf_get.text)
+        r_conf_put = self.client.put(f"/api/doctor/appointments/{confirmed_id}/record", json=record_body, headers=doc_a_headers)
+        self.assertEqual(r_conf_put.status_code, 200, r_conf_put.text)
+
+        r_anon_get = self.client.get(f"/api/doctor/appointments/{anon_id}/record", headers=doc_a_headers)
+        self.assertEqual(r_anon_get.status_code, 200, r_anon_get.text)
+        self.assertTrue(r_anon_get.json()["anonymous"])
+
+    def test_doctor_patients_and_me_count_exclude_unconfirmed_and_anonymous(self):
+        doc_id, doc_headers = self._create_doctor_headers("+919900001031", "Dr. Roster")
+
+        p_cancel, _ = self._create_patient("+919900002031", "Cancelled Roster")
+        p_pending, _ = self._create_patient("+919900002032", "Pending Roster")
+        p_anon, _ = self._create_patient("+919900002033", "Anon Roster")
+        p_conf, _ = self._create_patient("+919900002034", "Confirmed Roster")
+        p_comp, _ = self._create_patient("+919900002035", "Completed Roster")
+
+        self._insert_appointment(doc_id, p_cancel, status="cancelled", anonymous=0)
+        self._insert_appointment(doc_id, p_pending, status="pending_payment", anonymous=0)
+        self._insert_appointment(doc_id, p_anon, status="confirmed", anonymous=1)
+        self._insert_appointment(doc_id, p_conf, status="confirmed", anonymous=0)
+        self._insert_appointment(doc_id, p_comp, status="completed", anonymous=0)
+
+        patients_resp = self.client.get("/api/doctor/patients", headers=doc_headers)
+        self.assertEqual(patients_resp.status_code, 200, patients_resp.text)
+        returned_ids = {p["id"] for p in patients_resp.json()}
+        self.assertEqual(returned_ids, {p_conf, p_comp})
+
+        me_resp = self.client.get("/api/doctor/me", headers=doc_headers)
+        self.assertEqual(me_resp.status_code, 200, me_resp.text)
+        self.assertEqual(me_resp.json()["stats"]["patients"], 2)
+
+    def test_history_requests_require_confirmed_relationship_and_patient_pending_share_works(self):
+        doc_id, doc_headers = self._create_doctor_headers("+919900001041", "Dr. Share")
+        p_pending_id, _ = self._create_patient("+919900002041", "Pending Share Patient")
+        p_pending_headers = self._patient_headers("+919900002041")
+        pending_appt = self._insert_appointment(doc_id, p_pending_id, status="pending_payment", anonymous=0)
+
+        # Patient can still configure history-share on her own pending appointment
+        r_put = self.client.put(
+            f"/api/me/appointments/{pending_appt}/history-share",
+            json={"mode": "selected", "categories": ["medications"], "documentIds": []},
+            headers=p_pending_headers,
+        )
+        self.assertEqual(r_put.status_code, 200, r_put.text)
+        self.assertEqual(r_put.json()["mode"], "selected")
+        r_get = self.client.get(f"/api/me/appointments/{pending_appt}/history-share", headers=p_pending_headers)
+        self.assertEqual(r_get.status_code, 200, r_get.text)
+        self.assertEqual(r_get.json()["mode"], "selected")
+
+        # Doctor cannot create history requests when only pending_payment/cancelled/anonymous exists
+        r_req_pending = self.client.post(
+            f"/api/doctor/patients/{p_pending_id}/history-requests",
+            json={"categories": ["allergies"]},
+            headers=doc_headers,
+        )
+        self.assertEqual(r_req_pending.status_code, 404, r_req_pending.text)
+
+        p_cancel_id, _ = self._create_patient("+919900002042", "Cancel Share Patient")
+        self._insert_appointment(doc_id, p_cancel_id, status="cancelled", anonymous=0)
+        self.assertEqual(
+            self.client.post(
+                f"/api/doctor/patients/{p_cancel_id}/history-requests",
+                json={"categories": ["allergies"]},
+                headers=doc_headers,
+            ).status_code,
+            404,
+        )
+
+        p_anon_id, _ = self._create_patient("+919900002043", "Anon Share Patient")
+        self._insert_appointment(doc_id, p_anon_id, status="confirmed", anonymous=1)
+        self.assertEqual(
+            self.client.post(
+                f"/api/doctor/patients/{p_anon_id}/history-requests",
+                json={"categories": ["allergies"]},
+                headers=doc_headers,
+            ).status_code,
+            404,
+        )
+
+        # Newer pending_payment booking must not override an existing confirmed appointment's selected share
+        p_mixed_id, _ = self._create_patient("+919900002044", "Mixed Share Patient")
+        p_mixed_headers = self._patient_headers("+919900002044")
+        conf_appt = self._insert_appointment(doc_id, p_mixed_id, status="confirmed", anonymous=0)
+        newer_pending = self._insert_appointment(doc_id, p_mixed_id, status="pending_payment", anonymous=0)
+        with db_mod.get_db() as db:
+            db.execute("UPDATE appointments SET created_at = '2026-11-01T10:00:00' WHERE id = ?", (conf_appt,))
+            db.execute("UPDATE appointments SET created_at = '2026-11-02T10:00:00' WHERE id = ?", (newer_pending,))
+
+        r_set = self.client.put(
+            f"/api/me/appointments/{conf_appt}/history-share",
+            json={"mode": "selected", "categories": ["medications"], "documentIds": []},
+            headers=p_mixed_headers,
+        )
+        self.assertEqual(r_set.status_code, 200, r_set.text)
+
+        r_req_ok = self.client.post(
+            f"/api/doctor/patients/{p_mixed_id}/history-requests",
+            json={"categories": ["allergies"]},
+            headers=doc_headers,
+        )
+        self.assertEqual(r_req_ok.status_code, 201, r_req_ok.text)
+        self.assertEqual(r_req_ok.json()["appointmentId"], conf_appt)
+
 
 if __name__ == "__main__":
     unittest.main()
+
