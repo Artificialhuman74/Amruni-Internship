@@ -713,6 +713,7 @@ def init_db():
         # sign-in cannot look it up directly. This is the deterministic index it
         # looks up instead — see app/crypto.blind_index.
         _ensure_column(db, "users", "phone_bidx", "TEXT")
+        _ensure_column(db, "users", "deleted_at", "TEXT")
         db.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_users_phone_bidx ON users(phone_bidx) WHERE phone_bidx IS NOT NULL")
         encrypt_existing_rows(db)
         # Journal entries gained a mood, an auto-captured body/cycle context and
@@ -817,6 +818,8 @@ def encrypt_existing_rows(db: sqlite3.Connection):
             # Rebuilt from the plaintext we just read, or nobody whose account
             # predates this module can ever sign in again.
             for row in rows:
+                if str(row["phone"] or "").startswith("deleted:"):
+                    continue
                 db.execute(
                     "UPDATE users SET phone_bidx = ? WHERE rowid = ?",
                     (crypto.blind_index(row["phone"]), row["_rid"]),

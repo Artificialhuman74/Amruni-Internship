@@ -1,13 +1,14 @@
 """Current-user profile and health state (cycle, pregnancy, settings, screenings)."""
 import json
+import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Body, Depends, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from .auth import current_user
+from .auth import _consume_otp, current_user
 from . import crypto
-from .db import get_db
+from .db import get_db, record_medical_audit, utcnow_iso
 
 router = APIRouter()
 
@@ -350,3 +351,198 @@ def export_my_data(request: Request, user: dict = Depends(current_user)):
             "Content-Disposition": 'attachment; filename="amruni-data-export.json"',
         },
     )
+
+
+class DeleteAccountBody(BaseModel):
+    code: str | None = None
+
+
+_PURGE_BY_USER_ID = (
+    "payments",
+    "history_shares",
+    "history_requests",
+    "health_history",
+    "patient_charts",
+    "cycle_logs",
+    "cycle_state",
+    "pregnancy_logs",
+    "pregnancy_state",
+    "user_settings",
+    "screenings",
+    "mood_logs",
+    "journal_entries",
+    "medication_doses",
+    "medications",
+    "sos_alerts",
+    "sos_contacts",
+    "care_events",
+    "care_shares",
+    "intake_submissions",
+    "insurance_policies",
+    "anon_handles",
+    "community_poll_votes",
+    "community_likes",
+)
+
+
+def _decrement_community_counters(db, user_id: int) -> None:
+    liked_rows = db.execute("SELECT post_id FROM community_likes WHERE user_id = ?", (user_id,)).fetchall()
+    for r in liked_rows:
+        db.execute("UPDATE community_posts SET like_count = MAX(0, like_count - 1) WHERE id = ?", (r["post_id"],))
+
+    reply_rows = db.execute(
+        """SELECT reply_to_id, COUNT(*) AS n
+           FROM community_posts
+           WHERE author_id = ? AND reply_to_id IS NOT NULL AND moderation_status = 'approved'
+           GROUP BY reply_to_id""",
+        (user_id,),
+    ).fetchall()
+    for r in reply_rows:
+        db.execute(
+            "UPDATE community_posts SET reply_count = MAX(0, reply_count - ?) WHERE id = ?",
+            (r["n"], r["reply_to_id"]),
+        )
+
+
+def _retained_clinical_appointment_ids(db, user_id: int) -> list[str]:
+    """Return appointment IDs needed as minimal anchors for retained clinical/prescription records."""
+    keep = {
+        r["appointment_id"]
+        for r in db.execute("SELECT appointment_id FROM consultation_records WHERE user_id = ?", (user_id,)).fetchall()
+    }
+    doc_doctors = db.execute(
+        """SELECT DISTINCT doctor_id FROM documents
+           WHERE user_id = ? AND doctor_id IS NOT NULL AND COALESCE(uploaded_by, 'doctor') != 'patient'""",
+        (user_id,),
+    ).fetchall()
+    for d in doc_doctors:
+        row = db.execute(
+            """SELECT id FROM appointments
+               WHERE user_id = ? AND doctor_id = ?
+                 AND status IN ('confirmed', 'completed') AND COALESCE(anonymous, 0) = 0
+               ORDER BY created_at DESC LIMIT 1""",
+            (user_id, d["doctor_id"]),
+        ).fetchone()
+        if row:
+            keep.add(row["id"])
+    return sorted(keep)
+
+
+def _release_deleted_slots(db, user_id: int, retained_appt_ids: list[str]) -> None:
+    clause = ""
+    params: list = [user_id]
+    if retained_appt_ids:
+        placeholders = ",".join("?" for _ in retained_appt_ids)
+        clause = f"AND id NOT IN ({placeholders})"
+        params.extend(retained_appt_ids)
+    rows = db.execute(
+        f"""SELECT DISTINCT slot_id FROM appointments
+            WHERE user_id = ? AND slot_id IS NOT NULL
+              AND status IN ('pending_payment', 'confirmed') {clause}""",
+        params,
+    ).fetchall()
+    for r in rows:
+        db.execute(
+            "UPDATE slots SET status = 'open', locked_at = NULL WHERE id = ? AND status IN ('locked', 'booked')",
+            (r["slot_id"],),
+        )
+
+
+def _anonymize_retained_account(db, user_id: int, retained_appts: list[str]) -> None:
+    """Purge wellness/community/payment data while leaving clinical records de-identified."""
+    for table in _PURGE_BY_USER_ID:
+        db.execute(f"DELETE FROM {table} WHERE user_id = ?", (user_id,))
+    db.execute("DELETE FROM community_blocks WHERE user_id = ? OR blocked_id = ?", (user_id, user_id))
+    db.execute("DELETE FROM community_reports WHERE reporter_id = ?", (user_id,))
+    db.execute("DELETE FROM community_posts WHERE author_id = ?", (user_id,))
+    db.execute(
+        "DELETE FROM documents WHERE user_id = ? AND COALESCE(uploaded_by, 'doctor') = 'patient'",
+        (user_id,),
+    )
+    if retained_appts:
+        placeholders = ",".join("?" for _ in retained_appts)
+        db.execute(
+            f"DELETE FROM appointments WHERE user_id = ? AND id NOT IN ({placeholders})",
+            [user_id, *retained_appts],
+        )
+        db.execute(
+            f"""UPDATE appointments
+                SET reason = NULL, meet_link = NULL, meet_event_id = NULL, slot_id = NULL
+                WHERE user_id = ? AND id IN ({placeholders})""",
+            [user_id, *retained_appts],
+        )
+    else:
+        db.execute("DELETE FROM appointments WHERE user_id = ?", (user_id,))
+
+    tombstone_phone = crypto.enc(f"deleted:{user_id}:{secrets.token_hex(8)}")
+    db.execute(
+        """UPDATE users
+           SET phone = ?, phone_bidx = NULL, name = NULL, dob = NULL,
+               life_stage = NULL, goal = NULL, is_onboarded = 0, deleted_at = ?
+           WHERE id = ?""",
+        (tombstone_phone, utcnow_iso(), user_id),
+    )
+
+
+@router.delete("/me/account")
+def delete_my_account(
+    request: Request,
+    body: DeleteAccountBody | None = Body(default=None),
+    user: dict = Depends(current_user),
+):
+    """Permanently delete a patient account after fresh OTP re-authentication.
+
+    Hard-deletes all PII, personal wellness tracking data, patient uploads, and
+    community content. When clinical records or doctor-uploaded documents exist,
+    keeps only those de-identified clinical/prescription records intact under a
+    scrubbed tombstone row; otherwise removes the user row completely.
+    """
+    raw_code = (body.code if body else None) or request.headers.get("x-otp-code") or ""
+    code = raw_code.strip()
+    if not (code.isdigit() and len(code) == 6):
+        raise HTTPException(400, "Enter the 6-digit verification code.")
+
+    phone = crypto.dec(user["phone"])
+    if not phone:
+        raise HTTPException(401, "Account verification failed.")
+
+    user_id = user["id"]
+    ip_address = request.client.host if request.client else None
+
+    with get_db() as db:
+        _consume_otp(db, phone, code)
+        records_count = db.execute(
+            "SELECT COUNT(*) AS n FROM consultation_records WHERE user_id = ?", (user_id,)
+        ).fetchone()["n"]
+        doctor_docs_count = db.execute(
+            """SELECT COUNT(*) AS n FROM documents
+               WHERE user_id = ? AND COALESCE(uploaded_by, 'doctor') != 'patient'""",
+            (user_id,),
+        ).fetchone()["n"]
+        retained_appts = _retained_clinical_appointment_ids(db, user_id)
+
+        _decrement_community_counters(db, user_id)
+        _release_deleted_slots(db, user_id, retained_appts)
+        record_medical_audit(
+            db,
+            actor_type="patient",
+            actor_id=user_id,
+            patient_id=user_id,
+            resource_type="account",
+            resource_id=str(user_id),
+            action="delete",
+            outcome="granted",
+            status_code=200,
+            ip_address=ip_address,
+        )
+
+        if records_count == 0 and doctor_docs_count == 0:
+            db.execute("DELETE FROM users WHERE id = ?", (user_id,))
+        else:
+            _anonymize_retained_account(db, user_id, retained_appts)
+
+    return {
+        "deleted": True,
+        "retainedClinicalRecords": records_count,
+        "retainedDoctorDocuments": doctor_docs_count,
+    }

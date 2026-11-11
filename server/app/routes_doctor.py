@@ -65,7 +65,23 @@ def _age(dob: str | None) -> int | None:
     return today.year - born.year - ((today.month, today.day) < (born.month, born.day))
 
 
+def _is_deleted_user(user_row) -> bool:
+    return bool(user_row and "deleted_at" in user_row.keys() and user_row["deleted_at"])
+
+
 def _patient_summary(user_row) -> dict:
+    if _is_deleted_user(user_row):
+        return {
+            "id": user_row["id"],
+            "name": "Deleted patient",
+            "phone": None,
+            "age": None,
+            "dob": None,
+            "lifeStage": None,
+            "goal": None,
+            "anonymous": False,
+            "deleted": True,
+        }
     return {
         "id": user_row["id"],
         "name": crypto.dec(user_row["name"]) or "Unnamed patient",
@@ -97,6 +113,16 @@ def _anonymous_summary(db, user_row) -> dict:
     withholding it is what makes the chart genuinely unreachable rather than
     merely unlinked in the interface.
     """
+    if _is_deleted_user(user_row):
+        return {
+            "id": None,
+            "name": "Deleted patient",
+            "phone": None,
+            "age": None,
+            "lifeStage": None,
+            "anonymous": True,
+            "deleted": True,
+        }
     return {
         "id": None,
         "name": get_or_create_anon_handle(db, user_row["id"]),
@@ -143,8 +169,10 @@ def doctor_me(doctor: dict = Depends(current_doctor)):
                 (doctor["id"], today),
             ).fetchone()["n"],
             "patients": db.execute(
-                """SELECT COUNT(DISTINCT user_id) AS n FROM appointments
-                   WHERE doctor_id = ? AND status IN ('confirmed', 'completed') AND COALESCE(anonymous, 0) = 0""",
+                """SELECT COUNT(DISTINCT a.user_id) AS n FROM appointments a
+                   JOIN users u ON u.id = a.user_id
+                   WHERE a.doctor_id = ? AND a.status IN ('confirmed', 'completed')
+                     AND COALESCE(a.anonymous, 0) = 0 AND COALESCE(u.deleted_at, '') = ''""",
                 (doctor["id"],),
             ).fetchone()["n"],
             "weekEarnings": db.execute(
@@ -172,7 +200,7 @@ def _doctor_appointment(db, row) -> dict:
         "hasRecord": has_record,
         # Shown on the appointment itself, so a doctor knows before opening
         # the chart that they are walking in with part of the picture.
-        "historyShare": None if anon else effective_share(db, row["doctor_id"], row["user_id"])["mode"],
+        "historyShare": None if (anon or _is_deleted_user(patient)) else effective_share(db, row["doctor_id"], row["user_id"])["mode"],
     }
 
 
@@ -448,7 +476,8 @@ def doctor_patients(doctor: dict = Depends(current_doctor)):
         rows = db.execute(
             """SELECT u.*, MAX(a.created_at) AS last_visit, COUNT(a.id) AS visits
                FROM users u JOIN appointments a ON a.user_id = u.id
-               WHERE a.doctor_id = ? AND a.status IN ('confirmed', 'completed') AND COALESCE(a.anonymous, 0) = 0
+               WHERE a.doctor_id = ? AND a.status IN ('confirmed', 'completed')
+                 AND COALESCE(a.anonymous, 0) = 0 AND COALESCE(u.deleted_at, '') = ''
                GROUP BY u.id ORDER BY last_visit DESC""",
             (doctor["id"],),
         ).fetchall()
@@ -483,8 +512,8 @@ def patient_chart(user_id: int, request: Request, doctor: dict = Depends(current
             (user_id,),
         ).fetchall()
         # Records this doctor wrote are theirs to read; other doctors' records
-        # are her history, and follow what she shared.
-        if not can_see(share, "consultations"):
+        # are her history, and follow what she shared (and are hidden once deleted).
+        if not can_see(share, "consultations") or _is_deleted_user(user):
             records = [r for r in records if r["doctor_id"] == doctor["id"]]
         documents = [
             d for d in db.execute(
@@ -615,6 +644,8 @@ def update_chart(user_id: int, body: ChartBody, request: Request, doctor: dict =
     family_history = body.familyHistory.strip()[:2000] if body.familyHistory else None
     with _audited_doctor_db(request, doctor, "update", "chart", patient_id=user_id) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
+        if _is_deleted_user(db.execute("SELECT deleted_at FROM users WHERE id = ?", (user_id,)).fetchone()):
+            raise HTTPException(404, "Patient not found")
         # A doctor who was not shown her allergies or conditions was sent
         # nothing for them, and saving the chart must not turn that nothing
         # into an empty list over hers. For a hidden section, whatever the

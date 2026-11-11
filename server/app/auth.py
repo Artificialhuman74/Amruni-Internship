@@ -343,7 +343,10 @@ def verify_otp(phone: str, code: str) -> dict:
         # Looked up by the deterministic index rather than the number itself,
         # which is stored encrypted and cannot be matched on directly.
         bidx = crypto.blind_index(phone)
-        user = db.execute("SELECT * FROM users WHERE phone_bidx = ?", (bidx,)).fetchone()
+        user = db.execute(
+            "SELECT * FROM users WHERE phone_bidx = ? AND COALESCE(deleted_at, '') = ''",
+            (bidx,),
+        ).fetchone()
         if not user:
             cur = db.execute(
                 "INSERT INTO users (phone, phone_bidx) VALUES (?, ?)", (crypto.enc(phone), bidx)
@@ -431,7 +434,7 @@ def current_user(request: Request) -> dict:
         raise HTTPException(401, "Session expired. Sign in again.")
     with get_db() as db:
         user = db.execute("SELECT * FROM users WHERE id = ?", (payload["sub"],)).fetchone()
-    if not user:
+    if not user or ("deleted_at" in user.keys() and user["deleted_at"]):
         raise HTTPException(401, "Account not found.")
     return dict(user)
 
