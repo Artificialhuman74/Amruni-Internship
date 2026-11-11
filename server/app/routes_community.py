@@ -228,7 +228,21 @@ def _journal_json(row, mood: dict | None = None) -> dict:
     }
 
 
-def _moods_for(db, rows) -> dict[str, dict]:
+def _require_owned_mood(db, mood_log_id: str | None, user_id: int) -> str | None:
+    """Verify a client-supplied moodLogId belongs to the authenticated user."""
+    cleaned = mood_log_id.strip() if isinstance(mood_log_id, str) else None
+    if not cleaned:
+        return None
+    row = db.execute(
+        "SELECT id FROM mood_logs WHERE id = ? AND user_id = ?",
+        (cleaned, user_id),
+    ).fetchone()
+    if not row:
+        raise HTTPException(404, "Mood entry not found.")
+    return cleaned
+
+
+def _moods_for(db, rows, user_id: int) -> dict[str, dict]:
     """Fetches the mood attached to each entry in one query, so a list of N
     entries doesn't become N+1 round trips."""
     ids = [r["mood_log_id"] for r in rows if r["mood_log_id"]]
@@ -236,7 +250,8 @@ def _moods_for(db, rows) -> dict[str, dict]:
         return {}
     placeholders = ",".join("?" * len(ids))
     moods = db.execute(
-        f"SELECT * FROM mood_logs WHERE id IN ({placeholders})", ids
+        f"SELECT * FROM mood_logs WHERE user_id = ? AND id IN ({placeholders})",
+        [user_id, *ids],
     ).fetchall()
     return {
         m["id"]: {
@@ -257,7 +272,7 @@ def list_journal(user: dict = Depends(current_user)):
         rows = db.execute(
             "SELECT * FROM journal_entries WHERE user_id = ? ORDER BY date DESC, created_at DESC", (user["id"],)
         ).fetchall()
-        moods = _moods_for(db, rows)
+        moods = _moods_for(db, rows, user["id"])
     return [_journal_json(r, moods.get(r["mood_log_id"])) for r in rows]
 
 
@@ -267,21 +282,22 @@ def create_journal(body: JournalBody, user: dict = Depends(current_user)):
     now = utcnow_iso()
     with get_db() as db:
         validate_tags(body.tags, user["life_stage"])
+        mood_log_id = _require_owned_mood(db, body.moodLogId, user["id"])
         db.execute(
             """INSERT INTO journal_entries
                  (id, user_id, date, text, tags, mood_log_id, context, bring_to_appointment, created_at, updated_at)
                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (entry_id, user["id"], body.date, crypto.enc(body.text), json.dumps(body.tags),
-             body.moodLogId, crypto.enc_json(body.context), int(body.bringToAppointment), now, now),
+             mood_log_id, crypto.enc_json(body.context), int(body.bringToAppointment), now, now),
         )
         # Back-link the mood so deleting the entry can take its mood with it.
-        if body.moodLogId:
+        if mood_log_id:
             db.execute(
                 "UPDATE mood_logs SET journal_id = ? WHERE id = ? AND user_id = ?",
-                (entry_id, body.moodLogId, user["id"]),
+                (entry_id, mood_log_id, user["id"]),
             )
         row = db.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,)).fetchone()
-        moods = _moods_for(db, [row])
+        moods = _moods_for(db, [row], user["id"])
     return _journal_json(row, moods.get(row["mood_log_id"]))
 
 
@@ -294,22 +310,23 @@ def update_journal(entry_id: str, body: JournalBody, user: dict = Depends(curren
         if not existing:
             raise HTTPException(404, "Journal entry not found.")
         validate_tags(body.tags, user["life_stage"])
+        mood_log_id = _require_owned_mood(db, body.moodLogId, user["id"])
         db.execute(
             """UPDATE journal_entries
                  SET date = ?, text = ?, tags = ?, mood_log_id = ?, context = ?,
                      bring_to_appointment = ?, updated_at = ?
                WHERE id = ?""",
-            (body.date, crypto.enc(body.text), json.dumps(body.tags), body.moodLogId,
+            (body.date, crypto.enc(body.text), json.dumps(body.tags), mood_log_id,
              crypto.enc_json(body.context) if body.context else existing["context"],
              int(body.bringToAppointment), utcnow_iso(), entry_id),
         )
-        if body.moodLogId:
+        if mood_log_id:
             db.execute(
                 "UPDATE mood_logs SET journal_id = ? WHERE id = ? AND user_id = ?",
-                (entry_id, body.moodLogId, user["id"]),
+                (entry_id, mood_log_id, user["id"]),
             )
         row = db.execute("SELECT * FROM journal_entries WHERE id = ?", (entry_id,)).fetchone()
-        moods = _moods_for(db, [row])
+        moods = _moods_for(db, [row], user["id"])
     return _journal_json(row, moods.get(row["mood_log_id"]))
 
 

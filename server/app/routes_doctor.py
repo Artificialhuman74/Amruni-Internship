@@ -472,7 +472,10 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
         mood_ids = [j["mood_log_id"] for j in shared if j["mood_log_id"]]
         if mood_ids:
             marks = ",".join("?" * len(mood_ids))
-            for m in db.execute(f"SELECT * FROM mood_logs WHERE id IN ({marks})", mood_ids).fetchall():
+            for m in db.execute(
+                f"SELECT * FROM mood_logs WHERE user_id = ? AND id IN ({marks})",
+                [user_id, *mood_ids],
+            ).fetchall():
                 mood_by_id[m["id"]] = {
                     "valence": m["valence"],
                     "word": crypto.dec(m["word"]),
