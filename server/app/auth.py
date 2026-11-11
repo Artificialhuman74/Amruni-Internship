@@ -9,7 +9,6 @@ import hashlib
 import hmac
 import os
 import secrets
-import sys
 import time
 import re
 
@@ -19,15 +18,30 @@ from fastapi import HTTPException, Request
 from . import crypto
 from .db import get_db
 
-IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
+_TRUTHY_FLAGS = ("1", "true", "yes", "on")
+_DEV_JWT_SECRETS = (
+    "amruni-dev-secret-do-not-use-in-prod",
+    "local-development-only-not-a-real-secret",
+)
+_DEV_ADMIN_PASSWORD = "amruni"
+
+
+def _is_prod() -> bool:
+    return (os.environ.get("ENV") or os.environ.get("NODE_ENV") or "").strip().lower() == "production"
+
+
+def _env_flag(name: str) -> bool:
+    return os.environ.get(name, "").strip().lower() in _TRUTHY_FLAGS
+
+
+IS_PROD = _is_prod()
 # Development / demo escape hatch: return the OTP code to the client even in
 # production. Lets the app be tested end-to-end before an SMS gateway is wired.
-# Turn OFF (unset) once real SMS delivery is in place.
-EXPOSE_OTP = os.environ.get("EXPOSE_OTP", "").strip().lower() in ("1", "true", "yes", "on")
-JWT_SECRET = os.environ.get("JWT_SECRET") or (None if IS_PROD else "amruni-dev-secret-do-not-use-in-prod")
-if not JWT_SECRET:
-    print("FATAL: JWT_SECRET must be set in production.", file=sys.stderr)
-    sys.exit(1)
+# Refused at startup in production.
+EXPOSE_OTP = _env_flag("EXPOSE_OTP")
+# Skips the code check on the practitioner console; refused at startup in production.
+DOCTOR_OTP_DISABLED = _env_flag("DOCTOR_OTP_DISABLED")
+JWT_SECRET = os.environ.get("JWT_SECRET", "").strip() or (None if IS_PROD else _DEV_JWT_SECRETS[0])
 
 OTP_TTL = 5 * 60
 OTP_MAX_ATTEMPTS = 5
@@ -38,7 +52,24 @@ ADMIN_TOKEN_TTL = 12 * 3600
 
 # Admin portal password. No production default: leaving it unset in production
 # disables password login entirely (ADMIN_PHONES still works).
-ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD") or (None if IS_PROD else "amruni")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "").strip() or (None if IS_PROD else _DEV_ADMIN_PASSWORD)
+
+
+def validate_prod_config() -> None:
+    """Fail closed in production when unsafe auth flags or dev defaults are present."""
+    if not IS_PROD:
+        return
+    if not JWT_SECRET or JWT_SECRET in _DEV_JWT_SECRETS:
+        raise RuntimeError("FATAL: JWT_SECRET must be set to a non-default secret in production.")
+    if EXPOSE_OTP:
+        raise RuntimeError("FATAL: EXPOSE_OTP must not be set in production.")
+    if DOCTOR_OTP_DISABLED:
+        raise RuntimeError("FATAL: DOCTOR_OTP_DISABLED must not be set in production.")
+    if ADMIN_PASSWORD and ADMIN_PASSWORD.lower() == _DEV_ADMIN_PASSWORD:
+        raise RuntimeError("FATAL: ADMIN_PASSWORD must not be the default value in production.")
+
+
+validate_prod_config()
 
 PHONE_RE = re.compile(r"^(\+?[1-9]\d{6,14}|[6-9]\d{9})$")
 
@@ -154,16 +185,13 @@ def verify_otp(phone: str, code: str) -> dict:
     return {"token": token, "user_id": uid}
 
 
-# Skips the code check on the practitioner console. One variable, off unless
-# it is set, so it can never arrive by accident in a later deploy.
+# DOCTOR_OTP_DISABLED skips the code check on the practitioner console.
 #
 # What it does NOT remove: the number must still belong to a registered
 # practitioner, and every patient-scoped endpoint still checks that she has an
 # appointment with that doctor. What it does remove is the second factor — so
 # with this on, anyone who knows a practitioner's phone number can read the
-# charts of that practitioner's patients. That is the whole of the trade, and
-# it is the reason this is a variable rather than a deletion.
-DOCTOR_OTP_DISABLED = os.environ.get("DOCTOR_OTP_DISABLED", "").lower() in ("1", "true", "yes")
+# charts of that practitioner's patients. Refused at startup in production.
 
 
 def verify_doctor_otp(phone: str, code: str) -> dict:

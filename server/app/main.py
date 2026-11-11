@@ -20,7 +20,8 @@ from fastapi.staticfiles import StaticFiles
 from .db import get_db, init_db
 from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance, routes_history, routes_camps
 
-IS_PROD = os.environ.get("ENV", os.environ.get("NODE_ENV", "")) == "production"
+IS_PROD = auth.IS_PROD
+auth.validate_prod_config()
 
 init_db()
 
@@ -56,6 +57,7 @@ def _warm_models():
 
 @app.on_event("startup")
 def _startup():
+    auth.validate_prod_config()
     threading.Thread(target=_warm_models, daemon=True).start()
 
 
