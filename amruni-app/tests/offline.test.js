@@ -6,6 +6,8 @@ import { registerHooks } from 'node:module';
 function makeStorage() {
   const store = new Map();
   return {
+    get length() { return store.size; },
+    key: (i) => Array.from(store.keys())[i] ?? null,
     getItem: (k) => (store.has(k) ? store.get(k) : null),
     setItem: (k, v) => { store.set(k, String(v)); },
     removeItem: (k) => { store.delete(k); },
@@ -41,8 +43,16 @@ registerHooks({
   },
 });
 
-const { api } = await import('../src/services/api.js');
-const { cacheRead, cachedRead, isCacheableUrl, clearOfflineData } = await import('../src/lib/offline.js');
+const { api, setToken, getToken, setAdminToken, getAdminToken } = await import('../src/services/api.js');
+const {
+  cacheRead,
+  cachedRead,
+  isCacheableUrl,
+  clearOfflineData,
+  pendingCount,
+  purgeLegacyCacheOnce,
+  startOfflineSync,
+} = await import('../src/lib/offline.js');
 
 function storedCache() {
   const raw = globalThis.localStorage.getItem('amruni_read_cache');
@@ -208,4 +218,114 @@ test('real api.js interceptors cache only allowlisted GET URL shapes and fall ba
   } finally {
     api.defaults.adapter = originalAdapter;
   }
+});
+
+function seedSensitiveStorage() {
+  globalThis.localStorage.setItem('amruni_token', 'tok_user_1');
+  globalThis.localStorage.setItem(
+    'amruni_read_cache',
+    JSON.stringify({ '/doctors': { data: [{ id: 1 }], at: 1 } }),
+  );
+  globalThis.localStorage.setItem(
+    'amruni_outbox',
+    JSON.stringify([{ id: 'q_1', method: 'post', url: '/journal', body: { text: 'note' }, at: 1 }]),
+  );
+  globalThis.localStorage.setItem('amruni_samadhana_draft', JSON.stringify({ answers: { a: 'b' } }));
+  globalThis.localStorage.setItem('amruni_intake_draft_ayurveda', JSON.stringify({ answers: { q1: 'yes' } }));
+  globalThis.localStorage.setItem('amruni_intake_draft_pcos', JSON.stringify({ answers: { q2: 'no' } }));
+  globalThis.localStorage.setItem('amruni_bloom_seen', '1');
+  globalThis.sessionStorage.setItem('amruni_journal_draft', JSON.stringify({ text: 'private draft', tags: [] }));
+}
+
+function assertSensitiveStorageCleared() {
+  assert.equal(globalThis.localStorage.getItem('amruni_read_cache'), null);
+  assert.equal(globalThis.localStorage.getItem('amruni_outbox'), null);
+  assert.equal(globalThis.localStorage.getItem('amruni_samadhana_draft'), null);
+  assert.equal(globalThis.localStorage.getItem('amruni_intake_draft_ayurveda'), null);
+  assert.equal(globalThis.localStorage.getItem('amruni_intake_draft_pcos'), null);
+  assert.equal(globalThis.sessionStorage.getItem('amruni_journal_draft'), null);
+  assert.equal(pendingCount(), 0);
+}
+
+test('clearOfflineData and authenticated logout clear cache, outbox, and all draft keys', () => {
+  globalThis.localStorage.clear();
+  globalThis.sessionStorage.clear();
+
+  // Calling setToken(null) when already signed out keeps public allowlisted cache intact.
+  cacheRead('/doctors', [{ id: 7 }]);
+  setToken(null);
+  assert.deepEqual(cachedRead('/doctors')?.data, [{ id: 7 }]);
+
+  // Signing out from an authenticated session purges cache, outbox, and drafts.
+  seedSensitiveStorage();
+  setToken(null);
+  assert.equal(getToken(), null);
+  assertSensitiveStorageCleared();
+  assert.equal(globalThis.localStorage.getItem('amruni_bloom_seen'), '1');
+
+  // Direct clearOfflineData() also purges everything even without an active token.
+  seedSensitiveStorage();
+  globalThis.localStorage.removeItem('amruni_token');
+  clearOfflineData();
+  assertSensitiveStorageCleared();
+});
+
+test('HTTP 401 on patient API purges cache, outbox, and drafts while ignoring auth/admin flows', async () => {
+  globalThis.localStorage.clear();
+  globalThis.sessionStorage.clear();
+  const originalAdapter = api.defaults.adapter;
+
+  try {
+    api.defaults.adapter = async (config) => {
+      const err = new Error('Unauthorized');
+      err.config = config;
+      err.response = { status: 401, data: { detail: 'unauthorized' } };
+      throw err;
+    };
+
+    seedSensitiveStorage();
+    setAdminToken('admin_tok_1');
+
+    // Auth 401 (e.g. bad OTP) must not purge patient cache/drafts.
+    await assert.rejects(() => api.post('/auth/verify-otp', { code: '0000' }));
+    assert.equal(getToken(), 'tok_user_1');
+    assert.notEqual(globalThis.localStorage.getItem('amruni_read_cache'), null);
+    assert.notEqual(globalThis.sessionStorage.getItem('amruni_journal_draft'), null);
+
+    // Admin-key 401 clears admin token only.
+    await assert.rejects(() => api.get('/some-endpoint', { headers: { 'X-Admin-Key': 'bad' } }));
+    assert.equal(getAdminToken(), null);
+    assert.equal(getToken(), 'tok_user_1');
+    assert.notEqual(globalThis.localStorage.getItem('amruni_outbox'), null);
+
+    // Patient session 401 clears token plus cache, outbox, and all drafts.
+    await assert.rejects(() => api.get('/me'));
+    assert.equal(getToken(), null);
+    assertSensitiveStorageCleared();
+  } finally {
+    api.defaults.adapter = originalAdapter;
+  }
+});
+
+test('startOfflineSync purges legacy cache keys once on app load and preserves subsequent allowlisted reads', () => {
+  globalThis.localStorage.clear();
+  globalThis.sessionStorage.clear();
+
+  globalThis.localStorage.setItem(
+    'amruni_read_cache',
+    JSON.stringify({ '/me': { data: { phone: '+919999999999' }, at: 1 } }),
+  );
+  globalThis.localStorage.setItem('amruni_appointments', JSON.stringify([{ id: 'old' }]));
+  globalThis.localStorage.setItem('amruni_doctors_v4', JSON.stringify([{ id: 'old_doc' }]));
+
+  startOfflineSync();
+  assert.equal(globalThis.localStorage.getItem('amruni_read_cache'), null);
+  assert.equal(globalThis.localStorage.getItem('amruni_appointments'), null);
+  assert.equal(globalThis.localStorage.getItem('amruni_doctors_v4'), null);
+  assert.equal(purgeLegacyCacheOnce(), false);
+
+  // Subsequent app loads must keep new allowlisted cache entries intact.
+  cacheRead('/doctors', [{ id: 1, name: 'Dr. Kavita' }]);
+  startOfflineSync();
+  assert.deepEqual(cachedRead('/doctors')?.data, [{ id: 1, name: 'Dr. Kavita' }]);
 });

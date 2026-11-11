@@ -26,10 +26,50 @@ import { api } from '../services/api';
 
 const OUTBOX_KEY = 'amruni_outbox';
 const CACHE_KEY = 'amruni_read_cache';
+const LEGACY_CACHE_KEYS = ['amruni_read_cache', 'amruni_appointments', 'amruni_doctors_v4'];
+const LEGACY_CACHE_PURGED_KEY = 'amruni_legacy_cache_purged_v1';
+const DRAFT_KEYS = ['amruni_journal_draft', 'amruni_samadhana_draft'];
+const DRAFT_PREFIXES = ['amruni_intake_draft_'];
 const MAX_CACHE_ENTRIES = 120;
 
 let flushing = false;
 const listeners = new Set();
+
+function getStorage(name) {
+  try {
+    return globalThis[name] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function removeStorageKey(storage, key) {
+  if (!storage) return;
+  try {
+    storage.removeItem(key);
+  } catch {
+    // Quota or private mode; best-effort cleanup.
+  }
+}
+
+function clearDraftKeys(storage) {
+  if (!storage) return;
+  try {
+    for (const key of DRAFT_KEYS) storage.removeItem(key);
+    if (typeof storage.length === 'number' && typeof storage.key === 'function') {
+      const matches = [];
+      for (let i = 0; i < storage.length; i += 1) {
+        const key = storage.key(i);
+        if (key && DRAFT_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+          matches.push(key);
+        }
+      }
+      for (const key of matches) storage.removeItem(key);
+    }
+  } catch {
+    // Ignore restricted storage in private mode or minimal mocks.
+  }
+}
 
 // ── storage helpers ──────────────────────────────────────────
 function read(key, fallback) {
@@ -191,14 +231,34 @@ export function cachedRead(url) {
   return read(CACHE_KEY, {})[url] ?? null;
 }
 
+/** Clears queued mutations, cached GET responses, and form/journal drafts. */
 export function clearOfflineData() {
-  write(OUTBOX_KEY, []);
-  write(CACHE_KEY, {});
+  const local = getStorage('localStorage');
+  const session = getStorage('sessionStorage');
+  removeStorageKey(local, OUTBOX_KEY);
+  removeStorageKey(local, CACHE_KEY);
+  clearDraftKeys(local);
+  clearDraftKeys(session);
   notify();
+}
+
+/** Removes pre-allowlist cached PHI keys once per device on startup. */
+export function purgeLegacyCacheOnce() {
+  const local = getStorage('localStorage');
+  if (!local) return false;
+  try {
+    if (local.getItem(LEGACY_CACHE_PURGED_KEY)) return false;
+    for (const key of LEGACY_CACHE_KEYS) local.removeItem(key);
+    local.setItem(LEGACY_CACHE_PURGED_KEY, '1');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 // ── wiring ───────────────────────────────────────────────────
 export function startOfflineSync() {
+  purgeLegacyCacheOnce();
   window.addEventListener('online', flushOutbox);
   // Coming back to the app after it was backgrounded is the other moment a
   // connection has usually returned.

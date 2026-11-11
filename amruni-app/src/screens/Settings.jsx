@@ -16,6 +16,7 @@ import { intakeApi } from '../services/intakeApi';
 import { summaryLine } from '../lib/insurance';
 import { FORM_LIST } from '../data/intake';
 import { permissionState, requestPermission, notificationsSupported } from '../lib/reminders';
+import { clearOfflineData } from '../lib/offline';
 import { useEffect } from 'react';
 import {
   IconUser, IconSprout, IconRecords, IconHospital, IconBell, IconLock,
@@ -115,6 +116,7 @@ export default function Settings() {
   }
 
   function handleLogout() {
+    clearOfflineData();
     dispatch({ type: 'LOGOUT' });
     navigate('/phone', { replace: true });
   }

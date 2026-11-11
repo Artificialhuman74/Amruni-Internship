@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { cacheRead, cachedRead } from '../lib/offline';
+import { cacheRead, cachedRead, clearOfflineData } from '../lib/offline';
 
 const TOKEN_KEY = 'amruni_token';
 const ADMIN_KEY = 'amruni_admin_token'; // sessionStorage: short-lived, per-tab
@@ -14,8 +14,13 @@ export function getToken() {
 }
 
 export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  if (token) {
+    localStorage.setItem(TOKEN_KEY, token);
+    return;
+  }
+  const hadToken = Boolean(localStorage.getItem(TOKEN_KEY));
+  localStorage.removeItem(TOKEN_KEY);
+  if (hadToken) clearOfflineData();
 }
 
 export function getAdminToken() {
@@ -52,7 +57,10 @@ api.interceptors.response.use(
     // request carrying an admin key drops that instead of the user session.
     if (err.response?.status === 401 && !err.config?.url?.startsWith('/auth/') && !err.config?.url?.startsWith('/admin/')) {
       if (err.config?.headers?.['X-Admin-Key']) setAdminToken(null);
-      else setToken(null);
+      else {
+        setToken(null);
+        clearOfflineData();
+      }
     }
 
     // The network is gone, not the server saying no. If we've read this URL
