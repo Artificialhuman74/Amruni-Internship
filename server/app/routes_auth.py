@@ -9,6 +9,7 @@ router = APIRouter()
 
 class PhoneBody(BaseModel):
     phone: str
+    channel: str | None = "whatsapp"
 
 
 class VerifyBody(BaseModel):
@@ -25,7 +26,7 @@ def request_otp(body: PhoneBody, request: Request):
     if not auth.is_valid_phone(body.phone):
         raise HTTPException(400, "Enter a valid 10-digit Indian mobile number.")
     client_ip = request.client.host if request.client else None
-    result = auth.request_otp(body.phone, client_ip=client_ip)
+    result = auth.request_otp(body.phone, client_ip=client_ip, channel=body.channel)
     return {"sent": True, **result}
 
 

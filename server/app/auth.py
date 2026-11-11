@@ -3,7 +3,7 @@
 OTP codes are random 6-digit, stored as salted SHA-256 hashes, expire after
 5 minutes, allow 5 verification attempts, and are rate-limited per phone.
 Outside production the code is returned to the client so the app works
-without an SMS gateway; wire one into send_otp() for launch.
+without a live WhatsApp gateway; configure Meta WhatsApp Cloud API env vars for launch.
 """
 import hashlib
 import hmac
@@ -38,7 +38,7 @@ def _env_flag(name: str) -> bool:
 
 IS_PROD = _is_prod()
 # Development / demo escape hatch: return the OTP code to the client even in
-# production. Lets the app be tested end-to-end before an SMS gateway is wired.
+# production. Lets the app be tested end-to-end before a WhatsApp gateway is wired.
 # Refused at startup in production.
 EXPOSE_OTP = _env_flag("EXPOSE_OTP")
 # Skips the code check on the practitioner console; refused at startup in production.
@@ -85,7 +85,7 @@ def is_valid_phone(phone: str) -> bool:
 def _test_numbers() -> dict[str, str]:
     """Fixed-OTP test numbers, à la Firebase Auth. TEST_OTP_NUMBERS is a
     comma-separated list of `phone:code` pairs (6-digit codes). These numbers
-    accept their fixed code without SMS — handy for developing the mobile app
+    accept their fixed code without external delivery — handy for developing the mobile app
     and for automated tests — while every other number goes through the normal
     random-OTP flow and cannot be impersonated."""
     out = {}
@@ -103,16 +103,21 @@ def _hash_code(phone: str, code: str) -> str:
     return hashlib.sha256(f"{phone}:{code}:{JWT_SECRET}".encode()).hexdigest()
 
 
+ALLOWED_OTP_CHANNELS = ("whatsapp",)
+
+
 class OtpProvider(Protocol):
     """Delivery backend interface for one-time passcodes."""
 
-    def send(self, phone: str, code: str, channel: str = "sms") -> bool: ...
+    def send(self, phone: str, code: str, channel: str = "whatsapp") -> bool: ...
 
 
 class ConsoleOtpProvider:
     """Development OTP provider that logs passcodes to stdout instead of calling a gateway."""
 
-    def send(self, phone: str, code: str, channel: str = "sms") -> bool:
+    def send(self, phone: str, code: str, channel: str = "whatsapp") -> bool:
+        if channel != "whatsapp":
+            return False
         print(f"[otp] {phone} -> {code}")
         return True
 
@@ -156,7 +161,7 @@ class MetaWhatsAppOtpProvider:
     def is_configured(self) -> bool:
         return bool(self.phone_number_id and self.access_token and self.template_name)
 
-    def send(self, phone: str, code: str, channel: str = "sms") -> bool:
+    def send(self, phone: str, code: str, channel: str = "whatsapp") -> bool:
         if channel != "whatsapp" or not self.is_configured():
             return False
         recipient = _whatsapp_recipient(phone)
@@ -212,21 +217,44 @@ def set_otp_provider(provider: OtpProvider, override: bool | None = None) -> Non
     _otp_provider_override = (provider is not _DEFAULT_OTP_PROVIDER) if override is None else override
 
 
+def _normalize_otp_channel(channel: str | None) -> str:
+    normalized = (channel if channel is not None else "whatsapp").strip().lower()
+    if normalized not in ALLOWED_OTP_CHANNELS:
+        raise HTTPException(400, "Only WhatsApp OTP delivery is currently supported.")
+    return normalized
+
+
 def send_otp(
     phone: str,
     code: str,
-    channel: str = "sms",
+    channel: str = "whatsapp",
     provider: OtpProvider | None = None,
 ) -> bool:
-    """Send an OTP code via the explicit, test-overridden, or env-configured provider."""
+    """Send a WhatsApp OTP code via the explicit, test-overridden, or env-configured provider."""
+    normalized = (channel or "").strip().lower()
+    if normalized not in ALLOWED_OTP_CHANNELS:
+        return False
     if provider is not None:
-        return bool(provider.send(phone, code, channel=channel))
-    if channel == "whatsapp" and not _otp_provider_override:
-        return MetaWhatsAppOtpProvider().send(phone, code, channel=channel)
-    return bool(_otp_provider.send(phone, code, channel=channel))
+        return bool(provider.send(phone, code, channel=normalized))
+    if _otp_provider_override:
+        return bool(_otp_provider.send(phone, code, channel=normalized))
+    return MetaWhatsAppOtpProvider().send(phone, code, channel=normalized)
 
 
-def request_otp(phone: str, client_ip: str | None = None) -> dict:
+def _deliver_otp(phone: str, code: str, channel: str) -> None:
+    """Deliver OTP via WhatsApp; allow console logging only outside prod when unconfigured."""
+    if _otp_provider_override or MetaWhatsAppOtpProvider().is_configured():
+        delivered = send_otp(phone, code, channel=channel)
+    elif not IS_PROD or EXPOSE_OTP:
+        delivered = _otp_provider.send(phone, code, channel=channel)
+    else:
+        delivered = False
+    if not delivered:
+        raise HTTPException(503, "Could not send verification code via WhatsApp. Please try again.")
+
+
+def request_otp(phone: str, client_ip: str | None = None, channel: str = "whatsapp") -> dict:
+    normalized_channel = _normalize_otp_channel(channel)
     now = time.time()
     cutoff = now - OTP_RATE_WINDOW
     with get_db() as db:
@@ -255,14 +283,6 @@ def request_otp(phone: str, client_ip: str | None = None) -> dict:
         code = _test_numbers().get(phone) or f"{secrets.randbelow(900000) + 100000}"
         sent_count = row["sent_count"] + 1 if row and now < row["expires_at"] else 1
         db.execute(
-            """INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, sent_count, last_sent)
-               VALUES (?, ?, ?, 0, ?, ?)
-               ON CONFLICT(phone) DO UPDATE SET
-                 code_hash = excluded.code_hash, expires_at = excluded.expires_at,
-                 attempts = 0, sent_count = excluded.sent_count, last_sent = excluded.last_sent""",
-            (phone, _hash_code(phone, code), now + OTP_TTL, sent_count, now),
-        )
-        db.execute(
             "INSERT INTO otp_rate_limits (scope, rate_key, created_at) VALUES ('phone', ?, ?)",
             (phone, now),
         )
@@ -271,16 +291,26 @@ def request_otp(phone: str, client_ip: str | None = None) -> dict:
                 "INSERT INTO otp_rate_limits (scope, rate_key, created_at) VALUES ('ip', ?, ?)",
                 (client_ip, now),
             )
-    # Test numbers never hit the delivery provider; real numbers do (or ConsoleOtpProvider).
+    # Test numbers never hit the delivery provider; real numbers go through WhatsApp (or dev console).
     is_test = phone in _test_numbers()
     if not is_test:
-        send_otp(phone, code)
+        _deliver_otp(phone, code, normalized_channel)
+
+    with get_db() as db:
+        db.execute(
+            """INSERT INTO otp_codes (phone, code_hash, expires_at, attempts, sent_count, last_sent)
+               VALUES (?, ?, ?, 0, ?, ?)
+               ON CONFLICT(phone) DO UPDATE SET
+                 code_hash = excluded.code_hash, expires_at = excluded.expires_at,
+                 attempts = 0, sent_count = excluded.sent_count, last_sent = excluded.last_sent""",
+            (phone, _hash_code(phone, code), now + OTP_TTL, sent_count, now),
+        )
     # Return the code to the client when it's safe to: outside production, for a
     # designated test number (its code is fixed and known anyway), or when
-    # EXPOSE_OTP is explicitly enabled for a demo build without an SMS gateway.
+    # EXPOSE_OTP is explicitly enabled for a demo build without a live gateway.
     if not IS_PROD or is_test or EXPOSE_OTP:
-        return {"devCode": code}
-    return {}
+        return {"channel": normalized_channel, "devCode": code}
+    return {"channel": normalized_channel}
 
 
 def _consume_otp(db, phone: str, code: str):

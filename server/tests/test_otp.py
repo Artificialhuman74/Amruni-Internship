@@ -27,7 +27,7 @@ class _RecordingProvider:
     def __init__(self):
         self.calls = []
 
-    def send(self, phone: str, code: str, channel: str = "sms") -> bool:
+    def send(self, phone: str, code: str, channel: str = "whatsapp") -> bool:
         self.calls.append((phone, code, channel))
         return True
 
@@ -52,7 +52,7 @@ class OtpHardeningTests(unittest.TestCase):
         self.assertEqual(res.status_code, 200, res.text)
         code = res.json().get("devCode")
         self.assertIsNotNone(code)
-        self.assertEqual(recorder.calls, [(phone, code, "sms")])
+        self.assertEqual(recorder.calls, [(phone, code, "whatsapp")])
 
         # In production (IS_PROD=True, EXPOSE_OTP=False), devCode is omitted while send_otp still runs.
         recorder.calls.clear()
@@ -66,8 +66,8 @@ class OtpHardeningTests(unittest.TestCase):
 
         # Direct send_otp also supports an explicit provider override.
         direct_rec = _RecordingProvider()
-        self.assertTrue(auth.send_otp("+919800001099", "654321", channel="sms", provider=direct_rec))
-        self.assertEqual(direct_rec.calls, [("+919800001099", "654321", "sms")])
+        self.assertTrue(auth.send_otp("+919800001099", "654321", channel="whatsapp", provider=direct_rec))
+        self.assertEqual(direct_rec.calls, [("+919800001099", "654321", "whatsapp")])
 
     def test_otp_hashed_at_rest_5min_ttl_and_attempt_limit_persists(self):
         recorder = _RecordingProvider()

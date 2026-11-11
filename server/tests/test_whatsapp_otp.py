@@ -10,6 +10,8 @@ from unittest import mock
 
 import httpx
 
+from fastapi.testclient import TestClient
+
 _SERVER_DIR = Path(__file__).resolve().parent.parent
 if str(_SERVER_DIR) not in sys.path:
     sys.path.insert(0, str(_SERVER_DIR))
@@ -20,7 +22,7 @@ if "app.db" not in sys.modules and "DB_PATH" not in os.environ:
     atexit.register(_TMP_DIR.cleanup)
     os.environ["DB_PATH"] = str(Path(_TMP_DIR.name) / "test_whatsapp_otp.db")
 
-from app import auth, main  # noqa: E402
+from app import auth, db as db_mod, main  # noqa: E402
 
 
 class MetaWhatsAppOtpProviderTests(unittest.TestCase):
@@ -113,7 +115,7 @@ class MetaWhatsAppOtpProviderTests(unittest.TestCase):
             self.assertFalse(provider.send("+919876543210", "111111", channel="whatsapp"))
 
     def test_send_otp_routes_whatsapp_channel_using_env_via_mocked_httpx(self):
-        # Reset provider to default console SMS provider (no manual test override).
+        # Reset provider to default (no manual test override).
         auth.set_otp_provider(auth.ConsoleOtpProvider(), override=False)
         env = {
             "WHATSAPP_PHONE_NUMBER_ID": "99887766",
@@ -124,9 +126,91 @@ class MetaWhatsAppOtpProviderTests(unittest.TestCase):
         with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(auth.httpx, "post", return_value=mock_resp) as post_mock:
             self.assertTrue(auth.send_otp("+919876543210", "246810", channel="whatsapp"))
             self.assertEqual(post_mock.call_count, 1)
-            self.assertTrue(auth.send_otp("+919876543210", "246810", channel="sms"))
-            # SMS channel does not hit Meta WhatsApp API.
+            # SMS channel is removed and fails closed without calling Meta or Console.
+            self.assertFalse(auth.send_otp("+919876543210", "246810", channel="sms"))
             self.assertEqual(post_mock.call_count, 1)
+
+    def test_request_otp_defaults_to_whatsapp_and_verify_still_works(self):
+        auth.set_otp_provider(auth.ConsoleOtpProvider(), override=False)
+        env = {
+            "WHATSAPP_PHONE_NUMBER_ID": "99887766",
+            "WHATSAPP_ACCESS_TOKEN": "wa-token-placeholder",
+            "WHATSAPP_OTP_TEMPLATE": "otp_code",
+        }
+        client = TestClient(main.app, client=("203.0.113.40", 50000))
+        mock_resp = httpx.Response(200, json={"messages": [{"id": "wamid.req1"}]})
+        with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(auth.httpx, "post", return_value=mock_resp) as post_mock:
+            res = client.post("/api/auth/request-otp", json={"phone": "+919876540001"})
+            self.assertEqual(res.status_code, 200, res.text)
+            body = res.json()
+            self.assertTrue(body["sent"])
+            self.assertEqual(body["channel"], "whatsapp")
+            code = body.get("devCode")
+            self.assertIsNotNone(code)
+            self.assertEqual(post_mock.call_count, 1)
+
+            # Verify step remains unchanged and exchanges the WhatsApp OTP for a JWT.
+            ver = client.post("/api/auth/verify-otp", json={"phone": "+919876540001", "code": code})
+            self.assertEqual(ver.status_code, 200, ver.text)
+            self.assertTrue(ver.json().get("token"))
+
+            with mock.patch.object(auth, "IS_PROD", True), mock.patch.object(auth, "EXPOSE_OTP", False):
+                res_prod = client.post(
+                    "/api/auth/request-otp",
+                    json={"phone": "+919876540002", "channel": "whatsapp"},
+                )
+            self.assertEqual(res_prod.status_code, 200, res_prod.text)
+            self.assertEqual(res_prod.json(), {"sent": True, "channel": "whatsapp"})
+            self.assertEqual(post_mock.call_count, 2)
+
+    def test_request_otp_rejects_sms_and_unknown_channels(self):
+        client = TestClient(main.app, client=("203.0.113.41", 50000))
+        for bad_channel in ("sms", "email", ""):
+            res = client.post("/api/auth/request-otp", json={"phone": "+919876540003", "channel": bad_channel})
+            self.assertEqual(res.status_code, 400, f"{bad_channel!r}: {res.text}")
+        with db_mod.get_db() as db:
+            self.assertIsNone(db.execute("SELECT 1 FROM otp_codes WHERE phone = ?", ("+919876540003",)).fetchone())
+
+    def test_request_otp_whatsapp_failure_returns_503_with_no_sms_fallback_and_allows_retry(self):
+        auth.set_otp_provider(auth.ConsoleOtpProvider(), override=False)
+        env = {
+            "WHATSAPP_PHONE_NUMBER_ID": "99887766",
+            "WHATSAPP_ACCESS_TOKEN": "wa-token-placeholder",
+            "WHATSAPP_OTP_TEMPLATE": "otp_code",
+        }
+        client = TestClient(main.app, client=("203.0.113.42", 50000))
+        phone = "+919876540004"
+        with mock.patch.dict(os.environ, env, clear=False), mock.patch.object(
+            auth.httpx, "post", side_effect=[
+                httpx.Response(502, json={"error": {"message": "Upstream down"}}),
+                httpx.Response(200, json={"messages": [{"id": "wamid.retry"}]}),
+            ]
+        ) as post_mock:
+            fail_res = client.post("/api/auth/request-otp", json={"phone": phone})
+            self.assertEqual(fail_res.status_code, 503, fail_res.text)
+            with db_mod.get_db() as db:
+                self.assertIsNone(db.execute("SELECT 1 FROM otp_codes WHERE phone = ?", (phone,)).fetchone())
+
+            # Since delivery failed, no 30s cooldown row blocks an immediate retry.
+            ok_res = client.post("/api/auth/request-otp", json={"phone": phone})
+            self.assertEqual(ok_res.status_code, 200, ok_res.text)
+            self.assertEqual(post_mock.call_count, 2)
+
+    def test_request_otp_unconfigured_fails_closed_in_prod_and_uses_console_in_dev(self):
+        auth.set_otp_provider(auth.ConsoleOtpProvider(), override=False)
+        client = TestClient(main.app, client=("203.0.113.43", 50000))
+        with mock.patch.dict(os.environ, {}, clear=False):
+            for key in ("WHATSAPP_PHONE_NUMBER_ID", "WHATSAPP_ACCESS_TOKEN", "WHATSAPP_OTP_TEMPLATE"):
+                os.environ.pop(key, None)
+
+            with mock.patch.object(auth, "IS_PROD", True), mock.patch.object(auth, "EXPOSE_OTP", False):
+                prod_res = client.post("/api/auth/request-otp", json={"phone": "+919876540005"})
+            self.assertEqual(prod_res.status_code, 503, prod_res.text)
+
+            dev_res = client.post("/api/auth/request-otp", json={"phone": "+919876540005"})
+            self.assertEqual(dev_res.status_code, 200, dev_res.text)
+            self.assertEqual(dev_res.json().get("channel"), "whatsapp")
+            self.assertIsNotNone(dev_res.json().get("devCode"))
 
 
 if __name__ == "__main__":
