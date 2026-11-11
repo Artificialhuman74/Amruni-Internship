@@ -2,7 +2,12 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
-import { authApi, apiError } from '../services/api';
+import { authApi } from '../services/api';
+import {
+  OTP_RESEND_COOLDOWN_SEC,
+  formatOtpRequestError,
+  remainingCooldownSec,
+} from '../lib/otpHelpers';
 import CamelliaBloom from '../components/CamelliaBloom';
 import {
   CUES, MOTION, clamp, DESIGN_W, DESIGN_H, FLOWER_BOX, FLOWER_SPAN, FLOWER_SETTLED, LOGO_SCALE, OUTWARD,
@@ -62,12 +67,19 @@ function Reveal({ t, at, k, as: Tag = 'div', style, children, ...rest }) {
 
 export default function PhoneEntry() {
   const navigate = useNavigate();
-  const { dispatch } = useApp();
+  const { state, dispatch } = useApp();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [cooldown, setCooldown] = useState(0);
 
   const isValid = /^[6-9]\d{9}$/.test(phone);
+
+  useEffect(() => {
+    if (cooldown <= 0) return undefined;
+    const timer = setTimeout(() => setCooldown(c => Math.max(0, c - 1)), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   // ── the bloom clock ─────────────────────────────────────────────
   const [play] = useState(shouldPlay);
@@ -137,18 +149,30 @@ export default function PhoneEntry() {
     const val = e.target.value.replace(/\D/g, '').slice(0, 10);
     setPhone(val);
     if (error) setError('');
+    setCooldown(val === state.auth.phone ? remainingCooldownSec(state.auth.otpCooldownUntil) : 0);
   }
 
   async function handleSubmit(e) {
     e.preventDefault();
+    if (loading || cooldown > 0) return;
     if (!isValid) { setError('Enter a valid 10-digit Indian mobile number.'); return; }
     setLoading(true);
+    setError('');
     try {
       const res = await authApi.requestOtp(phone);
-      dispatch({ type: 'SET_AUTH', payload: { phone, devOtp: res.devCode || null } });
+      dispatch({
+        type: 'SET_AUTH',
+        payload: {
+          phone,
+          devOtp: res.devCode || null,
+          otpCooldownUntil: Date.now() + OTP_RESEND_COOLDOWN_SEC * 1000,
+        },
+      });
       navigate('/otp');
     } catch (err) {
-      setError(apiError(err, 'Could not send the code. Please try again.'));
+      const { message, cooldownSec } = formatOtpRequestError(err);
+      setError(message);
+      if (cooldownSec > 0) setCooldown(cooldownSec);
     } finally {
       setLoading(false);
     }
@@ -249,6 +273,7 @@ export default function PhoneEntry() {
               <motion.p
                 id="phone-error"
                 role="alert"
+                aria-live="polite"
                 initial={{ opacity: 0, y: -4 }}
                 animate={{ opacity: 1, y: 0 }}
                 style={{ fontSize: 'var(--text-sm)', color: 'oklch(0.70 0.15 24)', marginTop: 'var(--sp-1)' }}
@@ -261,10 +286,10 @@ export default function PhoneEntry() {
           <button
             type="submit"
             className="btn btn--primary"
-            disabled={!isValid || loading}
+            disabled={!isValid || loading || cooldown > 0}
             style={{ marginTop: 'var(--sp-2)' }}
           >
-            {loading ? <Spinner /> : 'Send OTP'}
+            {loading ? <Spinner /> : cooldown > 0 ? `Resend OTP in ${cooldown}s` : 'Send OTP'}
           </button>
         </Reveal>
 

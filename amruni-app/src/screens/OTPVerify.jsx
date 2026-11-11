@@ -2,12 +2,17 @@ import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { useApp } from '../context/AppContext';
-import { authApi, apiError, setToken } from '../services/api';
+import { authApi, setToken } from '../services/api';
+import {
+  OTP_RESEND_COOLDOWN_SEC,
+  formatOtpRequestError,
+  formatOtpVerifyError,
+  maskOtpPhone,
+  remainingCooldownSec,
+} from '../lib/otpHelpers';
 import OTPInput from '../components/OTPInput';
 import SuccessCheck from '../components/SuccessCheck';
 import { confirm } from '../lib/haptics';
-
-const RESEND_SEC = 30;
 
 export default function OTPVerify() {
   const navigate = useNavigate();
@@ -18,22 +23,32 @@ export default function OTPVerify() {
   const [otp, setOtp] = useState('');
   const [error, setError] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [resendNotice, setResendNotice] = useState('');
   const [loading, setLoading] = useState(false);
   const [verified, setVerified] = useState(false);
-  const [countdown, setCountdown] = useState(RESEND_SEC);
+  const [countdown, setCountdown] = useState(() => (
+    typeof state.auth.otpCooldownUntil === 'number'
+      ? remainingCooldownSec(state.auth.otpCooldownUntil)
+      : OTP_RESEND_COOLDOWN_SEC
+  ));
   const [resending, setResending] = useState(false);
 
   useEffect(() => {
-    if (countdown <= 0) return;
-    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
+    if (!phone) navigate('/phone', { replace: true });
+  }, [phone, navigate]);
+
+  useEffect(() => {
+    if (countdown <= 0) return undefined;
+    const t = setTimeout(() => setCountdown(c => Math.max(0, c - 1)), 1000);
     return () => clearTimeout(t);
   }, [countdown]);
 
   const verify = useCallback(async (code) => {
-    if (code.length !== 6) return;
+    if (code.length !== 6 || loading || verified || !phone) return;
     setLoading(true);
     setError(false);
     setErrorMsg('');
+    setResendNotice('');
 
     try {
       const res = await authApi.verifyOtp(phone, code);
@@ -48,32 +63,46 @@ export default function OTPVerify() {
         navigate('/onboarding/privacy', { replace: true });
       }
     } catch (err) {
+      const { message, requiresNewCode } = formatOtpVerifyError(err);
       setError(true);
-      setErrorMsg(apiError(err, "That code didn't match. Try again or request a new one."));
+      setErrorMsg(message);
       setOtp('');
+      if (requiresNewCode) setCountdown(0);
     } finally {
       setLoading(false);
     }
-  }, [navigate, hydrateFromServer, phone]);
+  }, [navigate, hydrateFromServer, phone, loading, verified]);
 
   function handleChange(val) {
     setOtp(val);
     setError(false);
     setErrorMsg('');
+    setResendNotice('');
     if (val.length === 6 && !loading) verify(val);
   }
 
   async function handleResend() {
+    if (resending || countdown > 0 || verified || !phone) return;
     setResending(true);
     setOtp('');
     setError(false);
     setErrorMsg('');
+    setResendNotice('');
     try {
       const res = await authApi.requestOtp(phone);
-      dispatch({ type: 'SET_AUTH', payload: { devOtp: res.devCode || null } });
-      setCountdown(RESEND_SEC);
+      dispatch({
+        type: 'SET_AUTH',
+        payload: {
+          devOtp: res.devCode || null,
+          otpCooldownUntil: Date.now() + OTP_RESEND_COOLDOWN_SEC * 1000,
+        },
+      });
+      setCountdown(OTP_RESEND_COOLDOWN_SEC);
+      setResendNotice('A new OTP has been sent.');
     } catch (err) {
-      setErrorMsg(apiError(err, 'Could not resend the code. Please try again.'));
+      const { message, cooldownSec } = formatOtpRequestError(err, 'Could not resend the OTP. Please try again.');
+      setErrorMsg(message);
+      if (cooldownSec > 0) setCountdown(cooldownSec);
     } finally {
       setResending(false);
     }
@@ -83,7 +112,7 @@ export default function OTPVerify() {
     navigate('/phone');
   }
 
-  const maskedPhone = phone ? `+91 ${phone.slice(0, 2)}••• •••${phone.slice(-3)}` : '';
+  const maskedPhone = maskOtpPhone(phone);
 
   return (
     <div className="screen screen--soft">
@@ -151,6 +180,7 @@ export default function OTPVerify() {
           {errorMsg && (
             <motion.p
               role="alert"
+              aria-live="polite"
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}
               style={{
@@ -165,7 +195,7 @@ export default function OTPVerify() {
           )}
         </motion.div>
 
-        {/* Status / verify button */}
+        {/* Status */}
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -184,15 +214,6 @@ export default function OTPVerify() {
               <span style={{ fontSize: 'var(--text-sm)', fontWeight: 600 }}>Verified! Taking you in…</span>
             </div>
           )}
-          {!loading && !verified && otp.length === 6 && error && (
-            <button
-              className="btn btn--primary"
-              onClick={() => verify(otp)}
-              disabled={otp.length !== 6}
-            >
-              Try again
-            </button>
-          )}
         </motion.div>
 
         <div style={{ flex: 1 }} />
@@ -208,18 +229,23 @@ export default function OTPVerify() {
           }}
         >
           {countdown > 0 ? (
-            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
-              Resend code in <strong style={{ color: 'var(--clr-ink-muted)' }}>{countdown}s</strong>
+            <p aria-live="polite" style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-subtle)' }}>
+              Resend OTP in <strong style={{ color: 'var(--clr-ink-muted)' }}>{countdown}s</strong>
             </p>
           ) : (
             <button
               className="btn btn--ghost btn--sm"
               onClick={handleResend}
-              disabled={resending}
+              disabled={resending || verified}
               style={{ color: 'var(--clr-gold)', margin: '0 auto' }}
             >
-              {resending ? 'Sending…' : 'Resend code'}
+              {resending ? 'Sending…' : 'Resend OTP'}
             </button>
+          )}
+          {resendNotice && !errorMsg && (
+            <p role="status" style={{ marginTop: 'var(--sp-2)', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)' }}>
+              {resendNotice}
+            </p>
           )}
           {devOtp && (
             <p style={{ marginTop: 'var(--sp-4)', fontSize: 'var(--text-xs)', color: 'var(--clr-ink-subtle)' }}>
