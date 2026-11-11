@@ -107,15 +107,19 @@ def _anonymous_summary(db, user_row) -> dict:
 
 
 def _require_relationship(db, doctor_id: int, user_id: int):
-    """An anonymous consultation grants no access to anything but itself.
+    """Only active or completed non-anonymous consultations grant patient chart access.
 
-    Without this clause the promise would leak through the side door: a
+    Without the anonymous clause the promise would leak through the side door: a
     counsellor could not read her name in the queue but could open the chart
-    that carries it, along with her whole history.
+    that carries it, along with her whole history. Requiring confirmed/completed
+    prevents cancelled or unpaid bookings from exposing patient PHI.
     """
     ok = db.execute(
         """SELECT 1 FROM appointments
-           WHERE doctor_id = ? AND user_id = ? AND COALESCE(anonymous, 0) = 0 LIMIT 1""",
+           WHERE doctor_id = ? AND user_id = ?
+             AND status IN ('confirmed', 'completed')
+             AND COALESCE(anonymous, 0) = 0
+           LIMIT 1""",
         (doctor_id, user_id),
     ).fetchone()
     if not ok:
