@@ -13,6 +13,7 @@ import time
 import re
 from typing import Protocol
 
+import httpx
 import jwt
 from fastapi import HTTPException, Request
 
@@ -116,7 +117,87 @@ class ConsoleOtpProvider:
         return True
 
 
-_otp_provider: OtpProvider = ConsoleOtpProvider()
+def _whatsapp_recipient(phone: str) -> str:
+    digits = re.sub(r"\D", "", (phone or "").strip())
+    if len(digits) == 10 and digits[0] in "6789":
+        return f"91{digits}"
+    return digits
+
+
+class MetaWhatsAppOtpProvider:
+    """WhatsApp OTP adapter backed by the Meta WhatsApp Cloud API (env-configured)."""
+
+    def __init__(
+        self,
+        phone_number_id: str | None = None,
+        access_token: str | None = None,
+        template_name: str | None = None,
+        language_code: str | None = None,
+        api_version: str | None = None,
+        http_client=None,
+    ):
+        self.phone_number_id = (
+            phone_number_id if phone_number_id is not None else os.environ.get("WHATSAPP_PHONE_NUMBER_ID", "")
+        ).strip()
+        self.access_token = (
+            access_token if access_token is not None else os.environ.get("WHATSAPP_ACCESS_TOKEN", "")
+        ).strip()
+        self.template_name = (
+            template_name if template_name is not None else os.environ.get("WHATSAPP_OTP_TEMPLATE", "")
+        ).strip()
+        self.language_code = (
+            language_code if language_code is not None else os.environ.get("WHATSAPP_OTP_LANG", "en")
+        ).strip() or "en"
+        self.api_version = (
+            api_version if api_version is not None else os.environ.get("WHATSAPP_API_VERSION", "v21.0")
+        ).strip("/") or "v21.0"
+        self.http_client = http_client if http_client is not None else httpx
+
+    def is_configured(self) -> bool:
+        return bool(self.phone_number_id and self.access_token and self.template_name)
+
+    def send(self, phone: str, code: str, channel: str = "sms") -> bool:
+        if channel != "whatsapp" or not self.is_configured():
+            return False
+        recipient = _whatsapp_recipient(phone)
+        if not recipient:
+            return False
+        url = f"https://graph.facebook.com/{self.api_version}/{self.phone_number_id}/messages"
+        payload = {
+            "messaging_product": "whatsapp",
+            "recipient_type": "individual",
+            "to": recipient,
+            "type": "template",
+            "template": {
+                "name": self.template_name,
+                "language": {"code": self.language_code},
+                "components": [
+                    {"type": "body", "parameters": [{"type": "text", "text": code}]},
+                ],
+            },
+        }
+        try:
+            resp = self.http_client.post(
+                url,
+                headers={"Authorization": f"Bearer {self.access_token}", "Content-Type": "application/json"},
+                json=payload,
+                timeout=10.0,
+            )
+        except httpx.HTTPError:
+            return False
+        if resp.status_code >= 400:
+            return False
+        try:
+            data = resp.json()
+        except ValueError:
+            return False
+        messages = data.get("messages")
+        return isinstance(messages, list) and bool(messages) and bool(messages[0].get("id"))
+
+
+_DEFAULT_OTP_PROVIDER: OtpProvider = ConsoleOtpProvider()
+_otp_provider: OtpProvider = _DEFAULT_OTP_PROVIDER
+_otp_provider_override: bool = False
 
 
 def get_otp_provider() -> OtpProvider:
@@ -124,10 +205,11 @@ def get_otp_provider() -> OtpProvider:
     return _otp_provider
 
 
-def set_otp_provider(provider: OtpProvider) -> None:
+def set_otp_provider(provider: OtpProvider, override: bool | None = None) -> None:
     """Replace the active OtpProvider (for gateway wiring or tests)."""
-    global _otp_provider
+    global _otp_provider, _otp_provider_override
     _otp_provider = provider
+    _otp_provider_override = (provider is not _DEFAULT_OTP_PROVIDER) if override is None else override
 
 
 def send_otp(
@@ -136,9 +218,12 @@ def send_otp(
     channel: str = "sms",
     provider: OtpProvider | None = None,
 ) -> bool:
-    """Send an OTP code via the active or explicitly provided OtpProvider."""
-    active = provider or _otp_provider
-    return bool(active.send(phone, code, channel=channel))
+    """Send an OTP code via the explicit, test-overridden, or env-configured provider."""
+    if provider is not None:
+        return bool(provider.send(phone, code, channel=channel))
+    if channel == "whatsapp" and not _otp_provider_override:
+        return MetaWhatsAppOtpProvider().send(phone, code, channel=channel)
+    return bool(_otp_provider.send(phone, code, channel=channel))
 
 
 def request_otp(phone: str, client_ip: str | None = None) -> dict:
