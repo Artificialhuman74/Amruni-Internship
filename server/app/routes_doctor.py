@@ -546,7 +546,7 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
             # the rest of the chart. Coverage arrives masked: a practitioner
             # writing a summary needs to know a claim is being made and against
             # which insurer, and does not need the policy number to do it.
-            "intakeForms": intake_for_doctor(db, user_id),
+            "intakeForms": intake_for_doctor(db, user_id, doctor["specialty"], share),
             "coverage": policy_for_doctor(db, user_id),
             "sharedJournal": [
                 {
