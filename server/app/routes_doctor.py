@@ -9,9 +9,10 @@ appointment with her. Enforced on every patient-scoped endpoint.
 """
 import json
 import re
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from . import auth
@@ -23,7 +24,7 @@ from .routes_history import CATEGORIES, can_see, can_see_document, effective_sha
 from . import crypto
 from .db import (
     appointment_json, doctor_json, document_json, get_db, record_json,
-    slot_json, utcnow_iso,
+    record_medical_audit, slot_json, utcnow_iso, write_medical_audit,
 )
 from .routes_bookings import _is_past
 from .routes_doctors import release_expired_locks
@@ -270,6 +271,50 @@ class RecordBody(BaseModel):
     followUp: str | None = None
 
 
+@contextmanager
+def _audited_doctor_db(
+    request: Request,
+    doctor: dict,
+    action: str,
+    resource_type: str,
+    *,
+    resource_id: str | None = None,
+    patient_id: int | None = None,
+    success_status: int = 200,
+):
+    """Run a doctor clinical DB action and log granted/denied attempts without PHI."""
+    state = {"patient_id": patient_id, "resource_id": resource_id}
+    ip_address = request.client.host if request.client else None
+    try:
+        with get_db() as db:
+            yield db, state
+            record_medical_audit(
+                db,
+                actor_type="doctor",
+                actor_id=doctor["id"],
+                patient_id=state["patient_id"],
+                resource_type=resource_type,
+                resource_id=state["resource_id"],
+                action=action,
+                outcome="granted",
+                status_code=success_status,
+                ip_address=ip_address,
+            )
+    except HTTPException as exc:
+        write_medical_audit(
+            actor_type="doctor",
+            actor_id=doctor["id"],
+            patient_id=state["patient_id"],
+            resource_type=resource_type,
+            resource_id=state["resource_id"],
+            action=action,
+            outcome="denied",
+            status_code=exc.status_code,
+            ip_address=ip_address,
+        )
+        raise
+
+
 def _require_doctor_appointment(db, appointment_id: str, doctor_id: int):
     """Fetch a confirmed or completed appointment belonging to this doctor."""
     appt = db.execute(
@@ -283,9 +328,10 @@ def _require_doctor_appointment(db, appointment_id: str, doctor_id: int):
 
 
 @router.get("/doctor/appointments/{appointment_id}/record")
-def get_record(appointment_id: str, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
+def get_record(appointment_id: str, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(request, doctor, "view", "record", resource_id=appointment_id) as (db, audit):
         appt = _require_doctor_appointment(db, appointment_id, doctor["id"])
+        audit["patient_id"] = appt["user_id"]
         row = db.execute(
             "SELECT * FROM consultation_records WHERE appointment_id = ?", (appointment_id,)
         ).fetchone()
@@ -300,7 +346,7 @@ def get_record(appointment_id: str, doctor: dict = Depends(current_doctor)):
 
 
 @router.put("/doctor/appointments/{appointment_id}/record")
-def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(current_doctor)):
+def save_record(appointment_id: str, body: RecordBody, request: Request, doctor: dict = Depends(current_doctor)):
     if body.followUp and not DATE_RE.match(body.followUp):
         raise HTTPException(400, "followUp must be YYYY-MM-DD.")
     prescription = [
@@ -313,8 +359,9 @@ def save_record(appointment_id: str, body: RecordBody, doctor: dict = Depends(cu
         for line in body.prescription
         if isinstance(line, dict) and str(line.get("name", "")).strip()
     ]
-    with get_db() as db:
+    with _audited_doctor_db(request, doctor, "update", "record", resource_id=appointment_id) as (db, audit):
         appt = _require_doctor_appointment(db, appointment_id, doctor["id"])
+        audit["patient_id"] = appt["user_id"]
         db.execute(
             """INSERT INTO consultation_records
                  (appointment_id, doctor_id, user_id, diagnosis, notes, vitals, prescription, follow_up, updated_at)
@@ -419,8 +466,8 @@ class ChartBody(BaseModel):
 
 
 @router.get("/doctor/patients/{user_id}/chart")
-def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
+def patient_chart(user_id: int, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(request, doctor, "view", "chart", patient_id=user_id) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
         share = effective_share(db, doctor["id"], user_id)
         user = db.execute("SELECT * FROM users WHERE id = ?", (user_id,)).fetchone()
@@ -562,11 +609,11 @@ def patient_chart(user_id: int, doctor: dict = Depends(current_doctor)):
 
 
 @router.put("/doctor/patients/{user_id}/chart")
-def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_doctor)):
+def update_chart(user_id: int, body: ChartBody, request: Request, doctor: dict = Depends(current_doctor)):
     allergies = [a.strip() for a in body.allergies if a.strip()][:30]
     conditions = [c.strip() for c in body.conditions if c.strip()][:30]
     family_history = body.familyHistory.strip()[:2000] if body.familyHistory else None
-    with get_db() as db:
+    with _audited_doctor_db(request, doctor, "update", "chart", patient_id=user_id) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
         # A doctor who was not shown her allergies or conditions was sent
         # nothing for them, and saving the chart must not turn that nothing
@@ -592,7 +639,7 @@ def update_chart(user_id: int, body: ChartBody, doctor: dict = Depends(current_d
             (user_id, crypto.enc_json(allergies), crypto.enc_json(conditions),
              crypto.enc(blood_group), crypto.enc(family_history), utcnow_iso()),
         )
-    return {"success": True}
+        return {"success": True}
 
 
 # ---------- documents ----------
@@ -604,7 +651,7 @@ class DocumentBody(BaseModel):
 
 
 @router.post("/doctor/patients/{user_id}/documents", status_code=201)
-def upload_document(user_id: int, body: DocumentBody, doctor: dict = Depends(current_doctor)):
+def upload_document(user_id: int, body: DocumentBody, request: Request, doctor: dict = Depends(current_doctor)):
     if body.kind not in ("prescription", "lab", "report", "scan", "discharge", "other"):
         raise HTTPException(400, "kind must be prescription, lab, report, scan, discharge or other.")
     if not body.data.startswith("data:"):
@@ -613,19 +660,24 @@ def upload_document(user_id: int, body: DocumentBody, doctor: dict = Depends(cur
         raise HTTPException(413, "File too large — keep documents under ~3 MB.")
     if not body.title.strip():
         raise HTTPException(400, "title is required.")
-    with get_db() as db:
+    with _audited_doctor_db(
+        request, doctor, "upload", "document", patient_id=user_id, success_status=201
+    ) as (db, audit):
         _require_relationship(db, doctor["id"], user_id)
         cur = db.execute(
             "INSERT INTO documents (user_id, doctor_id, title, kind, data) VALUES (?, ?, ?, ?, ?)",
             (user_id, doctor["id"], crypto.enc(body.title.strip()), body.kind, crypto.enc(body.data)),
         )
+        audit["resource_id"] = str(cur.lastrowid)
         row = db.execute("SELECT * FROM documents WHERE id = ?", (cur.lastrowid,)).fetchone()
         return document_json(row)
 
 
 @router.get("/doctor/patients/{user_id}/documents/{doc_id}")
-def get_document(user_id: int, doc_id: int, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
+def get_document(user_id: int, doc_id: int, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(
+        request, doctor, "view", "document", resource_id=str(doc_id), patient_id=user_id
+    ) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
         row = db.execute(
             "SELECT * FROM documents WHERE id = ? AND user_id = ?", (doc_id, user_id)
@@ -639,8 +691,10 @@ def get_document(user_id: int, doc_id: int, doctor: dict = Depends(current_docto
 
 
 @router.delete("/doctor/patients/{user_id}/documents/{doc_id}")
-def delete_document(user_id: int, doc_id: int, doctor: dict = Depends(current_doctor)):
-    with get_db() as db:
+def delete_document(user_id: int, doc_id: int, request: Request, doctor: dict = Depends(current_doctor)):
+    with _audited_doctor_db(
+        request, doctor, "delete", "document", resource_id=str(doc_id), patient_id=user_id
+    ) as (db, _):
         _require_relationship(db, doctor["id"], user_id)
         # A doctor removes only what they uploaded — never a document she added.
         cur = db.execute(
@@ -649,4 +703,4 @@ def delete_document(user_id: int, doc_id: int, doctor: dict = Depends(current_do
         )
         if cur.rowcount == 0:
             raise HTTPException(404, "Document not found")
-    return {"success": True}
+        return {"success": True}

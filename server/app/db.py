@@ -532,6 +532,35 @@ CREATE TABLE IF NOT EXISTS community_blocks (
   blocked_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   PRIMARY KEY (user_id, blocked_id)
 );
+
+-- Append-only medical access log (non-PHI metadata only; triggers reject tampering).
+CREATE TABLE IF NOT EXISTS medical_audit_logs (
+  id            TEXT PRIMARY KEY,
+  actor_type    TEXT NOT NULL,
+  actor_id      INTEGER NOT NULL,
+  patient_id    INTEGER,
+  resource_type TEXT NOT NULL,
+  resource_id   TEXT,
+  action        TEXT NOT NULL,
+  outcome       TEXT NOT NULL,
+  status_code   INTEGER NOT NULL,
+  ip_address    TEXT,
+  created_at    TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
+);
+CREATE INDEX IF NOT EXISTS idx_medical_audit_patient ON medical_audit_logs(patient_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_medical_audit_actor ON medical_audit_logs(actor_type, actor_id, created_at);
+
+CREATE TRIGGER IF NOT EXISTS trg_medical_audit_no_update
+BEFORE UPDATE ON medical_audit_logs
+BEGIN
+  SELECT RAISE(ABORT, 'medical_audit_logs is append-only');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_medical_audit_no_delete
+BEFORE DELETE ON medical_audit_logs
+BEGIN
+  SELECT RAISE(ABORT, 'medical_audit_logs is append-only');
+END;
 """
 
 SEED_DOCTORS = [
@@ -1039,3 +1068,44 @@ def new_id(prefix: str) -> str:
 
 def utcnow_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S.%f")[:-3] + "Z"
+
+
+def record_medical_audit(
+    db: sqlite3.Connection,
+    *,
+    actor_type: str,
+    actor_id: int,
+    patient_id: int | None,
+    resource_type: str,
+    resource_id: str | None,
+    action: str,
+    outcome: str,
+    status_code: int,
+    ip_address: str | None = None,
+) -> None:
+    """Append a non-PHI access event onto the caller's open DB transaction."""
+    db.execute(
+        """INSERT INTO medical_audit_logs
+             (id, actor_type, actor_id, patient_id, resource_type, resource_id,
+              action, outcome, status_code, ip_address, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+        (
+            new_id("audit"),
+            actor_type,
+            actor_id,
+            patient_id,
+            resource_type,
+            resource_id,
+            action,
+            outcome,
+            status_code,
+            ip_address,
+            utcnow_iso(),
+        ),
+    )
+
+
+def write_medical_audit(**kwargs) -> None:
+    """Persist an audit entry in its own transaction (safe after caller rollback)."""
+    with get_db() as db:
+        record_medical_audit(db, **kwargs)
