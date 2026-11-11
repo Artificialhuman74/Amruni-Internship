@@ -425,6 +425,10 @@ def current_user(request: Request) -> dict:
         payload = jwt.decode(token, JWT_SECRET, algorithms=["HS256"])
     except jwt.PyJWTError:
         raise HTTPException(401, "Session expired. Sign in again.")
+    if payload.get("role") in ("doctor", "admin"):
+        raise HTTPException(403, "Patient access only.")
+    if not payload.get("sub"):
+        raise HTTPException(401, "Session expired. Sign in again.")
     with get_db() as db:
         user = db.execute("SELECT * FROM users WHERE id = ?", (payload["sub"],)).fetchone()
     if not user:

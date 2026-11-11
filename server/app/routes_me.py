@@ -1,7 +1,8 @@
 """Current-user profile and health state (cycle, pregnancy, settings, screenings)."""
 import json
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
 from .auth import current_user
@@ -330,3 +331,22 @@ def get_screenings(user: dict = Depends(current_user)):
             (user["id"],),
         ).fetchall()
     return [{"tool": r["tool"], "score": r["score"], "createdAt": r["created_at"]} for r in rows]
+
+
+@router.get("/me/export")
+def export_my_data(request: Request, user: dict = Depends(current_user)):
+    """Export all decrypted records belonging to the signed-in patient as JSON."""
+    from .export import build_patient_export
+
+    payload = build_patient_export(
+        user["id"],
+        ip_address=request.client.host if request.client else None,
+    )
+    return JSONResponse(
+        content=payload,
+        headers={
+            "Cache-Control": "no-store, no-cache, must-revalidate, private",
+            "Pragma": "no-cache",
+            "Content-Disposition": 'attachment; filename="amruni-data-export.json"',
+        },
+    )
