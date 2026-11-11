@@ -123,7 +123,58 @@ export async function flushOutbox() {
 
 // ── the read cache ───────────────────────────────────────────
 
+const ALLOWED_READ_PATTERNS = [
+  /^\/health$/,
+  /^\/doctors$/,
+  /^\/doctors\/[^/]+$/,
+  /^\/doctors\/[^/]+\/slots$/,
+  /^\/camps$/,
+  /^\/camps\/types$/,
+  /^\/camps\/[^/]+$/,
+];
+
+function normalizeCachePath(url) {
+  if (typeof url !== 'string') return null;
+  const trimmed = url.trim();
+  if (!trimmed || trimmed.startsWith('//')) return null;
+
+  let pathname;
+  try {
+    const parsed = /^https?:\/\//i.test(trimmed)
+      ? new URL(trimmed)
+      : new URL(trimmed.startsWith('/') ? trimmed : `/${trimmed}`, 'http://amruni.local');
+    pathname = parsed.pathname;
+  } catch {
+    return null;
+  }
+
+  const rawPath = trimmed.replace(/^https?:\/\/[^/]+/i, '').split(/[?#]/, 1)[0];
+  for (const seg of rawPath.split('/')) {
+    let decoded;
+    try {
+      decoded = decodeURIComponent(seg);
+    } catch {
+      return null;
+    }
+    if (decoded === '.' || decoded === '..' || decoded.includes('/') || decoded.includes('\\')) {
+      return null;
+    }
+  }
+
+  if (pathname.length > 1) pathname = pathname.replace(/\/+$/, '');
+  if (pathname === '/api') pathname = '/';
+  else if (pathname.startsWith('/api/')) pathname = pathname.slice(4);
+  if (pathname.length > 1) pathname = pathname.replace(/\/+$/, '');
+  return pathname;
+}
+
+export function isCacheableUrl(url) {
+  const path = normalizeCachePath(url);
+  return Boolean(path && ALLOWED_READ_PATTERNS.some((re) => re.test(path)));
+}
+
 export function cacheRead(url, data) {
+  if (!isCacheableUrl(url)) return;
   const cache = read(CACHE_KEY, {});
   cache[url] = { data, at: Date.now() };
   const keys = Object.keys(cache);
@@ -136,6 +187,7 @@ export function cacheRead(url, data) {
 }
 
 export function cachedRead(url) {
+  if (!isCacheableUrl(url)) return null;
   return read(CACHE_KEY, {})[url] ?? null;
 }
 
