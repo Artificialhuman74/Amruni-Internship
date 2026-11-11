@@ -7,6 +7,7 @@ import { useToast } from '../components/Toast';
 import BottomSheet from '../components/BottomSheet';
 import CommunityPostCard from '../components/CommunityPostCard';
 import CommunityPostComposer from '../components/CommunityPostComposer';
+import ModerationNotice from '../components/ModerationNotice';
 import { tap } from '../lib/haptics';
 import { IconHeart } from '../icons.jsx';
 import { tagLabel } from '../lib/presentation';
@@ -36,6 +37,7 @@ export default function Community() {
   const [error, setError] = useState(null);
 
   const [composerOpen, setComposerOpen] = useState(false);
+  const [moderationNotice, setModerationNotice] = useState(null);
 
   const sentinelRef = useRef(null);
   const requestIdRef = useRef(0);
@@ -116,9 +118,18 @@ export default function Community() {
   }
 
   function handleCreated(post) {
-    setPosts((prev) => [post, ...prev]);
+    const status = post.moderationStatus || 'approved';
     setComposerOpen(false);
-    toast('Your post is live', { icon: 'heart' });
+    if (status === 'approved') {
+      setPosts((prev) => [post, ...prev]);
+      setModerationNotice(post.helpline ? post : null);
+      toast('Your post is live', { icon: 'heart' });
+      return;
+    }
+    setModerationNotice(post);
+    toast(status === 'pending' ? 'Submitted for review' : 'Post not published', {
+      icon: status === 'pending' ? 'heart' : 'warning',
+    });
   }
 
   return (
@@ -164,6 +175,9 @@ export default function Community() {
             </button>
           ))}
         </motion.div>
+
+        {/* Moderation / Helpline Notice */}
+        <ModerationNotice moderation={moderationNotice} onDismiss={() => setModerationNotice(null)} />
 
         {/* Feed */}
         {loading ? (

@@ -8,6 +8,7 @@ import { useToast } from '../components/Toast';
 import { useIdentityWarning } from '../lib/useIdentityWarning';
 import IdentityWarningSheet from '../components/IdentityWarningSheet';
 import BottomSheet from '../components/BottomSheet';
+import ModerationNotice from '../components/ModerationNotice';
 import MoodFlower from '../components/MoodFlower';
 import { BANDS } from '../lib/moodScale';
 import { describeContext } from '../lib/journalContext';
@@ -58,6 +59,7 @@ export default function JournalEntry() {
   const [isAnonymous, setIsAnonymous] = useState(true);
   const [sharing, setSharing] = useState(false);
   const [shareError, setShareError] = useState('');
+  const [shareResult, setShareResult] = useState(null);
   const [deleteArmed, setDeleteArmed] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -105,13 +107,24 @@ export default function JournalEntry() {
     if (sharing) return;
     setSharing(true);
     setShareError('');
+    setShareResult(null);
     try {
       const post = await journalApi.share(entry.id, { isAnonymous });
-      setEntry((e) => ({ ...e, sharedAsPostId: post.id }));
-      confirmHaptic();
-      toast('Shared to community', { icon: 'heart' });
-      setShareOpen(false);
-      navigate(`/community/${post.id}`);
+      const status = post.moderationStatus || 'approved';
+      if (status !== 'rejected') {
+        setEntry((e) => ({ ...e, sharedAsPostId: post.id }));
+      }
+      if (status === 'approved') {
+        confirmHaptic();
+        toast('Shared to community', { icon: 'heart' });
+        setShareOpen(false);
+        navigate(`/community/${post.id}`);
+        return;
+      }
+      setShareResult(post);
+      toast(status === 'pending' ? 'Submitted for review' : 'Post not published', {
+        icon: status === 'pending' ? 'heart' : 'warning',
+      });
     } catch (err) {
       setShareError(apiError(err, 'Could not share this entry. Please try again.'));
     } finally {
@@ -371,7 +384,7 @@ export default function JournalEntry() {
               View your shared post
             </button>
           ) : (
-            <button type="button" className="je__ghost" onClick={() => { tap(); setIsAnonymous(true); setShareError(''); setShareOpen(true); }}>
+            <button type="button" className="je__ghost" onClick={() => { tap(); setIsAnonymous(true); setShareError(''); setShareResult(null); setShareOpen(true); }}>
               Share to community
             </button>
           )}
@@ -390,31 +403,40 @@ export default function JournalEntry() {
       </motion.article>
 
       <BottomSheet open={shareOpen} onClose={() => !sharing && setShareOpen(false)} title="Share to community">
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
-          <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', lineHeight: 'var(--leading-snug)', textWrap: 'pretty' }}>
-            This publishes a copy to the community feed. Your entry stays exactly as it is, and your mood and health details are never included.
-          </p>
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
-            <div>
-              <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)' }}>Post anonymously</p>
-              <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>
-                {isAnonymous ? 'Your name will be hidden' : 'Your name will be shown'}
-              </p>
-            </div>
-            <button
-              className={`toggle${isAnonymous ? ' toggle--on' : ''}`}
-              onClick={() => (isAnonymous ? guardToggleOff(() => setIsAnonymous(false)) : (setIsAnonymous(true), tap()))}
-              aria-pressed={isAnonymous}
-              aria-label="Toggle posting anonymously"
-            >
-              <div className="toggle__knob" />
+        {shareResult ? (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+            <ModerationNotice moderation={shareResult} />
+            <button type="button" className="btn btn--primary" onClick={() => setShareOpen(false)}>
+              Done
             </button>
           </div>
-          {shareError && <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-emergency)' }}>{shareError}</p>}
-          <button className="btn btn--primary" onClick={handleShare} disabled={sharing}>
-            {sharing ? 'Sharing…' : 'Share to community'}
-          </button>
-        </div>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--sp-4)' }}>
+            <p style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-ink-muted)', lineHeight: 'var(--leading-snug)', textWrap: 'pretty' }}>
+              This publishes a copy to the community feed. Your entry stays exactly as it is, and your mood and health details are never included.
+            </p>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 'var(--sp-4)' }}>
+              <div>
+                <p style={{ fontSize: 'var(--text-sm)', fontWeight: 600, color: 'var(--clr-ink)' }}>Post anonymously</p>
+                <p style={{ fontSize: 'var(--text-xs)', color: 'var(--clr-ink-muted)', marginTop: 2 }}>
+                  {isAnonymous ? 'Your name will be hidden' : 'Your name will be shown'}
+                </p>
+              </div>
+              <button
+                className={`toggle${isAnonymous ? ' toggle--on' : ''}`}
+                onClick={() => (isAnonymous ? guardToggleOff(() => setIsAnonymous(false)) : (setIsAnonymous(true), tap()))}
+                aria-pressed={isAnonymous}
+                aria-label="Toggle posting anonymously"
+              >
+                <div className="toggle__knob" />
+              </button>
+            </div>
+            {shareError && <p role="alert" style={{ fontSize: 'var(--text-sm)', color: 'var(--clr-emergency)' }}>{shareError}</p>}
+            <button className="btn btn--primary" onClick={handleShare} disabled={sharing}>
+              {sharing ? 'Sharing…' : 'Share to community'}
+            </button>
+          </div>
+        )}
       </BottomSheet>
 
       <IdentityWarningSheet open={warningOpen} onConfirm={confirmWarning} onCancel={cancelWarning} />
