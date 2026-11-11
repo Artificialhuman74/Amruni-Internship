@@ -20,7 +20,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .db import get_db, init_db
-from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance, routes_history, routes_camps
+from . import auth, ml, pcos, routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance, routes_history, routes_camps, routes_prescriptions
 
 IS_PROD = auth.IS_PROD
 auth.validate_prod_config()
@@ -145,7 +145,7 @@ async def security_headers(request: Request, call_next):
     return response
 
 
-for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance, routes_history, routes_camps):
+for module in (routes_auth, routes_me, routes_doctors, routes_bookings, routes_doctor, routes_ml, routes_pcos, routes_community, routes_mood, routes_meds, routes_sos, routes_care, routes_intake, routes_insurance, routes_history, routes_camps, routes_prescriptions):
     app.include_router(module.router, prefix="/api")
 
 
