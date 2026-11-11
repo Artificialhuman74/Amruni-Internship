@@ -37,6 +37,14 @@ CREATE TABLE IF NOT EXISTS otp_codes (
   last_sent  REAL NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS otp_rate_limits (
+  id         INTEGER PRIMARY KEY AUTOINCREMENT,
+  scope      TEXT NOT NULL,
+  rate_key   TEXT NOT NULL,
+  created_at REAL NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_otp_rate_limits ON otp_rate_limits(scope, rate_key, created_at);
+
 CREATE TABLE IF NOT EXISTS doctors (
   id          INTEGER PRIMARY KEY AUTOINCREMENT,
   name        TEXT NOT NULL,

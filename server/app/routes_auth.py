@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 from . import auth
@@ -21,10 +21,11 @@ class AdminLoginBody(BaseModel):
 
 
 @router.post("/auth/request-otp")
-def request_otp(body: PhoneBody):
+def request_otp(body: PhoneBody, request: Request):
     if not auth.is_valid_phone(body.phone):
         raise HTTPException(400, "Enter a valid 10-digit Indian mobile number.")
-    result = auth.request_otp(body.phone)
+    client_ip = request.client.host if request.client else None
+    result = auth.request_otp(body.phone, client_ip=client_ip)
     return {"sent": True, **result}
 
 

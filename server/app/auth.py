@@ -3,7 +3,7 @@
 OTP codes are random 6-digit, stored as salted SHA-256 hashes, expire after
 5 minutes, allow 5 verification attempts, and are rate-limited per phone.
 Outside production the code is returned to the client so the app works
-without an SMS gateway; wire one into send_sms() for launch.
+without an SMS gateway; wire one into send_otp() for launch.
 """
 import hashlib
 import hmac
@@ -11,6 +11,7 @@ import os
 import secrets
 import time
 import re
+from typing import Protocol
 
 import jwt
 from fastapi import HTTPException, Request
@@ -47,6 +48,8 @@ OTP_TTL = 5 * 60
 OTP_MAX_ATTEMPTS = 5
 OTP_RESEND_COOLDOWN = 30
 OTP_MAX_SENDS = 8
+OTP_IP_MAX_SENDS = 60
+OTP_RATE_WINDOW = 3600
 TOKEN_TTL = 30 * 24 * 3600
 ADMIN_TOKEN_TTL = 12 * 3600
 
@@ -99,21 +102,69 @@ def _hash_code(phone: str, code: str) -> str:
     return hashlib.sha256(f"{phone}:{code}:{JWT_SECRET}".encode()).hexdigest()
 
 
-def send_sms(phone: str, code: str):
-    # SMS gateway integration point (MSG91, Twilio, AWS SNS, ...).
-    print(f"[otp] {phone} -> {code}")
+class OtpProvider(Protocol):
+    """Delivery backend interface for one-time passcodes."""
+
+    def send(self, phone: str, code: str, channel: str = "sms") -> bool: ...
 
 
-def request_otp(phone: str) -> dict:
+class ConsoleOtpProvider:
+    """Development OTP provider that logs passcodes to stdout instead of calling a gateway."""
+
+    def send(self, phone: str, code: str, channel: str = "sms") -> bool:
+        print(f"[otp] {phone} -> {code}")
+        return True
+
+
+_otp_provider: OtpProvider = ConsoleOtpProvider()
+
+
+def get_otp_provider() -> OtpProvider:
+    """Return the currently active OtpProvider instance."""
+    return _otp_provider
+
+
+def set_otp_provider(provider: OtpProvider) -> None:
+    """Replace the active OtpProvider (for gateway wiring or tests)."""
+    global _otp_provider
+    _otp_provider = provider
+
+
+def send_otp(
+    phone: str,
+    code: str,
+    channel: str = "sms",
+    provider: OtpProvider | None = None,
+) -> bool:
+    """Send an OTP code via the active or explicitly provided OtpProvider."""
+    active = provider or _otp_provider
+    return bool(active.send(phone, code, channel=channel))
+
+
+def request_otp(phone: str, client_ip: str | None = None) -> dict:
     now = time.time()
+    cutoff = now - OTP_RATE_WINDOW
     with get_db() as db:
+        db.execute("DELETE FROM otp_rate_limits WHERE created_at < ?", (cutoff,))
         row = db.execute("SELECT * FROM otp_codes WHERE phone = ?", (phone,)).fetchone()
-        if row:
-            if now - row["last_sent"] < OTP_RESEND_COOLDOWN:
-                wait = int(OTP_RESEND_COOLDOWN - (now - row["last_sent"])) + 1
-                raise HTTPException(429, f"Please wait {wait}s before requesting another code.")
-            if row["sent_count"] >= OTP_MAX_SENDS and now < row["expires_at"]:
-                raise HTTPException(429, "Too many codes requested. Try again later.")
+        if row and now - row["last_sent"] < OTP_RESEND_COOLDOWN:
+            wait = int(OTP_RESEND_COOLDOWN - (now - row["last_sent"])) + 1
+            raise HTTPException(429, f"Please wait {wait}s before requesting another code.")
+
+        phone_sends = db.execute(
+            "SELECT COUNT(*) AS n FROM otp_rate_limits WHERE scope = 'phone' AND rate_key = ? AND created_at >= ?",
+            (phone, cutoff),
+        ).fetchone()["n"]
+        if phone_sends >= OTP_MAX_SENDS or (row and row["sent_count"] >= OTP_MAX_SENDS and now < row["expires_at"]):
+            raise HTTPException(429, "Too many codes requested. Try again later.")
+
+        if client_ip:
+            ip_sends = db.execute(
+                "SELECT COUNT(*) AS n FROM otp_rate_limits WHERE scope = 'ip' AND rate_key = ? AND created_at >= ?",
+                (client_ip, cutoff),
+            ).fetchone()["n"]
+            if ip_sends >= OTP_IP_MAX_SENDS:
+                raise HTTPException(429, "Too many verification requests from this network. Try again later.")
 
         # Test numbers get their fixed code; everyone else a fresh random one.
         code = _test_numbers().get(phone) or f"{secrets.randbelow(900000) + 100000}"
@@ -126,10 +177,19 @@ def request_otp(phone: str) -> dict:
                  attempts = 0, sent_count = excluded.sent_count, last_sent = excluded.last_sent""",
             (phone, _hash_code(phone, code), now + OTP_TTL, sent_count, now),
         )
-    # Test numbers never hit the SMS path; real numbers do (or the log fallback).
+        db.execute(
+            "INSERT INTO otp_rate_limits (scope, rate_key, created_at) VALUES ('phone', ?, ?)",
+            (phone, now),
+        )
+        if client_ip:
+            db.execute(
+                "INSERT INTO otp_rate_limits (scope, rate_key, created_at) VALUES ('ip', ?, ?)",
+                (client_ip, now),
+            )
+    # Test numbers never hit the delivery provider; real numbers do (or ConsoleOtpProvider).
     is_test = phone in _test_numbers()
     if not is_test:
-        send_sms(phone, code)
+        send_otp(phone, code)
     # Return the code to the client when it's safe to: outside production, for a
     # designated test number (its code is fixed and known anyway), or when
     # EXPOSE_OTP is explicitly enabled for a demo build without an SMS gateway.
@@ -146,13 +206,16 @@ def _consume_otp(db, phone: str, code: str):
         raise HTTPException(401, "No code was sent to this number. Request a new one.")
     if now > row["expires_at"]:
         db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
+        db.commit()
         raise HTTPException(401, "That code has expired. Request a new one.")
     if row["attempts"] >= OTP_MAX_ATTEMPTS:
         db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
+        db.commit()
         raise HTTPException(429, "Too many incorrect attempts. Request a new code.")
 
     if not hmac.compare_digest(row["code_hash"], _hash_code(phone, code)):
         db.execute("UPDATE otp_codes SET attempts = attempts + 1 WHERE phone = ?", (phone,))
+        db.commit()
         raise HTTPException(401, "That code didn't match. Try again or request a new one.")
 
     db.execute("DELETE FROM otp_codes WHERE phone = ?", (phone,))
