@@ -599,9 +599,16 @@ SEED_DAYS_AHEAD = 7
 SLOT_MINUTES = 30
 
 
+BUSY_TIMEOUT_MS = 5000
+
+
 def connect() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH)
+    """Open a WAL-mode SQLite connection with foreign keys and busy timeout enabled."""
+    busy_ms = int(BUSY_TIMEOUT_MS)
+    conn = sqlite3.connect(DB_PATH, timeout=busy_ms / 1000)
     conn.row_factory = sqlite3.Row
+    # Configure busy_timeout before switching journal mode so contenders wait cleanly.
+    conn.execute(f"PRAGMA busy_timeout = {busy_ms}")
     conn.execute("PRAGMA journal_mode = WAL")
     conn.execute("PRAGMA foreign_keys = ON")
     return conn
