@@ -43,6 +43,7 @@ import BookAppointment from '../screens/BookAppointment';
 import WaitingRoom from '../screens/WaitingRoom';
 import VideoCall from '../screens/VideoCall';
 import ConsultationSummary from '../screens/ConsultationSummary';
+import VerifyPrescription from '../screens/VerifyPrescription';
 
 /** The patient-facing app. Deployed standalone; the practitioner console and
  *  the admin portal are separate builds (see src/apps/). */
@@ -60,6 +61,7 @@ export default function PatientApp() {
             {/* A care link is opened by a family member with no account — so it
               sits outside the auth guard and the tab shell entirely. */}
           <Route path="/care/:token" element={<CareView />} />
+          <Route path="/verify-rx" element={<VerifyPrescription />} />
 
           <Route path="/" element={<Splash />} />
             <Route path="/phone" element={<PhoneEntry />} />
